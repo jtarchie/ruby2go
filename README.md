@@ -134,7 +134,7 @@ lists them with workarounds.
 ## Performance and conformance
 
 A compiled program does no interpretation. Over the workloads in
-[`benchmarks/`](benchmarks/) rugaroo runs about 3x faster than MRI;
+[`benchmarks/`](benchmarks/) rugaroo runs about 3.5x faster than MRI;
 [BENCHMARKS.md](BENCHMARKS.md) has the table, the comparison columns (YJIT,
 spinel, Crystal, hand-written Go) and where rugaroo trails.
 

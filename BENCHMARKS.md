@@ -2,7 +2,7 @@
 
 Wall-clock times for the workloads in [`benchmarks/`](benchmarks/), measured
 on one Apple-silicon machine (MRI 4.0.7, Crystal 1.22.1, Go 1.27.3, spinel
-`baea3e28`) on 2026-10-25, after decision 372. Each cell is the median of 9 runs.
+`baea3e28`) on 2026-10-26, after decisions 377 and 378. Each cell is the median of 9 runs.
 To reproduce:
 
 ```sh
@@ -12,33 +12,32 @@ COLS=ruby,rugaroo scripts/benchmark fib array  # some columns, some workloads
 
 | workload | MRI | MRI+YJIT | rugaroo | spinel | Crystal | Go |
 |---|---:|---:|---:|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.092s | 0.017s | 0.014s | 0.017s | 0.014s |
-| `Hash` counting, 500k | 0.11s | 0.096s | 0.015s | 0.007s | 0.012s | 0.009s |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.14s | 0.021s | 0.011s | 0.012s | 0.010s |
-| string build/split, 100k | 0.11s | 0.11s | 0.030s | 0.018s | 0.024s | 0.017s |
-| `Math.sin`/`cos`, 200k | 0.086s | 0.072s | 0.009s | 0.006s | 0.008s | 0.007s |
-| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.036s | - | 0.013s | 0.012s |
-| binary trees (allocation), depth 10 | 0.082s | 0.068s | 0.010s | 0.008s | 0.010s | 0.007s |
-| splay tree | 0.21s | 0.12s | 0.013s | 0.019s | 0.018s | 0.012s |
-| blocks, procs, lambdas, enumerator chains | 0.36s | 0.34s | 0.064s | 0.16s | 0.037s | 0.012s |
-| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.076s | 2.51s | 0.018s |
-| regexp match/gsub/scan/tr, StringScanner | 0.76s | 0.74s | 0.21s | 0.83s | 0.20s | 0.28s |
-| sort_by/group_by/tally, Set, Struct | 0.55s | 0.53s | 0.12s | 1.12s | 0.053s | 0.068s |
-| format, StringIO, case mapping | 0.49s | 0.44s | 0.24s | 0.20s | 0.14s | 0.10s |
+| `fib(32)` | 0.27s | 0.094s | 0.018s | 0.014s | 0.018s | 0.016s |
+| `Hash` counting, 500k | 0.11s | 0.096s | 0.017s | 0.007s | 0.014s | 0.010s |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.13s | 0.018s | 0.011s | 0.012s | 0.011s |
+| string build/split, 100k | 0.11s | 0.11s | 0.025s | 0.018s | 0.025s | 0.018s |
+| `Math.sin`/`cos`, 200k | 0.086s | 0.072s | 0.010s | 0.006s | 0.009s | 0.008s |
+| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.036s | - | 0.015s | 0.013s |
+| binary trees (allocation), depth 10 | 0.081s | 0.068s | 0.010s | 0.008s | 0.011s | 0.008s |
+| splay tree | 0.22s | 0.12s | 0.015s | 0.019s | 0.019s | 0.013s |
+| blocks, procs, lambdas, enumerator chains | 0.36s | 0.33s | 0.045s | 0.16s | 0.036s | 0.012s |
+| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.12s | 0.076s | 2.50s | 0.019s |
+| regexp match/gsub/scan/tr, StringScanner | 0.76s | 0.73s | 0.21s | 0.83s | 0.21s | 0.28s |
+| sort_by/group_by/tally, Set, Struct | 0.57s | 0.54s | 0.12s | 1.12s | 0.052s | 0.069s |
+| format, StringIO, case mapping | 0.48s | 0.45s | 0.12s | 0.20s | 0.14s | 0.10s |
 | JSON generate + parse | 0.14s | 0.15s | 0.12s | 0.23s | 0.13s | 0.25s |
-| Bignum: Fibonacci, 2000!, 1,200 digits of pi | 0.21s | 0.21s | 0.059s | 0.12s | 0.080s | 0.038s |
-| pairing_heap gem: Dijkstra + heapsort | 0.68s | 0.34s | 0.21s | - | 0.038s | 0.034s |
-| liquid gem: a template rendered 400 times | 0.38s | 0.30s | 0.17s | - | - | - |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.45s | 0.55s | 0.41s | - | - | - |
-| total (rows each one ran) | 5.58s | 4.72s | 1.87s | 2.82s | 3.30s | 0.89s |
-| vs MRI on those rows | 1.0x | 1.2x | 3.0x | 1.4x | 1.4x | 5.3x |
+| Bignum: Fibonacci, 2000!, 1,200 digits of pi | 0.20s | 0.20s | 0.058s | 0.12s | 0.070s | 0.038s |
+| pairing_heap gem: Dijkstra + heapsort | 0.68s | 0.34s | 0.10s | - | 0.039s | 0.036s |
+| liquid gem: a template rendered 400 times | 0.37s | 0.30s | 0.16s | - | - | - |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.45s | 0.55s | 0.40s | - | - | - |
+| total (rows each one ran) | 5.58s | 4.69s | 1.60s | 2.82s | 3.30s | 0.91s |
+| vs MRI on those rows | 1.0x | 1.2x | 3.5x | 1.4x | 1.4x | 5.2x |
 
-The rows other than Bignum are within noise of the previous run (2026-10-25,
-before decision 372): the default build is the same machine code, and
-`TestCompileCost` compiles the same 1,962 / 7,663 / 30,275 functions for
-05_word_count / 64_observable / 116_cuba_web. kramdown and liquid are the
-noisiest rows here (MRI's own time moved 0.44s to 2.66s between two runs), so
-those two were rerun on their own.
+This run follows decisions 377 (module funcs specialized per container, literal format strings compiled, String `+`
+chains in one allocation) and 378 (a non-leaf or generic class's `C?` is its interface, nil its nil): rugaroo's total went from
+1.87s to 1.60s, pairing_heap 0.21s to 0.10s, format 0.24s to 0.12s, blocks 0.064s to 0.045s. No spinel build was at
+hand, so its column is the 2026-10-25 run's (same spinel commit); its "vs MRI" is computed against this run's MRI times.
+`TestCompileCost` compiles 2,014 / 7,730 / 30,289 functions for 05_word_count / 64_observable / 116_cuba_web.
 
 ## What the columns are
 
@@ -61,10 +60,9 @@ those two were rerun on their own.
 
 Where rugaroo trails the native columns, the cost is mostly in its Ruby
 semantics: a frozen check on every mutation, a Hash
-that keeps insertion order, and `T?` still boxed for a class with subclasses or type parameters (decisions 359-360 made
-other leaf classes plain pointers with a plain `nil`, which put splay ahead
-of spinel and Crystal). It is ahead of spinel on
-regexp, collections, blocks and JSON, where spinel's runtime library is
+that keeps insertion order, and objects that are always heap pointers (decisions 359, 360 and 378 removed the box around a nilable object, which put splay ahead
+of spinel and Crystal and halved pairing_heap). It is ahead of spinel on
+regexp, collections, blocks, format and JSON, where spinel's runtime library is
 thinner. Against Crystal it wins on exceptions, which Crystal unwinds with a
 backtrace per raise.
 
