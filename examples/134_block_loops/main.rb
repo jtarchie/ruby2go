@@ -41,3 +41,5 @@ puts "exact tenths: #{([0.1] * 10).sum { |x| x }}"
 puts "big and small: #{[1e100, 1.0, -1e100].sum { |x| x }}"
 squares = Array.new(5) { |i| i * i }
 puts "squares: #{squares.inspect}, even: #{squares.count(&:even?)}, sum: #{squares.sum { |s| s }}"
+puts squares.sum { |s| s * 2 }
+puts "two big squares" if squares.count { |s| s > 3 } == 2

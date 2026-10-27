@@ -137,6 +137,13 @@ func stmtSlots(s ast.Stmt) []*ast.Expr {
 		}
 	case *ast.RangeStmt:
 		slots = append(slots, &s.X)
+	case *ast.DeclStmt:
+		if g, ok := s.Decl.(*ast.GenDecl); ok && g.Tok == token.VAR && len(g.Specs) == 1 {
+			vs := g.Specs[0].(*ast.ValueSpec)
+			for i := range vs.Values {
+				slots = append(slots, &vs.Values[i])
+			}
+		}
 	}
 	return slots
 }
@@ -151,6 +158,9 @@ func (b *blockInliner) scan(p *ast.Expr) (loop []ast.Stmt, stop bool) {
 	case *ast.SelectorExpr:
 		return b.scan(&x.X)
 	case *ast.KeyValueExpr:
+		if loop, stop := b.scan(&x.Key); loop != nil || stop { // a map literal's key may be a call
+			return loop, stop
+		}
 		return b.scan(&x.Value)
 	case *ast.UnaryExpr:
 		if x.Op == token.ARROW {
