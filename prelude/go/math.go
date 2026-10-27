@@ -6,7 +6,7 @@ package prelude
 // rbMathDomain raises MRI's Math::DomainError for an out-of-domain argument.
 func rbMathDomain(bad Boolean, name string) {
 	if bad {
-		rbMathDomainRaise(name) // out of line, so the check inlines into Math.sqrt and the rest (decision 400)
+		rbMathDomainRaise(name) // out of line, so the check inlines into Math.sqrt and the rest (decision 401)
 	}
 }
 

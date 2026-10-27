@@ -1826,7 +1826,7 @@ module StdlibTests
       assert_equal [IO, IO, true, false, true, nil], [r.class, w.class, w.is_a?(IO), r.sync, w.sync, r.pid]
       assert_equal true, r.inspect.match?(/\A#<IO:fd \d+>\z/) # the number is the kernel's next free descriptor
       assert_equal [true, true, false, false], [r.fileno > 2, r.to_i == r.fileno, r.closed?, w.tty?]
-      assert_equal false, File.open(File::NULL, "w") { |f| IO.new(f.fileno).tty? } # a character device, not a terminal (decision 400)
+      assert_equal false, File.open(File::NULL, "w") { |f| IO.new(f.fileno).tty? } # a character device, not a terminal (decision 401)
       w << "a" << "b"
       w.print "c"
       w.puts "d"

@@ -35,7 +35,7 @@ var stdoutMu sync.Mutex
 // stdoutTTY: MRI flushes a terminal's stdout on every write, so prompts and progress show at once; pipes stay buffered, as in MRI.
 var stdoutTTY = rbIsTTY(os.Stdout)
 
-// rbIsTTY is isatty(3) for IO#tty? and stdout's flushing: /dev/null is a character device too, but not a terminal (decision 400).
+// rbIsTTY is isatty(3) for IO#tty? and stdout's flushing: /dev/null is a character device too, but not a terminal (decision 401).
 // ponytail: other character devices (/dev/zero, a serial port) still count; a real isatty needs per-OS ioctl constants.
 func rbIsTTY(f *os.File) bool {
 	fi, err := f.Stat()

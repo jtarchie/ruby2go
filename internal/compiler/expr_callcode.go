@@ -1041,7 +1041,7 @@ func (f *fctx) directCall(e *entry, selfRecv, recv expr, args []string, env map[
 	return "", false
 }
 
-// exactMetaCall: `Math.sqrt(x)` on the constant itself can only be Math's own singleton method, so its free func, which Go inlines, not a Math_MetaI call (decision 400).
+// exactMetaCall: `Math.sqrt(x)` on the constant itself can only be Math's own singleton method, so its free func, which Go inlines, not a Math_MetaI call (decision 401).
 func exactMetaCall(recv expr, m *Method) bool {
 	c, ok := recv.typ.(TClass)
 	return ok && recv.classObj && c.C.metaOf != nil && m.Owner == c.C && (m.Kind == kindDef || m.Kind == kindPrimitive) && !m.generic()
@@ -1054,7 +1054,7 @@ var operatorBodies = map[string]bool{
 	"Boolean(self == other)": false,
 }
 
-// inlineOperator: Go inlines `Float.Op_mul(a, b)` too, but leaves a NOP inline mark per call, a third of mandelbrot's inner loop (decision 400).
+// inlineOperator: Go inlines `Float.Op_mul(a, b)` too, but leaves a NOP inline mark per call, a third of mandelbrot's inner loop (decision 401).
 func inlineOperator(m *Method, recv expr, args []string) (string, bool) {
 	if m.Kind != kindPrimitive || len(args) != 1 || len(m.Params) != 1 || m.Params[0].Name != "other" || classOf(recv.typ) != m.Owner || classOf(m.Params[0].Type) != m.Owner {
 		return "", false
@@ -1064,8 +1064,15 @@ func inlineOperator(m *Method, recv expr, args []string) (string, bool) {
 	if !ok || arith && goConstExpr(recv.code) && goConstExpr(args[0]) { // `0.1 + 0.2` would fold exactly to 0.3
 		return "", false
 	}
+	if recv.code == args[0] && !strings.Contains(body, "*") && !strings.Contains(body, "+") { // gocritic's dupSubExpr rejects `x == x` (NaN's test) and `x - x`
+		return "", false
+	}
 	i, j := strings.Index(body, "self"), strings.Index(body, "other")
-	return body[:i] + goOperand(recv.code) + body[i+len("self"):j] + goOperand(args[0]) + body[j+len("other"):], true
+	code := body[:i] + goOperand(recv.code) + body[i+len("self"):j] + goOperand(args[0]) + body[j+len("other"):]
+	if strings.HasPrefix(body, "self") { // a bare `a + b`: callers may append `.M()` to it
+		code = "(" + code + ")"
+	}
+	return code, true
 }
 
 // goConstExpr reports Go code naming nothing but numbers and conversions, which Go evaluates as a constant.
