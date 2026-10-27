@@ -52,14 +52,14 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 
 ## Core classes — stable
 
-ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-26 (commit 8c16d5b). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
+ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-27 (commit 7c2e5b6). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
 
 | Class | Tier | ruby/spec pass (of those run) | Skipped | Notes |
 |---|---|---:|---:|---|
 | `Array` | stable | 597 of 689 (87%) | 526 |  |
 | `Array#pack`, `String#unpack` | stable | 2,556 of 3,004 (85%) | 173 | No C pointers (`P`, `p`); Bignum directives need `promote`. |
 | `Hash` | stable | 243 of 276 (88%) | 286 | Insertion-ordered; `Hash#[]` is typed `V?`. |
-| `String` | stable | 1,002 of 1,305 (77%) | 1,058 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)) and `setbyte` on one, or on an ivar in `initialize` ([decision 395](decisions/395.md)). |
+| `String` | stable | 1,007 of 1,310 (77%) | 1,053 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)) and `setbyte` on one, or on an ivar in `initialize` ([decision 395](decisions/395.md)). |
 | `Symbol` | stable | 83 of 103 (81%) | 75 |  |
 | `Integer` | stable | 185 of 265 (70%) | 333 | 64-bit; see below. |
 | `Float` | stable | 149 of 179 (83%) | 82 |  |

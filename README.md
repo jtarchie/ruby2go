@@ -135,17 +135,17 @@ lists them with workarounds.
 ## Performance and conformance
 
 A compiled program does no interpretation. Over the workloads in
-[`benchmarks/`](benchmarks/) rugaroo runs about 3.7x faster than MRI;
+[`benchmarks/`](benchmarks/) rugaroo runs about 3.6x faster than MRI;
 [BENCHMARKS.md](BENCHMARKS.md) has the table, the comparison columns (YJIT,
 spinel, Crystal, hand-written Go) and where rugaroo trails. On spinel's own
 73-program suite it builds 65 unmodified (47 by default, 18 more with
-`--nil-check=runtime`) and runs them 18.0x faster than MRI (spinel: 23.7x on
+`--nil-check=runtime`) and runs them 18.0x faster than MRI (spinel: 23.8x on
 the same programs).
 
 Correctness is measured against MRI: every [example](examples/), minitest
 suite and compile-error archive runs against `ruby` under `go test`. As a
 wider probe, `cmd/rubyspec` runs [ruby/spec](https://github.com/ruby/spec):
-10,098 of its examples pass (8,965 in `core`, 71% of the `core` examples that
+10,103 of its examples pass (8,970 in `core`, 71% of the `core` examples that
 run), and most of the rest are skipped for something rugaroo leaves out by
 design. [docs/support.md](docs/support.md#core-classes--stable) has the rate
 for each core class.
