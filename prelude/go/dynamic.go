@@ -108,6 +108,10 @@ func rbOptFrom[T any](zero T, v any) (T, bool) {
 		out, ok = rbOptScalar[Integer](v)
 	case *Float:
 		out, ok = rbOptScalar[Float](v)
+	case rbOpt[Integer]:
+		out, ok = rbOptScalarV[Integer](v)
+	case rbOpt[Float]:
+		out, ok = rbOptScalarV[Float](v)
 	case *Symbol:
 		out, ok = rbOptScalar[Symbol](v)
 	case *Boolean:
@@ -120,6 +124,15 @@ func rbOptFrom[T any](zero T, v any) (T, bool) {
 	}
 	t, _ := out.(T)
 	return t, true
+}
+
+// rbOptScalarV is rbOptScalar for an rbOpt (decision 396).
+func rbOptScalarV[T any](v any) (rbOpt[T], bool) {
+	if v == nil {
+		return rbOpt[T]{}, true
+	}
+	x, ok := rbConv[T](v)
+	return rbOpt[T]{x, ok}, ok
 }
 
 func rbOptScalar[T any](v any) (*T, bool) {

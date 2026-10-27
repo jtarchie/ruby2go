@@ -578,6 +578,81 @@ func Opt[T any](p *T) any {
 	return *p
 }
 
+// rbOpt is Integer?/Float? held by value (zero is nil): no alias into an Array's storage, no allocation (decision 396).
+type rbOpt[T any] struct {
+	v  T
+	ok bool
+}
+
+// rbSome is a T where T? is wanted.
+func rbSome[T any](v T) rbOpt[T] { return rbOpt[T]{v, true} }
+
+// rbOptFromPtr copies generic code's *T (Array#[]'s pointer into its storage) into a T?: the copy decision 396 is for.
+func rbOptFromPtr[T any](p *T) rbOpt[T] {
+	if p == nil {
+		return rbOpt[T]{}
+	}
+	return rbOpt[T]{*p, true}
+}
+
+// rbOptToPtr is a T? where generic code takes V? as Go *V.
+func rbOptToPtr[T any](o rbOpt[T]) *T {
+	if !o.ok {
+		return nil
+	}
+	return &o.v
+}
+
+// rbAny is the T? as untyped: nil, or the value.
+func (o rbOpt[T]) rbAny() any {
+	if !o.ok {
+		return nil
+	}
+	return o.v
+}
+
+type rbOptCmp interface{ rbCmpWith(b any) Integer }
+
+func (o rbOpt[T]) rbCmpWith(b any) Integer {
+	p, _ := b.(rbOpt[T])
+	if !o.ok || !p.ok {
+		return rbCmpFailed(o.rbAny(), p.rbAny())
+	}
+	return rbCmp(any(o.v), any(p.v))
+}
+
+type rbOptMSet interface{ rbMSet(v any) }
+
+func (o *rbOpt[T]) rbMSet(v any) {
+	if v == nil {
+		*o = rbOpt[T]{}
+		return
+	}
+	*o = rbOpt[T]{rbMAs[T](v), true}
+}
+
+// rbOptOf converts untyped to T? (OptOf for an rbOpt).
+func rbOptOf[T any](a any, want string) rbOpt[T] {
+	if a == nil {
+		return rbOpt[T]{}
+	}
+	return rbOpt[T]{rbAs[T](a, want), true}
+}
+
+// rbOptArrayFrom opens a generic Array[E?] with E = Integer or Float: each *T slot to a T?.
+func rbOptArrayFrom[T comparable](a *Array[*T]) *Array[rbOpt[T]] {
+	out := make([]rbOpt[T], len(a.s))
+	for i, p := range a.s {
+		out[i] = rbOptFromPtr(p)
+	}
+	return &Array[rbOpt[T]]{s: out}
+}
+
+// rbOptPairFrom opens a generic [E?, E?] (minmax) with E = Integer or Float.
+func rbOptPairFrom[A, B comparable](t Tuple2[*A, *B]) Tuple2[rbOpt[A], rbOpt[B]] {
+	return Tuple2[rbOpt[A], rbOpt[B]]{rbOptFromPtr(t.F0), rbOptFromPtr(t.F1)}
+}
+
 // rbFlat collapses a generic E? instantiated with E = T? (a **T) to T?:
 // Ruby has one nil.
 func rbFlat[T any](p **T) *T {
@@ -895,6 +970,9 @@ func rbTruthyOpt(p *Boolean) bool { return p != nil && bool(*p) }
 
 // rbOptEq is T? == T for a T whose == is Go's (plainOptEq): nil is never equal.
 func rbOptEq[T comparable](p *T, v T) bool { return p != nil && *p == v }
+
+// rbOptEqV is rbOptEq for an rbOpt (decision 396).
+func rbOptEqV[T comparable](o rbOpt[T], v T) bool { return o.ok && o.v == v }
 
 func rbEq[T comparable](a, b T) Boolean {
 	x, y := rbUnbox(any(a)), rbUnbox(any(b))
@@ -1769,6 +1847,16 @@ func rbIvarAssignPtr[T any](dst *T, v any, name string) {
 	rbIvarAssign(dst, v, name)
 }
 
+func rbIvarAssignVal[T any](dst *rbOpt[T], v any, name string) {
+	if v == nil {
+		*dst = rbOpt[T]{}
+		return
+	}
+	var x T
+	rbIvarAssign(&x, v, name)
+	*dst = rbOpt[T]{x, true}
+}
+
 func rbIvarAssignOpt[T any](dst **T, v any, name string) {
 	if v == nil {
 		*dst = nil
@@ -1827,12 +1915,28 @@ func rbMust[T any](p *T, want string) T {
 	return *p
 }
 
+// rbMustO is rbMust for an rbOpt (decision 396).
+func rbMustO[T any](o rbOpt[T], want string) T {
+	if !o.ok {
+		panic(NewTypeError(Ref(String("no implicit conversion of nil into " + want))))
+	}
+	return o.v
+}
+
 // rbNilArg is a T? where T is wanted under --nil-check=runtime (decision 393): nil raises the error MRI raises there.
 func rbNilArg[T any](p *T, msg string, arg bool) T {
 	if p == nil {
 		panic(rbNilErr(msg, arg))
 	}
 	return *p
+}
+
+// rbNilArgO is rbNilArg for an rbOpt (decision 396).
+func rbNilArgO[T any](o rbOpt[T], msg string, arg bool) T {
+	if !o.ok {
+		panic(rbNilErr(msg, arg))
+	}
+	return o.v
 }
 
 // rbNilArgV is rbNilArg for a C? that holds nil itself, a leaf's *C or an interface (decisions 360, 378).

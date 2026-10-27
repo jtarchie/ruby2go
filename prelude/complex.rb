@@ -187,7 +187,7 @@ class Complex < Object
 
   # Only real values compare (an imaginary part of zero, exact or not), as MRI's nucomp_cmp.
   #: (Complex) -> Integer?
-  def <=>(other) = %x{ return rbComplexCmp(self, other) }
+  def <=>(other) = %x{ return rbOptFromPtr(rbComplexCmp(self, other)) }
 
   #: () -> bool
   def zero? = %x{ Boolean(rbNumZero(self.re) && rbNumZero(self.im)) }
@@ -201,9 +201,9 @@ class Complex < Object
   #: () -> Integer?
   def infinite? = %x{
     if math.IsInf(rbNumFloat(self.re), 0) || math.IsInf(rbNumFloat(self.im), 0) {
-      return Ref(Integer(1))
+      return rbSome(Integer(1))
     }
-    return nil
+    return rbOpt[Integer]{}
   }
 
   #: (untyped) -> [Complex, Complex]

@@ -248,9 +248,9 @@ class String < Object
   #: (String) -> Integer?
   def index(s) = %x{
     if v, ok := rbStrIndex(self, s); ok {
-      return &v
+      return rbSome(v)
     }
-    return nil
+    return rbOpt[Integer]{}
   }
 
   #: (String, Integer) -> Integer?
@@ -260,14 +260,14 @@ class String < Object
       start += Integer(len(r))
     }
     if start < 0 || int(start) > len(r) {
-      return nil
+      return rbOpt[Integer]{}
     }
     rest := string(r[start:])
     i := strings.Index(rest, string(s))
     if i < 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(start + Integer(utf8.RuneCountInString(rest[:i])))
+    return rbSome(start + Integer(utf8.RuneCountInString(rest[:i])))
   }
 
   #: (Integer) -> String?
@@ -678,9 +678,9 @@ class String < Object
   #: (String) -> Integer?
   def rindex(s) = %x{
     if v, ok := rbStrRindex(self, s); ok {
-      return &v
+      return rbSome(v)
     }
-    return nil
+    return rbOpt[Integer]{}
   }
 
   # The last occurrence starting at or before character pos (negative counts from the end).
@@ -691,23 +691,23 @@ class String < Object
       pos += Integer(len(r))
     }
     if pos < 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
     hay := string(r[:min(int(pos)+utf8.RuneCountInString(string(s)), len(r))])
     i := strings.LastIndex(hay, string(s))
     if i < 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(utf8.RuneCountInString(hay[:i])))
+    return rbSome(Integer(utf8.RuneCountInString(hay[:i])))
   }
 
   #: (String) -> Integer?
   def byteindex(s) = %x{
     i := strings.Index(string(self), string(s))
     if i < 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(i))
+    return rbSome(Integer(i))
   }
 
   # The Regexp twins of index, rindex, partition and rpartition (decision 12's `__<name>_regexp`).
@@ -719,9 +719,9 @@ class String < Object
   def __rindex_regexp(re) = %x{
     loc := rbRindexLoc(re, string(self))
     if loc == nil {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(rbStrLen(string(self)[:loc[0]])))
+    return rbSome(Integer(rbStrLen(string(self)[:loc[0]])))
   }
 
   #: (Regexp) -> Integer?
@@ -761,16 +761,16 @@ class String < Object
       offset += n
     }
     if offset < 0 || offset > n {
-      return nil
+      return rbOpt[Integer]{}
     }
     if offset < n && !utf8.RuneStart(self[offset]) {
       panic(NewIndexError(Ref(String(fmt.Sprintf("offset %d does not land on character boundary", offset)))))
     }
     i := strings.Index(string(self[offset:]), string(s))
     if i < 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(i) + offset)
+    return rbSome(Integer(i) + offset)
   }
 
   #: (String, Integer) -> Integer?
@@ -780,23 +780,23 @@ class String < Object
       offset += n
     }
     if offset < 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
     end := min(int(offset)+len(s), len(self))
     i := strings.LastIndex(string(self[:end]), string(s))
     if i < 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(i))
+    return rbSome(Integer(i))
   }
 
   #: (String) -> Integer?
   def byterindex(s) = %x{
     i := strings.LastIndex(string(self), string(s))
     if i < 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(i))
+    return rbSome(Integer(i))
   }
 
   #: (Range[Integer]) -> String?
@@ -813,16 +813,16 @@ class String < Object
     if start < 0 {
       start += n
     }
-    if count == nil {
+    if !count.ok {
       if start < 0 || start >= n {
         return nil
       }
       return Ref(String(self[start : start+1]))
     }
-    if start < 0 || start > n || *count < 0 {
+    if start < 0 || start > n || count.v < 0 {
       return nil
     }
-    return Ref(String(strings.Clone(string(self[start:min(start+*count, n)]))))
+    return Ref(String(strings.Clone(string(self[start:min(start+count.v, n)]))))
   }
 
   #: (Integer) -> Integer?
@@ -831,9 +831,9 @@ class String < Object
       i += Integer(len(self))
     }
     if i < 0 || int(i) >= len(self) {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(self[i]))
+    return rbSome(Integer(self[i]))
   }
 
   #: () -> Array[Integer]

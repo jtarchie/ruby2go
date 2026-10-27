@@ -133,9 +133,9 @@ class BigDecimal < Object
   def <=>(other) = %x{
     c, ok := rbBDCmp(self, other)
     if !ok {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(c))
+    return rbSome(Integer(c))
   }
 
   #: (Integer) -> Integer?
@@ -341,12 +341,12 @@ class BigDecimal < Object
   #: () -> Integer?
   def infinite? = %x{
     if self.kind != rbBDInf {
-      return nil
+      return rbOpt[Integer]{}
     }
     if self.neg {
-      return Ref(Integer(-1))
+      return rbSome(Integer(-1))
     }
-    return Ref(Integer(1))
+    return rbSome(Integer(1))
   }
 
   #: () -> bool

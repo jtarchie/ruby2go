@@ -11,10 +11,10 @@ module Process
     #: () -> Integer?
     def exitstatus = %x{
       if self.sig != 0 {
-        return nil
+        return rbOpt[Integer]{}
       }
       c := Integer(self.code)
-      return &c
+      return rbSome(c)
     }
 
     #: () -> bool?
@@ -35,10 +35,10 @@ module Process
     #: () -> Integer?
     def termsig = %x{
       if self.sig == 0 {
-        return nil
+        return rbOpt[Integer]{}
       }
       s := Integer(self.sig)
-      return &s
+      return rbSome(s)
     }
 
     #: () -> bool

@@ -313,11 +313,18 @@ func (f *fctx) compactNil(n *parser.CallNode) (expr, bool) {
 		return expr{}, false
 	}
 	t, ok := f.probeType(n.Receiver, nil).(TClass) // not an Array? receiver: that call is genSafeNav's or an error
-	if !ok || t.C.RubyName != "Array" || len(t.Args) != 1 || !leafOpt(t.Args[0]) {
+	if ok && t.C.RubyName == "Enumerator::Lazy" && len(t.Args) == 1 && valOpt(t.Args[0]) {
+		recv := f.genExpr(n.Receiver, nil)
+		return expr{code: "rbLazyCompactVal(" + recv.code + ")", typ: TClass{C: t.C, Args: []Type{stripOpt(t.Args[0])}}}, true
+	}
+	if !ok || t.C.RubyName != "Array" || len(t.Args) != 1 || !leafOpt(t.Args[0]) && !valOpt(t.Args[0]) {
 		return expr{}, false
 	}
 	recv := f.genExpr(n.Receiver, nil)
-	elem := t.Args[0].(TOpt).Elem //nolint:forcetypeassert // leafOpt holds only for a TOpt
+	elem := t.Args[0].(TOpt).Elem //nolint:forcetypeassert // leafOpt and valOpt hold only for a TOpt
+	if valOpt(t.Args[0]) {
+		return expr{code: "rbCompactVal(" + recv.code + ")", typ: TClass{C: t.C, Args: []Type{elem}}}, true
+	}
 	return expr{code: "rbCompactNil(" + recv.code + ")", typ: TClass{C: t.C, Args: []Type{elem}}}, true
 }
 

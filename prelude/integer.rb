@@ -39,6 +39,10 @@ class Integer < Object
       return self.Op_eq(Opt(o))
     case *Float:
       return self.Op_eq(Opt(o))
+    case rbOpt[Integer]:
+      return self.Op_eq(o.rbAny())
+    case rbOpt[Float]:
+      return self.Op_eq(o.rbAny())
     }
     return rbEq[any](other, self) // MRI asks other == self
   }

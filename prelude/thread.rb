@@ -87,12 +87,12 @@ class Thread < Object
   # `wait_thr.join(Utils::Timer.remaining(end_time))`).
   #: (Float?) -> Thread?
   def __join_1(timeout) = %x{
-    if timeout == nil {
+    if !timeout.ok {
       r := self.Join()
       return &r
     }
     self.notSelf()
-    timer := time.After(time.Duration(math.Round(float64(*timeout) * 1e9)))
+    timer := time.After(time.Duration(math.Round(float64(timeout.v) * 1e9)))
     select {
     case <-self.done:
     default: // a finished thread wins even if the timer has fired by now: select picks among ready cases at random

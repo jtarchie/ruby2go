@@ -80,7 +80,7 @@ class ConditionVariable < Object
     switch t := timeout.(type) {
     case nil:
       self.cv.wait(m)
-      return Ref(Integer(0))
+      return rbSome(Integer(0))
     case Integer:
       secs = float64(t)
     case Float:
@@ -89,9 +89,9 @@ class ConditionVariable < Object
       panic(NewTypeError(Ref(String("can't convert " + rbClassName(timeout) + " into time interval"))))
     }
     if self.cv.waitTimeout(m, time.Duration(math.Round(secs*1e9))) {
-      return Ref(Integer(0))
+      return rbSome(Integer(0))
     }
-    return nil
+    return rbOpt[Integer]{}
   }
 
   #: () -> self

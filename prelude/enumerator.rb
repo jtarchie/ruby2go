@@ -12,7 +12,7 @@ class Enumerator < Object
   def self.new = %x{ return rbEnumNew[X](nil, blk) }
 
   #: [X] (Integer?) { (Enumerator::Yielder[X]) -> void } -> Enumerator[X]
-  def self.__new_1(size) = %x{ return rbEnumNew[X](size, blk) }
+  def self.__new_1(size) = %x{ return rbEnumNew[X](rbOptToPtr(size), blk) }
 
   #: () { (E) -> void } -> void
   def each = %x{ return func(yield func(E) bool) { self.seq(yield) } }
@@ -37,9 +37,9 @@ class Enumerator < Object
   #: () -> Integer?
   def size = %x{
     if self.size == nil {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return self.size()
+    return rbOptFromPtr(self.size())
   }
 
   #: (?Integer) { (E, Integer) -> void } -> void

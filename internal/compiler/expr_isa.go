@@ -88,7 +88,7 @@ func (f *fctx) isA(n parser.Node, recv expr, cls *Class) string {
 	if o, ok := t.(TOpt); ok {
 		recv.code = f.pinSimple(recv.code)
 		inner := f.isA(n, expr{code: derefOpt(recv.code, o), typ: o.Elem}, cls)
-		return "(" + recv.code + " != nil && " + inner + ")"
+		return "(" + optNotNil(recv.code, o) + " && " + inner + ")"
 	}
 	if isNil(t) {
 		return "false"
@@ -161,7 +161,7 @@ func (f *fctx) markerIsA(recv expr, cls *Class) (string, bool) {
 		case isNil(t):
 			return "true", true
 		case isOpt(t):
-			return "(" + recv.code + " == nil)", true
+			return "(" + optIsNil(recv.code, t) + ")", true
 		case isAny(t) || isAbstract(t):
 			return "(rbUnbox(" + f.coerce(nil, recv, TAny{}) + ") == nil)", true
 		}

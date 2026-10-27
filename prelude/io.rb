@@ -387,9 +387,9 @@ class IO < Object
   def pid = %x{
     self.rbOpen()
     if self.cmd == nil {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(self.cmd.Process.Pid))
+    return rbSome(Integer(self.cmd.Process.Pid))
   }
 
   # ponytail: a standard stream is only marked closed, so Kernel#puts still writes; close the real fd and route Kernel output through this state (decision 138).
@@ -448,19 +448,19 @@ class IO < Object
   #: (Integer?) -> String?
   def __read_1(length) = %x{
     r := *self.rbReader()
-    if length == nil {
+    if !length.ok {
       b, _ := io.ReadAll(r)
       s := String(b)
       return &s
     }
-    if *length < 0 {
-      panic(NewArgumentError(Ref(String(fmt.Sprintf("negative length %d given", *length)))))
+    if length.v < 0 {
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("negative length %d given", length.v)))))
     }
-    if *length == 0 {
+    if length.v == 0 {
       s := String("")
       return &s
     }
-    buf := make([]byte, *length)
+    buf := make([]byte, length.v)
     n, _ := io.ReadFull(r, buf)
     if n == 0 {
       return nil
@@ -483,7 +483,7 @@ class IO < Object
   def getch = getc
 
   #: () -> Integer?
-  def getbyte = %x{ return rbGetbyte(*self.rbReader()) }
+  def getbyte = %x{ return rbOptFromPtr(rbGetbyte(*self.rbReader())) }
 
   #: () -> String
   def readchar = %x{ return *rbEOF(rbGetc(*self.rbReader())) }
@@ -1010,11 +1010,11 @@ module Kernel
       panic(NewArgumentError(Ref(String(fmt.Sprintf("negative level (%d)", start)))))
     }
     l := -1
-    if length != nil {
-      if *length < 0 {
-        panic(NewArgumentError(Ref(String(fmt.Sprintf("negative size (%d)", *length)))))
+    if length.ok {
+      if length.v < 0 {
+        panic(NewArgumentError(Ref(String(fmt.Sprintf("negative size (%d)", length.v)))))
       }
-      l = int(*length)
+      l = int(length.v)
     }
     out := rbCaller(int(start), l)
     if out == nil {

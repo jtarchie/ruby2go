@@ -147,10 +147,10 @@ class File < Object
   def self.world_writable?(path) = %x{
     fi, err := os.Stat(string(path))
     if err != nil || fi.Mode().Perm()&0o002 == 0 {
-      return nil
+      return rbOpt[Integer]{}
     }
     v := Integer(fi.Mode().Perm())
-    return &v
+    return rbSome(v)
   }
 
   #: (String) -> Time
@@ -432,11 +432,11 @@ class File < Object
   #: (Integer?, Integer?, *String) -> Integer
   def self.chown(owner, group, *paths) = %x{
     uid, gid := -1, -1
-    if owner != nil {
-      uid = int(*owner)
+    if owner.ok {
+      uid = int(owner.v)
     }
-    if group != nil {
-      gid = int(*group)
+    if group.ok {
+      gid = int(group.v)
     }
     for _, p := range rest_ {
       if err := os.Chown(string(p), uid, gid); err != nil {
@@ -717,18 +717,18 @@ class File < Object
   #: (Integer?) -> String?
   def __read_1(length) = %x{
     self.rbReadable()
-    if length == nil {
+    if !length.ok {
       s := rbReadRest(self.r, self.f)
       return &s
     }
-    if *length < 0 {
-      panic(NewArgumentError(Ref(String(fmt.Sprintf("negative length %d given", *length)))))
+    if length.v < 0 {
+      panic(NewArgumentError(Ref(String(fmt.Sprintf("negative length %d given", length.v)))))
     }
-    if *length == 0 {
+    if length.v == 0 {
       s := String("")
       return &s
     }
-    buf := make([]byte, *length)
+    buf := make([]byte, length.v)
     n, _ := io.ReadFull(self.r, buf)
     if n == 0 {
       return nil
@@ -788,7 +788,7 @@ class File < Object
   #: () -> Integer?
   def getbyte = %x{
     self.rbReadable()
-    return rbGetbyte(self.r)
+    return rbOptFromPtr(rbGetbyte(self.r))
   }
 
   #: () -> String
@@ -1254,15 +1254,15 @@ class Dir < Object
   #: (String, ?Integer?) -> Integer
   def self.mkdir(path, mode = nil) = %x{
     fm := fs.FileMode(0o777)
-    if mode != nil {
-      fm = fs.FileMode(*mode & 0o777)
-      if *mode&0o4000 != 0 {
+    if mode.ok {
+      fm = fs.FileMode(mode.v & 0o777)
+      if mode.v&0o4000 != 0 {
         fm |= fs.ModeSetuid
       }
-      if *mode&0o2000 != 0 {
+      if mode.v&0o2000 != 0 {
         fm |= fs.ModeSetgid
       }
-      if *mode&0o1000 != 0 {
+      if mode.v&0o1000 != 0 {
         fm |= fs.ModeSticky
       }
     }

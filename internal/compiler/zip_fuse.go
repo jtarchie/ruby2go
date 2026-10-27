@@ -125,5 +125,9 @@ func (f *fctx) zipLoopHead(m *Method, recv expr, codes []string, gp string) stri
 	if gp == "_" {
 		return head
 	}
-	return fmt.Sprintf("%s\n%s := rbZipPair(%s, %s, %s)", head, gp, cur, ys, i)
+	pair := "rbZipPair"
+	if f.zipVal {
+		pair = "rbZipPairVal"
+	}
+	return fmt.Sprintf("%s\n%s := %s(%s, %s, %s)", head, gp, pair, cur, ys, i)
 }

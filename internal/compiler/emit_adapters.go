@@ -112,7 +112,7 @@ func (c *Compiler) emitCmpAdapter(cls *Class, recv string) {
 		// a generic type's cmpNil forwarder is pruned unless an interface declares the name (isGenericForwarder), and none does: call the free func
 		call = freeFuncName(e.M) + c.forwardTypeArgs(*e, cls) + "(self, " + arg + ")"
 	}
-	c.w("func (self %s) Op_cmp(%s %s) Integer {\n\tif r := %s; r != nil {\n\t\treturn *r\n\t}\n\tpanic(rbCmpErr(self, %s))\n}\n\n",
+	c.w("func (self %s) Op_cmp(%s %s) Integer {\n\tif r := %s; r.ok {\n\t\treturn r.v\n\t}\n\tpanic(rbCmpErr(self, %s))\n}\n\n",
 		recv, arg, c.goType(c.cmpIncluder(cls)), call, arg)
 }
 

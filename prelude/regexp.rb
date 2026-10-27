@@ -116,13 +116,13 @@ class Regexp < Object
   def =~(s) = %x{
     str, ok := rbSubject(s)
     if !ok {
-      return nil
+      return rbOpt[Integer]{}
     }
     loc := rbFindLoc(self, str)
     if loc == nil {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(rbStrLen(str[:loc[0]])))
+    return rbSome(Integer(rbStrLen(str[:loc[0]])))
   }
 
   # Ruby's rb_reg_quote: metacharacters, space and the whitespace escapes.
@@ -149,9 +149,9 @@ class Regexp < Object
   def __bin_eqtilde(s) = %x{
     loc := rbFindLocBin(self, string(s))
     if loc == nil {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(loc[0]))
+    return rbSome(Integer(loc[0]))
   }
 
   # @binary
@@ -354,10 +354,10 @@ class MatchData < Object
   def match_length(n) = match(n)&.size
 
   #: (Integer) -> Integer?
-  def begin(n) = %x{ return rbMatchOffset(self, n, 0) }
+  def begin(n) = %x{ return rbOptFromPtr(rbMatchOffset(self, n, 0)) }
 
   #: (Integer) -> Integer?
-  def end(n) = %x{ return rbMatchOffset(self, n, 1) }
+  def end(n) = %x{ return rbOptFromPtr(rbMatchOffset(self, n, 1)) }
 
   #: (Integer) -> [Integer?, Integer?]
   def offset(n) = [self.begin(n), self.end(n)]
@@ -368,9 +368,9 @@ class MatchData < Object
       panic(NewIndexError(Ref(String(fmt.Sprintf("index %d out of matches", n)))))
     }
     if self.loc[2*n] < 0 {
-      return Tuple2[*Integer, *Integer]{}
+      return Tuple2[rbOpt[Integer], rbOpt[Integer]]{}
     }
-    return Tuple2[*Integer, *Integer]{Ref(Integer(self.loc[2*n])), Ref(Integer(self.loc[2*n+1]))}
+    return Tuple2[rbOpt[Integer], rbOpt[Integer]]{rbSome(Integer(self.loc[2*n])), rbSome(Integer(self.loc[2*n+1]))}
   }
 
   # A named group's index (the last of a repeated name, as MRI), for the name twins of begin/end/offset/byteoffset.
@@ -511,10 +511,10 @@ class String
     s := string(self)
     for i := len(s); i >= 0; i-- {
       if loc := rbFindLocBin(re, s[i:]); loc != nil && loc[0] == 0 {
-        return Ref(Integer(i))
+        return rbSome(Integer(i))
       }
     }
-    return nil
+    return rbOpt[Integer]{}
   }
 
   # @binary

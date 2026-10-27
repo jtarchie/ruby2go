@@ -52,13 +52,13 @@ func rbRangeEach[E comparable](r *Range[E], yield func(E) bool) {
 				return
 			}
 		}
-	case *Integer: // an Integer? bound (bindata's `(0...index)` of an index typed from a find): nil is no bound
-		if b == nil {
+	case rbOpt[Integer]: // an Integer? bound (bindata's `(0...index)` of an index typed from a find): nil is no bound
+		if !b.ok {
 			panic(NewTypeError(Ref(String("can't iterate from NilClass"))))
 		}
-		e, _ := any(r.e).(*Integer)
-		for i := *b; r.endless || e == nil || i < *e || (!r.excl && i == *e); i++ {
-			if !yield(any(Ref(i)).(E)) || i == math.MaxInt {
+		e, _ := any(r.e).(rbOpt[Integer])
+		for i := b.v; r.endless || !e.ok || i < e.v || (!r.excl && i == e.v); i++ {
+			if !yield(any(rbSome(i)).(E)) || i == math.MaxInt {
 				return
 			}
 		}

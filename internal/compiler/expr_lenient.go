@@ -190,7 +190,7 @@ func (f *fctx) lookupMissed(n parser.Node, miss missMode, recv expr, kt Type, ke
 		}
 		f.emit("%s = Boolean(false)", res.code)
 	case missNone, missNil, missFetch:
-		f.emit("%s = nil", res.code)
+		f.emit("%s = %s", res.code, nilCode(f.c.goType(res.typ)))
 	}
 }
 
@@ -245,6 +245,9 @@ func (f *fctx) lenientClass(n parser.Node, e expr, to TClass) (string, bool) {
 func (f *fctx) lenientOpt(n parser.Node, e expr, o TOpt, to TClass) (string, bool) {
 	if oc, ok := o.Elem.(TClass); ok && leafOpt(o) && oc.C == to.C {
 		return e.code, true // a leaf's C? is its *C (decision 360): nil passes on as MRI's nil does (decision 257), Homebrew's `ChecksumMismatchError.new(f, checksum, actual)` after `checksum.blank?`
+	}
+	if valOpt(o) && typeEq(o.Elem, to) {
+		return fmt.Sprintf("rbMustO(%s, %q)", e.code, o.Elem.String()), true
 	}
 	if f.c.goType(e.typ) != "*"+f.c.goType(o.Elem) {
 		return "", false

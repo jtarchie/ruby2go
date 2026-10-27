@@ -33,7 +33,7 @@ func (c *Compiler) goType(t Type) string {
 			return cls.objType()
 		}
 	case TOpt:
-		if leafOpt(t) {
+		if leafOpt(t) || valOpt(t) {
 			return c.leafOptType(t)
 		}
 		s := "*" + c.goType(t.Elem)
@@ -350,13 +350,61 @@ func derefOpt(code string, t Type) string {
 	if leafOpt(t) {
 		return code
 	}
+	if valOpt(t) {
+		return code + ".v"
+	}
 	return "(*" + code + ")"
+}
+
+// nilCode is Ruby's nil as a value of Go type goT: an rbOpt's zero for Integer?/Float? (decision 396), else Go's nil.
+func nilCode(goT string) string {
+	if strings.HasPrefix(goT, "rbOpt[") {
+		return goT + "{}"
+	}
+	return "nil"
+}
+
+// valOpt reports Integer? or Float?, held by value as rbOpt[T] (decision 396).
+func valOpt(t Type) bool {
+	o, ok := t.(TOpt)
+	return ok && valScalar(o.Elem)
+}
+
+func valScalar(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && len(c.Args) == 0 && (c.C.Name == "Integer" || c.C.Name == "Float") && c.C.GoType != ""
+}
+
+// optIsNil is the Go test that T? code is nil.
+func optIsNil(code string, t Type) string {
+	if valOpt(t) {
+		return "!" + code + ".ok"
+	}
+	return code + " == nil"
+}
+
+// optNotNil is the Go test that T? code holds a value.
+func optNotNil(code string, t Type) string {
+	if valOpt(t) {
+		return code + ".ok"
+	}
+	return code + " != nil"
+}
+
+// boxedValOpt reports a signature's X? whose X is a type variable bound to Integer or Float: generic Go holds it as *T
+// where the caller's T? is rbOpt[T] (decision 396).
+func boxedValOpt(decl Type, env map[string]Type) bool {
+	o, ok := decl.(TOpt)
+	return ok && mentionsVar(o.Elem) && valScalar(subst(o.Elem, env))
 }
 
 // optOf converts untyped code to elem? (OptOf), a leaf's straight to its *C (decision 360).
 func (c *Compiler) optOf(elem Type, code string) string {
 	if nilObj(elem) {
 		return fmt.Sprintf("rbOptNil[%s](%s, %q)", c.goType(elem), code, elem.String())
+	}
+	if valScalar(elem) {
+		return fmt.Sprintf("rbOptOf[%s](%s, %q)", c.goType(elem), code, elem.String())
 	}
 	return fmt.Sprintf("OptOf[%s](%s, %q)", c.goType(elem), code, elem.String())
 }
@@ -368,6 +416,9 @@ func (c *Compiler) optAny(code string, t Type) string {
 	}
 	if leafOpt(t) { // a nil interface is a nil any
 		return "any(" + code + ")"
+	}
+	if valOpt(t) {
+		return code + ".rbAny()"
 	}
 	return "Opt(" + code + ")"
 }
@@ -387,6 +438,9 @@ func boxedLeafOpt(decl Type, env map[string]Type) *Class {
 
 // leafOptType is a leaf's C?: its *C, nil its nil, noted for the box helpers (decision 360).
 func (c *Compiler) leafOptType(t TOpt) string {
+	if valOpt(t) { // Integer?/Float?: the value and a flag (decision 396)
+		return "rbOpt[" + c.goType(t.Elem) + "]"
+	}
 	s := c.goType(t.Elem)
 	if !leafRecv(t.Elem) { // an interface: a nil one boxed into any is already nil
 		return s

@@ -21,5 +21,5 @@ func (f *fctx) genMatchWrite(n *parser.MatchWriteNode) expr {
 		}
 		f.assignLocal(lt, lt.Name, expr{code: fmt.Sprintf("rbMatchCapture(%s, %q)", tmp, lt.Name), typ: TOpt{Elem: f.cls("String")}}, nil)
 	}
-	return expr{code: "rbMatchPos(" + tmp + ")", typ: TOpt{Elem: f.cls("Integer")}}
+	return expr{code: "rbOptFromPtr(rbMatchPos(" + tmp + "))", typ: TOpt{Elem: f.cls("Integer")}}
 }

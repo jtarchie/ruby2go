@@ -523,13 +523,17 @@ func (f *fctx) genCondCall(n *parser.CallNode) (string, []narrowInfo, bool) {
 	if n.Name == "!" && n.Arguments == nil && n.Receiver != nil {
 		nw := f.elseNarrowing(n.Receiver)
 		c, _ := f.genCond(n.Receiver)
+		if inner, ok := strings.CutPrefix(c, "!"); ok && strings.HasSuffix(inner, ".ok") && !strings.ContainsAny(inner, " &|!") {
+			return inner, nw, true // `!x.nil?` of an rbOpt: staticcheck's SA4013 rejects `!(!x.ok)` (decision 396)
+		}
 		return "!(" + c + ")", nw, true
 	}
 	if n.Name == "nil?" && n.Arguments == nil && n.Receiver != nil {
 		// typed first: a receiver this does not read is generated again by the call, so emitting it here would run it twice
 		switch t := f.probeType(n.Receiver, nil); {
 		case isOpt(t) || isAny(t):
-			return f.genExpr(n.Receiver, nil).code + " == nil", nil, true
+			e := f.genExpr(n.Receiver, nil)
+			return optIsNil(e.code, e.typ), nil, true
 		case f.lenientObject(t):
 			return "any(" + f.genExpr(n.Receiver, nil).code + ") == nil", nil, true
 		}
@@ -542,7 +546,7 @@ func optTruthy(code string, t Type) string {
 	if isClass(stripOpt(t), "Boolean") {
 		return "rbTruthyOpt(" + code + ")"
 	}
-	return code + " != nil"
+	return optNotNil(code, t)
 }
 
 func (f *fctx) truthy(n parser.Node, e expr) string {

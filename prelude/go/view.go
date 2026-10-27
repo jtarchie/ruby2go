@@ -1407,8 +1407,8 @@ func rbRangeSlice(a any, n Integer) (*Tuple2[Integer, Integer], bool) {
 	switch r := a.(type) {
 	case *Range[Integer]:
 		return Range___Slice[Integer](r, n), true
-	case *Range[*Integer]:
-		return Range___Slice[*Integer](r, n), true
+	case *Range[rbOpt[Integer]]:
+		return Range___Slice[rbOpt[Integer]](r, n), true
 	}
 	return nil, false
 }
@@ -1418,8 +1418,8 @@ func rbRangeSpan(a any, n Integer) (*Tuple2[Integer, Integer], bool) {
 	switch r := a.(type) {
 	case *Range[Integer]:
 		return Range___Span[Integer](r, n), true
-	case *Range[*Integer]:
-		return Range___Span[*Integer](r, n), true
+	case *Range[rbOpt[Integer]]:
+		return Range___Span[rbOpt[Integer]](r, n), true
 	}
 	return nil, false
 }

@@ -227,7 +227,7 @@ func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	call := func() expr { return f.genMethodCall(n, inner, n.Name, callArgs(n), n.Block) }
 	probe, once := f.genOperandOnce(call)
 	if vt := stripOpt(probe.e.typ); isVoid(vt) || isNil(vt) { // also a union whose members' calls are void or nil (`error_pipe&.close`)
-		f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
+		f.emit("if %s := %s; %s {", rt, recv.code, optNotNil(rt, recv.typ))
 		f.indent++
 		e := f.operandAgain(probe, once, call)
 		f.emitExprStmt(n, e)
@@ -238,7 +238,7 @@ func (f *fctx) genSafeNav(n *parser.CallNode) expr {
 	resT := optOf(probe.e.typ)
 	tmp := f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(resT))
-	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
+	f.emit("if %s := %s; %s {", rt, recv.code, optNotNil(rt, recv.typ))
 	f.indent++
 	e := f.operandAgain(probe, once, call)
 	f.emit("%s = %s", tmp, f.coerce(n, e, resT))

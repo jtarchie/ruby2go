@@ -752,7 +752,7 @@ func (f *fctx) patShape(pm *patMatch, p parser.Node, subj expr, method string, t
 		return
 	case TOpt:
 		if !isAny(tt.Elem) {
-			f.patIf(pm, subj.code+" != nil", noResp, func() {
+			f.patIf(pm, optNotNil(subj.code, tt), noResp, func() {
 				f.patShape(pm, p, expr{code: derefOpt(subj.code, tt), typ: tt.Elem}, method, then)
 			})
 			return

@@ -155,7 +155,7 @@ class SystemCallError < StandardError
   def self.__new_2(message, arg) = %x{
     n, _ := rbUnbox(arg).(Integer)
     e := NewSystemCallError(nil)
-    e.__errno = &n
+    e.__errno = rbSome(n)
     e.message = Ref(String(rbStrerror(int(n)) + " - " + string(rbDerefOrNil(message))))
     return e
   }
@@ -163,10 +163,10 @@ class SystemCallError < StandardError
   # The C errno for this class (Errno::ENOENT's is 2), or the one given; nil for SystemCallError itself.
   #: () -> Integer?
   def errno = %x{
-    if n := self._SystemCallError().__errno; n != nil {
+    if n := self._SystemCallError().__errno; n.ok {
       return n
     }
-    return rbErrnoOf(self)
+    return rbOptFromPtr(rbErrnoOf(self))
   }
 end
 

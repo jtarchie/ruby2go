@@ -13,10 +13,10 @@ class BasicSocket < Object
     #: (String, Integer, String?, Integer?, Float?, bool) -> BasicSocket::Handle__
     def self.dial_tcp(host, port, local, local_port, timeout, for_socket) = %x{
       t := 0.0
-      if timeout != nil {
-        t = float64(*timeout)
+      if timeout.ok {
+        t = float64(timeout.v)
       }
-      return rbSockDialTCP(string(host), int(port), local, local_port, t, bool(for_socket))
+      return rbSockDialTCP(string(host), int(port), local, rbOptToPtr(local_port), t, bool(for_socket))
     }
 
     #: (String?, Integer) -> BasicSocket::Handle__
@@ -181,8 +181,8 @@ class BasicSocket < Object
       call := "send(2)"
       if host != nil {
         p := 0
-        if port != nil {
-          p = int(*port)
+        if port.ok {
+          p = int(port.v)
         }
         to = self.sockaddr(string(*host), p)
         call = rbSockFor("sendto(2)", string(*host), p)

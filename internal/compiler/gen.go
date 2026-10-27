@@ -79,6 +79,7 @@ type fctx struct {
 	binNext        bool        // the next closure is a `@binary block` method's: its String params are binary (decision 352)
 	binParams      bool        // binding that closure's params
 	viewSplat      bool        // binding a windowSafe block's params: destructuring copies out of the window (decision 386)
+	zipVal         bool        // the iterator loop is zip's [E, U?] with U = Integer/Float: pairs open to rbOpt (decision 396)
 	bodyStmts      parser.Node // the statements of the method or block body being generated (noteBinStmt)
 	retryDepth     int         // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool

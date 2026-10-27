@@ -157,6 +157,7 @@ func (c *Compiler) emitBoxes() {
 			c.w("\tcase %s:\n\t\treturn Opt(v)\n", b)
 		}
 	}
+	c.w("\tcase rbOpt[Integer]:\n\t\treturn v.rbAny()\n\tcase rbOpt[Float]:\n\t\treturn v.rbAny()\n") // Integer?/Float? held by value (decision 396)
 	c.w("\t}\n\treturn a\n}\n\n")
 	// rbKeyUnbox opens one level of a box used as a Hash key or in uniq/tally, which match by what it holds
 	c.w("func rbKeyUnbox(k any) (any, bool) {\n\tswitch v := k.(type) {\n")
@@ -166,16 +167,19 @@ func (c *Compiler) emitBoxes() {
 	for _, b := range unbox {
 		c.w("\tcase %s:\n\t\treturn Opt(v), true\n", b)
 	}
+	c.w("\tcase rbOpt[Integer]:\n\t\treturn v.rbAny(), true\n\tcase rbOpt[Float]:\n\t\treturn v.rbAny(), true\n")
 	c.w("\t}\n\treturn nil, false\n}\n\n")
 	c.w("func rbCmpBox(a, b any) Integer {\n\tswitch v := a.(type) {\n")
 	for _, b := range boxes {
 		c.w("\tcase %s:\n\t\treturn rbCmpOpt(v, b.(%s))\n", b, b)
 	}
+	c.w("\tcase rbOptCmp:\n\t\treturn v.rbCmpWith(b)\n")
 	c.w("\t}\n\treturn rbCmpFailed(a, b)\n}\n\n")
 	// Marshal.load fills a T? slot of generic code (rbMAs): a box of what it holds
 	c.w("func rbMBox(dst, v any) bool {\n\tswitch d := dst.(type) {\n\tcase nil:\n\t\treturn false\n")
 	for _, b := range unbox {
 		c.w("\tcase *%s:\n\t\tx := rbMAs[%s](v)\n\t\t*d = &x\n", b, b[1:])
 	}
+	c.w("\tcase rbOptMSet:\n\t\td.rbMSet(v)\n")
 	c.w("\tdefault:\n\t\treturn false\n\t}\n\treturn true\n}\n\n")
 }

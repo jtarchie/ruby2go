@@ -388,6 +388,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 		f.unusedBlock(n, m)
 	}
 	f.bindTypeParams(n, m, env)
+	f.valOptNils(m, codes, restIdx, env)
 	ret := subst(m.Ret, env)
 	out := expr{code: flatCall(f.callCode(e, recv, codes, env), m, env), typ: ret}
 	out = f.blocklessReturn(n, m, block, env, out)
@@ -973,12 +974,12 @@ func (f *fctx) nilKeyLookup(n parser.Node, e *entry, recv expr, args []parser.No
 	res := f.newTmp()
 	if miss == "false" {
 		f.emit("%s := Boolean(false)", res)
-		f.emit("if %s != nil {\n\t%s = %s\n}", k, res, f.coerce(n, hit, f.cls("Boolean")))
+		f.emit("if %s {\n\t%s = %s\n}", optNotNil(k, a.typ), res, f.coerce(n, hit, f.cls("Boolean")))
 		return expr{code: res, typ: f.cls("Boolean")}, true
 	}
 	t := optOf(hit.typ)
 	f.emit("var %s %s", res, f.c.goType(t))
-	f.emit("if %s != nil {\n\t%s = %s\n}", k, res, f.coerce(n, hit, t))
+	f.emit("if %s {\n\t%s = %s\n}", optNotNil(k, a.typ), res, f.coerce(n, hit, t))
 	return expr{code: res, typ: t}, true
 }
 
@@ -1037,8 +1038,26 @@ func (f *fctx) leafRecvSelf(recv expr, m *Method) expr {
 
 // flatCall is flatLeafOpt for a call of m: only when the code calls the generic func itself, since a forwarder method
 // has opened its box already.
+// valOptNils: `reduce(nil) { }` binds A to Integer? by the block, after its nil argument was coerced (decision 396).
+func (f *fctx) valOptNils(m *Method, codes []string, restIdx int, env map[string]Type) {
+	for i, p := range m.Params {
+		if i < len(codes) && (restIdx < 0 || i < restIdx) && codes[i] == "nil" && valOpt(subst(p.Type, env)) && !boxedValOpt(p.Type, env) {
+			codes[i] = f.c.goType(subst(p.Type, env)) + "{}"
+		}
+	}
+}
+
+// genericOpt is flatOpt for code generic Go produced as *E: an Integer?/Float? is copied out to its rbOpt (decision 396).
+func genericOpt(e expr) expr {
+	if valOpt(e.typ) {
+		e.code = "rbOptFromPtr(" + e.code + ")"
+		return e
+	}
+	return flatOpt(e)
+}
+
 func flatCall(code string, m *Method, env map[string]Type) string {
-	if flat := flatLeafOpt(code, m.Ret, env); flat != code && (m.Owner == nil || strings.HasPrefix(code, freeFuncName(m))) {
+	if flat := flatLeafOpt(code, m.Ret, env); flat != code && (m.Owner == nil || strings.HasPrefix(code, freeFuncName(m)) || strings.HasPrefix(code, "rbSend_")) {
 		return flat
 	}
 	return code
@@ -1050,15 +1069,41 @@ func flatLeafOpt(code string, decl Type, env map[string]Type) string {
 	if boxedLeafOpt(decl, env) != nil {
 		return "rbFlatNil(" + code + ")"
 	}
+	if boxedValOpt(decl, env) {
+		if rest, ok := strings.CutPrefix(code, "Array_Op_idx["); ok { // the hot read: built as an rbOpt, not a *E opened again
+			return "rbArrAt[" + rest
+		}
+		if rest, ok := strings.CutPrefix(code, "Hash_Op_idx["); ok {
+			return "rbHashAt[" + rest
+		}
+		return "rbOptFromPtr(" + code + ")" // the copy: Array#[]'s pointer into its storage must not outlive a write (decision 396)
+	}
 	if t, ok := decl.(TClass); ok && t.C.RubyName == "Array" && len(t.Args) == 1 { // values_at's Array[E?]
 		if c := boxedLeafOpt(t.Args[0], env); c != nil {
 			return "rbFlatArray(" + code + ")"
+		}
+		if boxedValOpt(t.Args[0], env) {
+			return "rbOptArrayFrom(" + code + ")"
+		}
+	}
+	if t, ok := decl.(TClass); ok && len(t.Args) == 1 && (t.C.RubyName == "Array" || t.C.RubyName == "Enumerator") { // zip's [E, U?] pairs
+		if p, ok := t.Args[0].(TTuple); ok && len(p.Elems) == 2 && !isOpt(p.Elems[0]) && boxedValOpt(p.Elems[1], env) {
+			if rest, ok := strings.CutPrefix(code, "Array___ZipViewEnum["); ok { // its pairs built as rbOpt, no per-pair adapter
+				return "rbZipViewEnumVal[" + rest
+			}
+			return "rbZipVal" + t.C.RubyName + "(" + code + ")" // ponytail: Lazy[[E, U?]] keeps the *U box
+		}
+		if p, ok := t.Args[0].(TTuple); ok && len(p.Elems) == 3 && t.C.RubyName == "Array" && boxedValOpt(p.Elems[1], env) && boxedValOpt(p.Elems[2], env) {
+			return "rbZip2ValArray(" + code + ")" // ponytail: one of U, V an Integer/Float and the other not keeps the boxes
 		}
 	}
 	if t, ok := decl.(TTuple); ok && len(t.Elems) == 2 { // minmax's [E?, E?] ponytail: other tuple and container shapes keep the boxes
 		a, b := boxedLeafOpt(t.Elems[0], env), boxedLeafOpt(t.Elems[1], env)
 		if a != nil && b != nil {
 			return "rbFlatPair[" + a.objType() + ", " + b.objType() + "](" + code + ")"
+		}
+		if boxedValOpt(t.Elems[0], env) && boxedValOpt(t.Elems[1], env) {
+			return "rbOptPairFrom(" + code + ")"
 		}
 	}
 	return code

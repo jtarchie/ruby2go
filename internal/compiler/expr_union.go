@@ -13,7 +13,7 @@ import (
 func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) expr {
 	switch name {
 	case "nil?":
-		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(" + optIsNil(recv.code, recv.typ) + ")", typ: f.cls("Boolean")}
 	case "to_s":
 		return expr{code: "rbToS(" + f.c.optAny(recv.code, recv.typ) + ")", typ: f.cls("String")}
 	case "inspect":
@@ -26,6 +26,9 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		}
 		a := f.genExpr(args[0], nil)
 		if name == "==" && f.plainOptEq(recv.typ, a.typ) { // `flags[i] == 1`: no boxing into rbEq (decision 387)
+			if valOpt(recv.typ) {
+				return expr{code: "Boolean(rbOptEqV(" + recv.code + ", " + a.code + "))", typ: f.cls("Boolean")}
+			}
 			return expr{code: "Boolean(rbOptEq(" + recv.code + ", " + a.code + "))", typ: f.cls("Boolean")}
 		}
 		arg := f.coerce(args[0], a, TAny{})
@@ -37,7 +40,7 @@ func (f *fctx) optCall(n parser.Node, recv expr, name string, args []parser.Node
 		if isClass(recv.typ.(TOpt).Elem, "Boolean") {
 			return expr{code: "Boolean(!" + optTruthy(recv.code, recv.typ) + ")", typ: f.cls("Boolean")}
 		}
-		return expr{code: "Boolean(" + recv.code + " == nil)", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(" + optIsNil(recv.code, recv.typ) + ")", typ: f.cls("Boolean")}
 	case "to_i", "to_f", "to_a", "to_h", "=~":
 		if e, ok := f.nilClassCall(n, recv, name, args); ok {
 			return e
@@ -101,7 +104,7 @@ func (f *fctx) nilClassArm(n parser.Node, recv expr, name string, args []parser.
 		}
 		f.indent--
 	}
-	f.emit("if %s == nil {", rt)
+	f.emit("if %s {", optIsNil(rt, recv.typ))
 	arm(nilRecv)
 	f.emit("} else {")
 	arm(valRecv)
@@ -398,7 +401,7 @@ func (f *fctx) nilGuard(n parser.Node, recv expr, name string) expr {
 	f.warn(n, "%s called on possibly-nil %s (raises NoMethodError on nil)", name, elem)
 	f.nilGuarded[n] = true
 	code := f.pinSimple(recv.code)
-	f.emit("if %s == nil {", code)
+	f.emit("if %s {", optIsNil(code, recv.typ))
 	f.emit("\tpanic(rbNoMethod(%q, nil, false))", name)
 	f.emit("}")
 	return expr{code: derefOpt(code, recv.typ), typ: elem, bin: recv.bin, binDeps: recv.binDeps}
@@ -414,12 +417,12 @@ func (f *fctx) nilFreeze(n parser.Node, recv expr, name string) expr {
 		if body != "" { // the call needs statements: it cannot sit in one expression
 			return f.nilGuard(n, recv, name)
 		}
-		return expr{code: "Boolean(" + rt + " == nil || bool(" + e.code + "))", typ: f.cls("Boolean")}
+		return expr{code: "Boolean(" + optIsNil(rt, recv.typ) + " || bool(" + e.code + "))", typ: f.cls("Boolean")}
 	}
 	if name == "dup" || name == "clone" { // a copy of T, or nil
 		out := f.newTmp()
 		f.emit("var %s %s", out, f.c.goType(recv.typ))
-		f.emit("if %s != nil {", rt)
+		f.emit("if %s {", optNotNil(rt, recv.typ))
 		f.indent++
 		e := f.genMethodCall(n, inner, name, nil, nil)
 		f.emit("%s = %s", out, f.coerce(n, e, recv.typ))
@@ -427,7 +430,7 @@ func (f *fctx) nilFreeze(n parser.Node, recv expr, name string) expr {
 		f.emit("}")
 		return expr{code: out, typ: recv.typ}
 	}
-	f.emit("if %s != nil {", rt)
+	f.emit("if %s {", optNotNil(rt, recv.typ))
 	f.indent++
 	f.discard(f.genMethodCall(n, inner, name, nil, nil))
 	f.indent--
@@ -460,7 +463,7 @@ func (f *fctx) nilClassCall(n parser.Node, recv expr, name string, args []parser
 	// ponytail: =~'s argument is only evaluated when the receiver is non-nil; hoist it if a side-effecting pattern ever matters
 	tmp := f.newTmp()
 	f.emit("var %s %s", tmp, f.c.goType(t))
-	f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
+	f.emit("if %s := %s; %s {", rt, recv.code, optNotNil(rt, recv.typ))
 	f.indent++
 	e := f.operandAgain(probe, once, call)
 	f.emit("%s = %s", tmp, f.coerce(n, e, t))
@@ -518,5 +521,5 @@ func (f *fctx) plainOptEq(recv, arg Type) bool {
 		return false
 	}
 	eq := c.C.lookup("==")
-	return eq != nil && eq.M.File != nil && eq.M.File.isPrelude() && f.c.goType(recv) == "*"+f.c.goType(c)
+	return eq != nil && eq.M.File != nil && eq.M.File.isPrelude() && (valOpt(recv) || f.c.goType(recv) == "*"+f.c.goType(c))
 }

@@ -114,7 +114,7 @@ func (f *fctx) nilSpaceship(n parser.Node, recv expr, name string, args []parser
 	f.emit("%s := %s", at, a.code)
 	ret := TOpt{Elem: f.cls("Integer")}
 	f.emit("var %s %s", res, f.c.goType(ret))
-	f.emit("if %s != nil {", at)
+	f.emit("if %s {", optNotNil(at, a.typ))
 	x := f.genMethodCall(n, expr{code: rt, typ: recv.typ}, name, []parser.Node{&exprNode{Node: args[0], e: expr{code: derefOpt(at, a.typ), typ: o.Elem}}}, nil)
 	f.emit("%s = %s", res, f.coerce(n, x, ret))
 	f.emit("}")
@@ -145,6 +145,9 @@ func (f *fctx) nilUnwrap(e expr, to Type) expr {
 	msg, arg := f.nilMessage(to)
 	if leafOpt(o) { // a leaf's *C or an interface: nil is the value's own zero (decisions 360, 378)
 		return expr{code: fmt.Sprintf("rbNilArgV(%s, %q, %t)", e.code, msg, arg), typ: o.Elem}
+	}
+	if valOpt(o) {
+		return expr{code: fmt.Sprintf("rbNilArgO(%s, %q, %t)", e.code, msg, arg), typ: o.Elem}
 	}
 	return expr{code: fmt.Sprintf("rbNilArg(%s, %q, %t)", e.code, msg, arg), typ: o.Elem}
 }

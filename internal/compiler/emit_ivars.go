@@ -55,11 +55,15 @@ func (c *Compiler) emitIvarList(cls *Class) {
 	c.w("func (self *%s) _IvarSet(name string, v any) bool {\n\tswitch name {\n", cls.Name)
 	for _, iv := range c.ivarOrder(cls) {
 		field := "&" + ivarPath("self", iv)
-		if o, ok := iv.Type.(TOpt); ok && leafOpt(o) {
+		o, ok := iv.Type.(TOpt)
+		switch {
+		case ok && leafOpt(o):
 			c.w("\tcase %q:\n\t\trbIvarAssignPtr(%s, v, %q)\n", iv.Name, field, iv.Name)
-		} else if ok {
+		case ok && valOpt(o):
+			c.w("\tcase %q:\n\t\trbIvarAssignVal(%s, v, %q)\n", iv.Name, field, iv.Name)
+		case ok:
 			c.w("\tcase %q:\n\t\trbIvarAssignOpt[%s](%s, v, %q)\n", iv.Name, c.goType(o.Elem), field, iv.Name)
-		} else {
+		default:
 			c.w("\tcase %q:\n\t\trbIvarAssign(%s, v, %q)\n", iv.Name, field, iv.Name)
 		}
 		if s := ivarAssigned("self", iv); s != "" {

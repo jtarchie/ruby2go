@@ -1000,7 +1000,7 @@ func (f *fctx) sendSwitch(n parser.Node, recv expr, on []*Class, args []parser.N
 			f.emitExprStmt(n, e)
 		case isVoid(e.typ) || e.code == "":
 			f.emitExprStmt(n, e)
-			f.emit("%s = nil", tmp)
+			f.emit("%s = %s", tmp, nilCode(goT))
 		default:
 			f.emit("%s = %s", tmp, f.coerce(n, e, res))
 		}

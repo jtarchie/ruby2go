@@ -11,13 +11,13 @@ class Float < Object
   def <=>(other) = %x{
     switch {
     case self < other:
-      return Ref(Integer(-1))
+      return rbSome(Integer(-1))
     case self > other:
-      return Ref(Integer(1))
+      return rbSome(Integer(1))
     case self == other:
-      return Ref(Integer(0))
+      return rbSome(Integer(0))
     }
-    return nil // NaN, as MRI; Comparable and sort call the generated Op_cmp, which raises (decision 3)
+    return rbOpt[Integer]{} // NaN, as MRI; Comparable and sort call the generated Op_cmp, which raises (decision 3)
   }
 
   #: (Float) -> bool
@@ -48,6 +48,10 @@ class Float < Object
       return self.Op_eq(Opt(o))
     case *Float:
       return self.Op_eq(Opt(o))
+    case rbOpt[Integer]:
+      return self.Op_eq(o.rbAny())
+    case rbOpt[Float]:
+      return self.Op_eq(o.rbAny())
     }
     return rbEq[any](other, self) // MRI asks other == self
   }
@@ -197,11 +201,11 @@ class Float < Object
   def infinite? = %x{
     switch {
     case math.IsInf(float64(self), 1):
-      return Ref(Integer(1))
+      return rbSome(Integer(1))
     case math.IsInf(float64(self), -1):
-      return Ref(Integer(-1))
+      return rbSome(Integer(-1))
     }
-    return nil
+    return rbOpt[Integer]{}
   }
 
   #: () -> bool

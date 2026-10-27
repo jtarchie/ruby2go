@@ -83,19 +83,19 @@ class StringScanner < Object
   def __strscan_do(re, anchored, advance) = %x{ return self.do(re, bool(anchored), bool(advance), true) }
 
   #: (Regexp, bool) -> Integer?
-  def __strscan_len(re, advance) = %x{ return rbScanLen(self.do(re, true, bool(advance), false), self) }
+  def __strscan_len(re, advance) = %x{ return rbOptFromPtr(rbScanLen(self.do(re, true, bool(advance), false), self)) }
 
   #: (Regexp) -> String?
   def scan_until(re) = %x{ return self.do(re, false, true, true) }
 
   #: (Regexp) -> Integer?
-  def skip_until(re) = %x{ return rbScanLen(self.do(re, false, true, false), self) }
+  def skip_until(re) = %x{ return rbOptFromPtr(rbScanLen(self.do(re, false, true, false), self)) }
 
   #: (Regexp) -> String?
   def check_until(re) = %x{ return self.do(re, false, false, true) }
 
   #: (Regexp) -> Integer?
-  def exist?(re) = %x{ return rbScanLen(self.do(re, false, false, false), self) }
+  def exist?(re) = %x{ return rbOptFromPtr(rbScanLen(self.do(re, false, false, false), self)) }
 
   #: () -> String?
   def getch = %x{
@@ -149,9 +149,9 @@ class StringScanner < Object
   #: () -> Integer?
   def matched_size = %x{
     if self.groups == nil {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(self.mend - self.mbeg))
+    return rbSome(Integer(self.mend - self.mbeg))
   }
 
   #: () -> String?

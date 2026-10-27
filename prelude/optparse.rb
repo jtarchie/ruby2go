@@ -48,13 +48,13 @@ class OptionParser < Object
   def __on_integer(*specs) = %x{ return self.rbOn(0, "integer", rest_, func(v any) { if blk != nil { blk(v.(Integer)) } }) }
 
   #: (*untyped) ?{ (Integer?) -> void } -> OptionParser
-  def __on_integer_opt(*specs) = %x{ return self.rbOn(0, "integer_opt", rest_, func(v any) { if blk != nil { blk(v.(*Integer)) } }) }
+  def __on_integer_opt(*specs) = %x{ return self.rbOn(0, "integer_opt", rest_, func(v any) { if blk != nil { blk(rbOptFromPtr(v.(*Integer))) } }) }
 
   #: (*untyped) ?{ (Float) -> void } -> OptionParser
   def __on_float(*specs) = %x{ return self.rbOn(0, "float", rest_, func(v any) { if blk != nil { blk(v.(Float)) } }) }
 
   #: (*untyped) ?{ (Float?) -> void } -> OptionParser
-  def __on_float_opt(*specs) = %x{ return self.rbOn(0, "float_opt", rest_, func(v any) { if blk != nil { blk(v.(*Float)) } }) }
+  def __on_float_opt(*specs) = %x{ return self.rbOn(0, "float_opt", rest_, func(v any) { if blk != nil { blk(rbOptFromPtr(v.(*Float))) } }) }
 
   #: (*untyped) ?{ (Array[String]) -> void } -> OptionParser
   def __on_array(*specs) = %x{ return self.rbOn(0, "array", rest_, func(v any) { if blk != nil { blk(v.(*Array[String])) } }) }
@@ -72,13 +72,13 @@ class OptionParser < Object
   def __on_tail_integer(*specs) = %x{ return self.rbOn(1, "integer", rest_, func(v any) { if blk != nil { blk(v.(Integer)) } }) }
 
   #: (*untyped) ?{ (Integer?) -> void } -> OptionParser
-  def __on_tail_integer_opt(*specs) = %x{ return self.rbOn(1, "integer_opt", rest_, func(v any) { if blk != nil { blk(v.(*Integer)) } }) }
+  def __on_tail_integer_opt(*specs) = %x{ return self.rbOn(1, "integer_opt", rest_, func(v any) { if blk != nil { blk(rbOptFromPtr(v.(*Integer))) } }) }
 
   #: (*untyped) ?{ (Float) -> void } -> OptionParser
   def __on_tail_float(*specs) = %x{ return self.rbOn(1, "float", rest_, func(v any) { if blk != nil { blk(v.(Float)) } }) }
 
   #: (*untyped) ?{ (Float?) -> void } -> OptionParser
-  def __on_tail_float_opt(*specs) = %x{ return self.rbOn(1, "float_opt", rest_, func(v any) { if blk != nil { blk(v.(*Float)) } }) }
+  def __on_tail_float_opt(*specs) = %x{ return self.rbOn(1, "float_opt", rest_, func(v any) { if blk != nil { blk(rbOptFromPtr(v.(*Float))) } }) }
 
   #: (*untyped) ?{ (Array[String]) -> void } -> OptionParser
   def __on_tail_array(*specs) = %x{ return self.rbOn(1, "array", rest_, func(v any) { if blk != nil { blk(v.(*Array[String])) } }) }
@@ -96,13 +96,13 @@ class OptionParser < Object
   def __on_head_integer(*specs) = %x{ return self.rbOn(-1, "integer", rest_, func(v any) { if blk != nil { blk(v.(Integer)) } }) }
 
   #: (*untyped) ?{ (Integer?) -> void } -> OptionParser
-  def __on_head_integer_opt(*specs) = %x{ return self.rbOn(-1, "integer_opt", rest_, func(v any) { if blk != nil { blk(v.(*Integer)) } }) }
+  def __on_head_integer_opt(*specs) = %x{ return self.rbOn(-1, "integer_opt", rest_, func(v any) { if blk != nil { blk(rbOptFromPtr(v.(*Integer))) } }) }
 
   #: (*untyped) ?{ (Float) -> void } -> OptionParser
   def __on_head_float(*specs) = %x{ return self.rbOn(-1, "float", rest_, func(v any) { if blk != nil { blk(v.(Float)) } }) }
 
   #: (*untyped) ?{ (Float?) -> void } -> OptionParser
-  def __on_head_float_opt(*specs) = %x{ return self.rbOn(-1, "float_opt", rest_, func(v any) { if blk != nil { blk(v.(*Float)) } }) }
+  def __on_head_float_opt(*specs) = %x{ return self.rbOn(-1, "float_opt", rest_, func(v any) { if blk != nil { blk(rbOptFromPtr(v.(*Float))) } }) }
 
   #: (*untyped) ?{ (Array[String]) -> void } -> OptionParser
   def __on_head_array(*specs) = %x{ return self.rbOn(-1, "array", rest_, func(v any) { if blk != nil { blk(v.(*Array[String])) } }) }

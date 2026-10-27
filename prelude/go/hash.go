@@ -307,6 +307,12 @@ func rbHashFirst[K, V comparable](h *Hash[K, V]) int {
 	return -1
 }
 
+// rbHashAt is Hash#[] for V = Integer or Float: the value as a T?, no *V to open again (decision 396).
+func rbHashAt[K, V comparable](self *Hash[K, V], k K) rbOpt[V] {
+	v, ok := rbHashLookup(self, k)
+	return rbOpt[V]{v, ok}
+}
+
 // rbHashLookup is Hash#[]'s value: the value at k, else the default proc's
 // result or the default value; false only when there is neither. Out of
 // line for the same reason as rbGet: Hash#[] then inlines.

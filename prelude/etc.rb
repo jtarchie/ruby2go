@@ -36,15 +36,15 @@ module Etc
   def self.getpwuid(uid = nil) = %x{
     var u *user.User
     var err error
-    if uid == nil {
+    if !uid.ok {
       u, err = user.Current()
     } else {
-      u, err = user.LookupId(strconv.Itoa(int(*uid)))
+      u, err = user.LookupId(strconv.Itoa(int(uid.v)))
     }
     if err != nil {
       id := strconv.Itoa(os.Getuid())
-      if uid != nil {
-        id = strconv.Itoa(int(*uid))
+      if uid.ok {
+        id = strconv.Itoa(int(uid.v))
       }
       panic(NewArgumentError(Ref(String("can't find user for " + id))))
     }
@@ -73,8 +73,8 @@ module Etc
   #: (?Integer?) -> Group
   def self.getgrgid(gid = nil) = %x{
     id := os.Getgid()
-    if gid != nil {
-      id = int(*gid)
+    if gid.ok {
+      id = int(gid.v)
     }
     g, err := user.LookupGroupId(strconv.Itoa(id))
     if err != nil {

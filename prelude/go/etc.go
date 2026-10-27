@@ -13,7 +13,7 @@ func rbEtcPasswd(u *user.User) *Etc_Passwd {
 	uid, _ := strconv.Atoi(u.Uid)
 	gid, _ := strconv.Atoi(u.Gid)
 
-	return NewEtc_Passwd(String(u.Username), nil, Integer(uid), Integer(gid), String(u.Name), String(u.HomeDir), nil, nil, nil, nil)
+	return NewEtc_Passwd(String(u.Username), nil, Integer(uid), Integer(gid), String(u.Name), String(u.HomeDir), nil, rbOpt[Integer]{}, nil, rbOpt[Integer]{})
 }
 
 // rbEtcGroup is Etc::Group for a looked-up group.

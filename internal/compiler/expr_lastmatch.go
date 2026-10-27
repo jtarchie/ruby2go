@@ -111,7 +111,7 @@ func (f *fctx) genMatchSet(n *parser.CallNode) (expr, bool) {
 	if bin { // a binary subject's =~ is a byte index (decision 352)
 		set = "rbMatchSetBin"
 	}
-	return expr{code: fmt.Sprintf("%s(&%s, %s)", set, f.lastMatch, m.code), typ: TOpt{Elem: f.cls("Integer")}}, true
+	return expr{code: fmt.Sprintf("rbOptFromPtr(%s(&%s, %s))", set, f.lastMatch, m.code), typ: TOpt{Elem: f.cls("Integer")}}, true
 }
 
 // readsLastMatch reports whether body reads $~, $& or $1..$9, so its frame keeps the last match (decision 171).

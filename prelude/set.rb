@@ -342,19 +342,19 @@ class Set < Object
   def <=>(other) = %x{
     a, ok := other.(Set_Any)
     if !ok {
-      return nil
+      return rbOpt[Integer]{}
     }
     s, o := self._ToAny(), a._ToAny()
     ns, no := Set_Size(s), Set_Size(o)
     switch {
     case ns == no && bool(Set_SubsetQ(s, o)):
-      return Ref[Integer](0)
+      return rbSome[Integer](0)
     case ns < no && bool(Set_SubsetQ(s, o)):
-      return Ref[Integer](-1)
+      return rbSome[Integer](-1)
     case ns > no && bool(Set_SubsetQ(o, s)):
-      return Ref[Integer](1)
+      return rbSome[Integer](1)
     }
-    return nil
+    return rbOpt[Integer]{}
   }
 
   #: (Set[E]) -> bool

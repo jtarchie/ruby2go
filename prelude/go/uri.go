@@ -152,7 +152,7 @@ func rbURIMerge(base string, rel string) (rbURIRaw, error) {
 // rbURIFromRaw picks URI::HTTP/URI::HTTPS/URI::Generic by scheme so `is_a?(URI::HTTP)` works like MRI's.
 func rbURIFromRaw(raw rbURIRaw) URI_GenericI {
 	var scheme, userinfo, host, query, fragment *String
-	var port *Integer
+	var port rbOpt[Integer]
 	if raw.HasScheme {
 		scheme = Ref(String(raw.Scheme))
 	}
@@ -163,7 +163,7 @@ func rbURIFromRaw(raw rbURIRaw) URI_GenericI {
 		host = Ref(String(raw.Host))
 	}
 	if raw.HasPort {
-		port = Ref(Integer(raw.Port))
+		port = rbSome(Integer(raw.Port))
 	}
 	if raw.HasQuery {
 		query = Ref(String(raw.Query))

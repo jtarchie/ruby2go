@@ -126,7 +126,7 @@ func (f *fctx) splatToArray(el parser.Node, sp *parser.SplatNode, e expr) expr {
 	f.probe(func() { probe = spread(inner) })
 	out := f.newTmp()
 	f.emit("%s := &Array[%s]{}", out, f.c.goType(probe.typ.(TClass).Args[0]))
-	f.emit("if %s := %s; %s != nil {", rt, e.code, rt)
+	f.emit("if %s := %s; %s {", rt, e.code, optNotNil(rt, o))
 	f.indent++
 	f.emit("%s = %s", out, spread(inner).code)
 	f.indent--

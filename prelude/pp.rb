@@ -15,8 +15,8 @@ class PP < Object
       f = o.rbOSFile()
     }
     w := rbPPWidthFor(f)
-    if width != nil {
-      w = int(*width)
+    if width.ok {
+      w = int(width.v)
     }
     s := rbPrettyInspect(obj, w)
     switch o := rbUnbox(out).(type) {

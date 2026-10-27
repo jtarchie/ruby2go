@@ -69,11 +69,11 @@ module Net
     def read_timeout = %x{ self.readTimeout }
 
     #: () -> Integer?
-    def verify_mode = %x{ self.verifyMode }
+    def verify_mode = %x{ rbOptFromPtr(self.verifyMode) }
 
     #: (Integer?) -> void
     def verify_mode=(v)
-      %x{ self.verifyMode = v }
+      %x{ self.verifyMode = rbOptToPtr(v) }
     end
 
     #: (Float) -> void

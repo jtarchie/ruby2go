@@ -147,11 +147,11 @@ class StringIO < Object
   def getbyte = %x{
     self.rbReadable()
     if self.pos >= len(self.buf) {
-      return nil
+      return rbOpt[Integer]{}
     }
     b := Integer(self.buf[self.pos])
     self.pos++
-    return &b
+    return rbSome(b)
   }
 
   #: (?chomp: bool) -> String

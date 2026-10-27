@@ -61,7 +61,7 @@ class Time < Object
   # precision truncates the fraction's digits (nil or negative keeps them: past 9 digits, Go's nanoseconds, are lost).
   #: (String, ?precision: Integer?, ?in: untyped) -> Time
   def self.__new_string(str, precision: 9, in: nil) = %x{
-    return rbTimeParseNew(string(str), precision, in)
+    return rbTimeParseNew(string(str), rbOptToPtr(precision), in)
   }
 
   #: () -> Integer

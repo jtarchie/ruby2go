@@ -3042,3 +3042,46 @@ module ArrayTests
     end
   end
 end
+
+module ArrayTests
+  # #133: an element read out of an Array is a copy; a later write to the Array does not change it (decision 396).
+  class ArrayElementCopyTest < Minitest::Test
+    def test_read_survives_pop_and_push
+      a = [1, 2, 3]
+      x = a[-1]
+      a.pop
+      a.push(5)
+      assert_equal 3, x
+    end
+
+    def test_hash_value_survives_store
+      a = [1, 2, 3]
+      h = {}
+      h[:k] = a[0]
+      a[0] = 9
+      assert_equal 1, h[:k]
+    end
+
+    def test_last_survives_store
+      a = [1, 2, 3]
+      z = a.last
+      a[-1] = 8
+      assert_equal 3, z
+    end
+
+    def test_swap
+      a = [1, 2, 3]
+      t = a[0]
+      a[0] = a[2]
+      a[2] = t
+      assert_equal [3, 2, 1], a
+    end
+
+    def test_float_read_survives_store
+      a = [1.5, 2.5]
+      f = a[1]
+      a[1] = 0.0
+      assert_equal 2.5, f
+    end
+  end
+end

@@ -64,9 +64,9 @@ class IPAddr < Object
   #: (IPAddr) -> Integer?
   def <=>(other) = %x{
     if self.addr.Is4() != other.addr.Is4() {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(self.addr.Compare(other.addr)))
+    return rbSome(Integer(self.addr.Compare(other.addr)))
   }
 
   #: (untyped) -> bool

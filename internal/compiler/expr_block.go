@@ -173,7 +173,7 @@ func (f *fctx) bindSplatParams(n parser.Node, y Type, lead blockParams, rest str
 		if t.C.RubyName == "Array" {
 			return []string{p}, func() {
 				for i, nm := range lead {
-					f.bindBlockParam(nm.Name, flatOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: t.Args[0]}}))
+					f.bindBlockParam(nm.Name, genericOpt(expr{code: fmt.Sprintf("rbSplatAt(%s, %d)", p, i), typ: TOpt{Elem: t.Args[0]}}))
 				}
 				f.bindBlockParam(rest, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, 0)", p, len(lead)), typ: t})
 			}
@@ -301,7 +301,7 @@ func (f *fctx) bindArraySplat(n parser.Node, names blockParams, elem Type, untyp
 			f.emit("%s := rbToAry(%s)", a, p)
 		}
 		for i, nm := range names {
-			e := flatOpt(expr{code: fmt.Sprintf("%s(%s, %d)", splat, a, i), typ: TOpt{Elem: elem}})
+			e := genericOpt(expr{code: fmt.Sprintf("%s(%s, %d)", splat, a, i), typ: TOpt{Elem: elem}})
 			if nm.Sub != nil { // `|(k, v), i|`
 				gp, pro := f.bindBlockParams(n, nm.Sub, []Type{e.typ})
 				f.emit("%s := %s", gp[0], e.code)
@@ -436,6 +436,25 @@ func funcBlockArg(b *parser.BlockArgumentNode, want TFunc, self Type) (string, *
 	return "", &parser.BlockArgumentNode{Location: b.Location, Expression: &exprNode{Node: en.Node, e: expr{code: "(&" + en.e.code + ")", typ: ft}}}
 }
 
+// closureHead opens a closure's func literal; wrapped when a generic `{ (E) -> U? }` wants Go's *U around the block's
+// own U?: a leaf C's **C (decision 360), an Integer/Float rbOpt's *T (decision 396).
+func (f *fctx) closureHead(sig *BlockSig, env map[string]Type, ps []string, ret Type, retS string) bool {
+	if boxed := boxedLeafOpt(sig.Ret, env); boxed != nil {
+		f.emit("func(%s) *%s {", strings.Join(ps, ", "), f.c.goType(ret))
+		f.indent++
+		f.emit("return rbBoxNil[%s](func()%s {", boxed.objType(), retS)
+		return true
+	}
+	if boxedValOpt(sig.Ret, env) {
+		f.emit("func(%s) *%s {", strings.Join(ps, ", "), f.c.goType(stripOpt(ret)))
+		f.indent++
+		f.emit("return rbOptToPtr(func()%s {", retS)
+		return true
+	}
+	f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
+	return false
+}
+
 // genClosure renders a block as a Go func literal.
 func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env map[string]Type) string {
 	bin := f.binNext
@@ -551,14 +570,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 			retS = " (ret_" + retS + ")"
 		}
 	}
-	boxed := boxedLeafOpt(sig.Ret, env) // a generic `{ (E) -> U? }` with U a leaf C is Go func(E) **C (decision 360)
-	if boxed != nil {
-		f.emit("func(%s) *%s {", strings.Join(ps, ", "), f.c.goType(ret))
-		f.indent++
-		f.emit("return rbBoxNil[%s](func()%s {", boxed.objType(), retS)
-	} else {
-		f.emit("func(%s)%s {", strings.Join(ps, ", "), retS)
-	}
+	wrapped := f.closureHead(sig, env, ps, ret, retS)
 	f.indent++
 	pro()
 	if c, ok := n.(*parser.CallNode); ok {
@@ -576,7 +588,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 		// the block's statements moved the line mapping; what follows it on the Go side is the call's line again. Only then: a block without its own directives (&:sym) would look to linters like it ends in blank lines.
 		f.lineOf(n)
 	}
-	if boxed != nil {
+	if wrapped {
 		f.emit("}())")
 		f.indent--
 	}
@@ -762,7 +774,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	switch {
 	case safe:
 		rt := f.newTmp()
-		f.emit("if %s := %s; %s != nil {", rt, recv.code, rt)
+		f.emit("if %s := %s; %s {", rt, recv.code, optNotNil(rt, opt))
 		f.indent++
 		recv = expr{code: derefOpt(rt, opt), typ: opt.Elem}
 	case isOptRecv:
@@ -943,6 +955,13 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	codes, _ := f.genArgs(n, m, env, args, nil)
 	yields := substAll(m.Block.Params, env)
 	call := f.callCode(e, recv, codes, env)
+	zipVal := false
+	if len(m.Block.Params) == 1 { // zip's `{ ([E, U?]) -> void }`: generic Go yields Tuple2[E, *U] (decision 396)
+		if p, ok := m.Block.Params[0].(TTuple); ok && len(p.Elems) == 2 && !isOpt(p.Elems[0]) && boxedValOpt(p.Elems[1], env) {
+			call = "rbZipValSeq(" + call + ")"
+			zipVal = true
+		}
+	}
 	blk, ok := n.Block.(*parser.BlockNode)
 	if !ok {
 		f.forwardIter(n, call, yields)
@@ -959,7 +978,9 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 			allBlank = false
 		}
 	}
+	f.zipVal = zipVal
 	head := f.countedLoopHead(n, e, recv, codes, names, goParams) // its temps go above the label pushLoop places
+	f.zipVal = false
 	f.pushLoop(loopIter)
 	switch {
 	case head != "":

@@ -1224,9 +1224,9 @@ class Array < Object
   def bsearch_index = %x{
     i := sort.Search(len(self.s), func(i int) bool { return bool(blk(self.s[i])) })
     if i == len(self.s) {
-      return nil
+      return rbOpt[Integer]{}
     }
-    return Ref(Integer(i))
+    return rbSome(Integer(i))
   }
 
   #: () { (E) -> bool } -> E?

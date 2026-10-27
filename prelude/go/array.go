@@ -331,6 +331,76 @@ func rbScanEq[E comparable](a *Array[E], key any) Boolean {
 	return false
 }
 
+// rbArrAt is Array#[](i) for E = Integer or Float: the element copied into a T?, one bounds test (decision 396).
+func rbArrAt[T comparable](a *Array[T], i Integer) rbOpt[T] {
+	if i < 0 {
+		i += Integer(len(a.s))
+	}
+	if uint64(i) >= uint64(len(a.s)) {
+		return rbOpt[T]{}
+	}
+	return rbOpt[T]{a.s[i], true}
+}
+
+// rbZipValArray opens zip's Array[[E, U?]] with U = Integer or Float: each *U to a U? (decision 396).
+func rbZipValArray[E, U comparable](a *Array[Tuple2[E, *U]]) *Array[Tuple2[E, rbOpt[U]]] {
+	out := make([]Tuple2[E, rbOpt[U]], len(a.s))
+	for i, t := range a.s {
+		out[i] = Tuple2[E, rbOpt[U]]{t.F0, rbOptFromPtr(t.F1)}
+	}
+	return &Array[Tuple2[E, rbOpt[U]]]{s: out}
+}
+
+// rbZip2ValArray is rbZipValArray for zip(b, c)'s [E, U?, V?].
+func rbZip2ValArray[E, U, V comparable](a *Array[Tuple3[E, *U, *V]]) *Array[Tuple3[E, rbOpt[U], rbOpt[V]]] {
+	out := make([]Tuple3[E, rbOpt[U], rbOpt[V]], len(a.s))
+	for i, t := range a.s {
+		out[i] = Tuple3[E, rbOpt[U], rbOpt[V]]{t.F0, rbOptFromPtr(t.F1), rbOptFromPtr(t.F2)}
+	}
+	return &Array[Tuple3[E, rbOpt[U], rbOpt[V]]]{s: out}
+}
+
+// rbZipValSeq is rbZipValArray for zip's block forms.
+func rbZipValSeq[E, U comparable](seq func(func(Tuple2[E, *U]) bool)) func(func(Tuple2[E, rbOpt[U]]) bool) {
+	return func(yield func(Tuple2[E, rbOpt[U]]) bool) {
+		seq(func(t Tuple2[E, *U]) bool { return yield(Tuple2[E, rbOpt[U]]{t.F0, rbOptFromPtr(t.F1)}) })
+	}
+}
+
+// rbZipViewEnumVal is Array#__zip_view_enum with U = Integer or Float (decision 396).
+func rbZipViewEnumVal[E, U comparable](self *Array[E], other *Array[U]) *Enumerator[Tuple2[E, rbOpt[U]]] {
+	xs, ys := slices.Clone(self.s), slices.Clone(other.s)
+	return rbEnumOf(func(yield func(Tuple2[E, rbOpt[U]]) bool) {
+		for i, x := range xs {
+			var u rbOpt[U]
+			if i < len(ys) {
+				u = rbOpt[U]{ys[i], true}
+			}
+			if !yield(Tuple2[E, rbOpt[U]]{x, u}) {
+				return
+			}
+		}
+	}, any(self), "each", nil, nil)
+}
+
+// rbZipValEnumerator is rbZipValArray for zip's lazy Enumerator form.
+func rbZipValEnumerator[E, U comparable](e *Enumerator[Tuple2[E, *U]]) *Enumerator[Tuple2[E, rbOpt[U]]] {
+	return rbEnumOf(func(yield func(Tuple2[E, rbOpt[U]]) bool) {
+		e.seq(func(t Tuple2[E, *U]) bool { return yield(Tuple2[E, rbOpt[U]]{t.F0, rbOptFromPtr(t.F1)}) })
+	}, e.recv, e.meth, e.size, nil)
+}
+
+// rbCompactVal is compact of an Array[Integer?] or Array[Float?] (decision 396).
+func rbCompactVal[T comparable](a *Array[rbOpt[T]]) *Array[T] {
+	out := &Array[T]{s: make([]T, 0, len(a.s))}
+	for _, x := range a.s {
+		if x.ok {
+			out.s = append(out.s, x.v)
+		}
+	}
+	return out
+}
+
 // rbCompactNil is compact of an Array[C?] whose C holds nil itself (a leaf's *C, another class's CI): the nils dropped,
 // the elements already the C that the result's Array[C] holds (decision 378).
 func rbCompactNil[T comparable](a *Array[T]) *Array[T] {

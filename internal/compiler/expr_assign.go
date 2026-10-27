@@ -20,7 +20,7 @@ func (f *fctx) genOrAssign(n parser.Node, cur expr, value parser.Node, written .
 	case isOpt(cur.typ) && isClass(elem, "Boolean"):
 		cond, want = "!"+optTruthy(cur.code, cur.typ), cur.typ
 	case isOpt(cur.typ):
-		cond, want = cur.code+" == nil", cur.typ
+		cond, want = optIsNil(cur.code, cur.typ), cur.typ
 	case isClass(cur.typ, "Boolean"):
 		cond, want = "!"+cur.code, cur.typ
 	case unionFalsy(cur.typ): // a union holding nil or false (decision 150)
@@ -385,13 +385,13 @@ func (f *fctx) destructureInto(n parser.Node, v expr, lefts []parser.Node, rest 
 		}
 		et := f.c.goType(t.Args[0])
 		for i, l := range lefts {
-			f.assignTarget(l, flatOpt(expr{code: fmt.Sprintf("Array_Op_idx[%s](%s, %d)", et, v.code, i), typ: TOpt{Elem: t.Args[0]}}))
+			f.assignTarget(l, genericOpt(expr{code: fmt.Sprintf("Array_Op_idx[%s](%s, %d)", et, v.code, i), typ: TOpt{Elem: t.Args[0]}}))
 		}
 		if restT != nil {
 			f.assignTarget(restT, expr{code: fmt.Sprintf("rbMidSplat(%s, %d, %d)", v.code, lead, trail), typ: v.typ})
 		}
 		for j, r := range rights {
-			f.assignTarget(r, flatOpt(expr{code: fmt.Sprintf("rbTrailIdx(%s, %d, %d, %d)", v.code, lead, trail, j), typ: TOpt{Elem: t.Args[0]}}))
+			f.assignTarget(r, genericOpt(expr{code: fmt.Sprintf("rbTrailIdx(%s, %d, %d, %d)", v.code, lead, trail, j), typ: TOpt{Elem: t.Args[0]}}))
 		}
 	case TAny: // MRI's implicit to_ary: an Array splits, anything else is the first target
 		f.destructureInto(n, f.toAry(v), lefts, rest, rights)
@@ -448,7 +448,7 @@ func (f *fctx) destructureUnion(n parser.Node, v expr, u TUnion, lefts []parser.
 			}
 		case TClass:
 			if mt.C.RubyName == "Array" {
-				return flatOpt(expr{code: fmt.Sprintf("Array_Op_idx[%s](%s, %d)", f.c.goType(mt.Args[0]), code, i), typ: TOpt{Elem: mt.Args[0]}})
+				return genericOpt(expr{code: fmt.Sprintf("Array_Op_idx[%s](%s, %d)", f.c.goType(mt.Args[0]), code, i), typ: TOpt{Elem: mt.Args[0]}})
 			}
 			if i == 0 {
 				return expr{code: code, typ: m}

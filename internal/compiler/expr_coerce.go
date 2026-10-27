@@ -19,6 +19,9 @@ func (f *fctx) coerce(n parser.Node, e expr, to Type) string {
 		// a reopened NilClass's `self` (liquid's `def to_liquid = self`) is a typed nil pointer: boxed, it would not be nil
 		return "rbNilAny(" + e.code + ")"
 	}
+	if e.code == "nil" && valOpt(to) { // a nil relabeled as Integer? (`@x = nil #: Integer?`): rbOpt's zero (decision 396)
+		return f.c.goType(to) + "{}"
+	}
 	code := f.coerce0(n, e, to)
 	if f.lenient() && code == e.code && f.pass == 2 {
 		return f.goTypeGuard(n, e, to)
@@ -395,6 +398,12 @@ func (f *fctx) coerceArg(n parser.Node, a expr, p Param, env map[string]Type) st
 	if c := boxedLeafOpt(p.Type, env); c != nil && code != "nil" {
 		return "rbBoxNil[" + c.objType() + "](" + code + ")" // a generic V? with V = *C (or CI) is Go **C (or *CI) (decisions 360, 378)
 	}
+	if boxedValOpt(p.Type, env) {
+		if strings.HasSuffix(code, "]{}") {
+			return "nil"
+		}
+		return "rbOptToPtr(" + code + ")" // a generic V? with V = Integer is Go *Integer (decision 396)
+	}
 	// A type variable bound to untyped gets an explicit any(...), or Go infers
 	// it from the argument's own type (E = String for Array[untyped]#include?("a")).
 	if _, ok := p.Type.(TVar); ok && isAny(t) && !isOpt(a.typ) && !isVoid(a.typ) && f.c.goType(a.typ) != "any" {
@@ -512,8 +521,14 @@ func structValued(t Type) bool {
 func (f *fctx) coerceToOpt(n parser.Node, e expr, to TOpt) string {
 	switch {
 	case isNil(e.typ):
+		if valOpt(to) {
+			return f.c.goType(to) + "{}"
+		}
 		return "nil"
 	case isOpt(e.typ):
+		if valOpt(to) && !valOpt(e.typ) { // ponytail: a *T box of another class where Integer?/Float? is wanted
+			return "rbOptFromPtr(" + e.code + ")"
+		}
 		if from, ok := e.typ.(TOpt); ok && leafOpt(from) && leafRecv(from.Elem) && leafOpt(to) && !leafRecv(to.Elem) {
 			return "rbIfaceOf[" + f.c.goType(to.Elem) + "](" + e.code + ")" // a nil *C into an interface would be a typed nil, not nil
 		}
@@ -523,6 +538,9 @@ func (f *fctx) coerceToOpt(n parser.Node, e expr, to TOpt) string {
 	}
 	if leafOpt(to) {
 		return f.coerce(n, e, to.Elem)
+	}
+	if valOpt(to) {
+		return "rbSome[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 	}
 	return "Ref[" + f.c.goType(to.Elem) + "](" + f.coerce(n, e, to.Elem) + ")"
 }

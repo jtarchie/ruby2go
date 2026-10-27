@@ -139,6 +139,14 @@ func rbZipPair[E, U comparable](xs []E, ys []U, i int) Tuple2[E, *U] {
 	return Tuple2[E, *U]{xs[i], nil}
 }
 
+// rbZipPairVal is rbZipPair with U = Integer or Float: the U? a copy (decision 396).
+func rbZipPairVal[E, U comparable](xs []E, ys []U, i int) Tuple2[E, rbOpt[U]] {
+	if i < len(ys) {
+		return Tuple2[E, rbOpt[U]]{xs[i], rbOpt[U]{ys[i], true}}
+	}
+	return Tuple2[E, rbOpt[U]]{xs[i], rbOpt[U]{}}
+}
+
 // rbSizeOf is a fixed size, for the enumerators that know theirs up front.
 func rbSizeOf(n Integer) func() *Integer {
 	return func() *Integer { return &n }
@@ -336,6 +344,17 @@ type Enumerator_Lazy_Any interface {
 // rbLazy is one step of a lazy chain; src and meth are what inspect shows.
 func rbLazy[E comparable](seq func(func(E) bool), src any, meth string) *Enumerator_Lazy[E] {
 	return &Enumerator_Lazy[E]{seq: seq, src: src, meth: meth}
+}
+
+// rbLazyCompactVal is Lazy#compact of a Lazy[Integer?] or Lazy[Float?] (decision 396).
+func rbLazyCompactVal[E comparable](l *Enumerator_Lazy[rbOpt[E]]) *Enumerator_Lazy[E] {
+	return rbLazy(func(yield func(E) bool) {
+		for x := range l.seq {
+			if x.ok && !yield(x.v) {
+				return
+			}
+		}
+	}, any(l), "compact")
 }
 
 func rbLazyFilter[E comparable](l *Enumerator_Lazy[E], keep func(E) bool, meth string) *Enumerator_Lazy[E] {
