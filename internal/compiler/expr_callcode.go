@@ -2,6 +2,10 @@ package compiler
 
 import (
 	"fmt"
+	"go/ast"
+	goparser "go/parser"
+	"go/scanner"
+	"go/token"
 	"math/big"
 	"slices"
 	"strings"
@@ -520,6 +524,9 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	if code, ok := f.dispatchCall(e, selfRecv, argList); ok {
 		return code
 	}
+	if code, ok := inlineOperator(m, recv, args); ok {
+		return code
+	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
 	free := f.staticDef == m || m.generic() || (staticPrivate(m) && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
@@ -1026,6 +1033,55 @@ func (f *fctx) leafCall(recv expr) bool {
 func exactMetaCall(recv expr, m *Method) bool {
 	c, ok := recv.typ.(TClass)
 	return ok && recv.classObj && c.C.metaOf != nil && m.Owner == c.C && (m.Kind == kindDef || m.Kind == kindPrimitive) && !m.generic()
+}
+
+// operatorBodies are the prelude bodies inlineOperator writes in place of a call; arith ones fold if both sides are constant.
+var operatorBodies = map[string]bool{
+	"self + other": true, "self - other": true, "self / other": true, "Float(float64(self * other))": true,
+	"Boolean(self < other)": false, "Boolean(self <= other)": false, "Boolean(self > other)": false, "Boolean(self >= other)": false,
+	"Boolean(self == other)": false,
+}
+
+// inlineOperator: Go inlines `Float.Op_mul(a, b)` too, but leaves a NOP inline mark per call, a third of mandelbrot's inner loop (decision 400).
+func inlineOperator(m *Method, recv expr, args []string) (string, bool) {
+	if m.Kind != kindPrimitive || len(args) != 1 || len(m.Params) != 1 || m.Params[0].Name != "other" || classOf(recv.typ) != m.Owner || classOf(m.Params[0].Type) != m.Owner {
+		return "", false
+	}
+	body := strings.TrimSpace(m.Node.Body.(*parser.StatementsNode).Body[0].(*parser.XStringNode).Unescaped.Value)
+	arith, ok := operatorBodies[body]
+	if !ok || arith && goConstExpr(recv.code) && goConstExpr(args[0]) { // `0.1 + 0.2` would fold exactly to 0.3
+		return "", false
+	}
+	i, j := strings.Index(body, "self"), strings.Index(body, "other")
+	return body[:i] + goOperand(recv.code) + body[i+len("self"):j] + goOperand(args[0]) + body[j+len("other"):], true
+}
+
+// goConstExpr reports Go code naming nothing but numbers and conversions, which Go evaluates as a constant.
+func goConstExpr(code string) bool {
+	var s scanner.Scanner
+	fs := token.NewFileSet()
+	s.Init(fs.AddFile("", -1, len(code)), []byte(code), nil, 0)
+	for {
+		_, tok, lit := s.Scan()
+		switch {
+		case tok == token.EOF:
+			return true
+		case tok == token.IDENT && lit != "Float" && lit != "Integer" && lit != "float64" && lit != "int64",
+			tok != token.IDENT && !tok.IsLiteral() && !tok.IsOperator():
+			return false
+		}
+	}
+}
+
+// goOperand parenthesizes code that is an operator expression.
+func goOperand(code string) string {
+	switch x, err := goparser.ParseExpr(code); x.(type) {
+	case *ast.Ident, *ast.BasicLit, *ast.CallExpr, *ast.SelectorExpr, *ast.ParenExpr, *ast.IndexExpr:
+		if err == nil {
+			return code
+		}
+	}
+	return "(" + code + ")"
 }
 
 // leafRecv reports a receiver typed as a leaf class (decision 359).
