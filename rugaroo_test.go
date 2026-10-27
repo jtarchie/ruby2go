@@ -1092,6 +1092,9 @@ func rbsLibraries(t *testing.T, path string) []string {
 			continue // the program's own file, not a library
 		}
 		name := strings.ReplaceAll(m[1], "/", "-")
+		if strings.HasPrefix(m[1], "bundler") || bundledGem(filepath.Dir(path), name) {
+			continue // Bundler, or a gem the example's own Gemfile brings: its types come from the gem's sig/, not rbs's library set
+		}
 		if alias, ok := rbsLibraryNames[name]; ok {
 			name = alias
 		}
@@ -1102,6 +1105,12 @@ func rbsLibraries(t *testing.T, path string) []string {
 		args = append(args, "-r", name)
 	}
 	return args
+}
+
+// bundledGem reports whether the Gemfile beside an example names gem.
+func bundledGem(dir, gem string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, "Gemfile")) //nolint:gosec // an example's own Gemfile
+	return err == nil && strings.Contains(string(data), `gem "`+gem+`"`)
 }
 
 func TestCompileTestsSkipping(t *testing.T) {

@@ -1,16 +1,15 @@
 # rbs_inline: enabled
 # nil_check: runtime
-# trace: roundhouse's runtime/ and its shims are on $LOAD_PATH, so they compile as a gem does: only what the blog reaches (decision 296)
-# load_path: shims
+# trace: roundhouse's runtime/ is on $LOAD_PATH and roundhouse-rugaroo is a gem, so both compile as gems do: only what the blog reaches (decision 296)
 # load_path: blog/runtime
 
-# Roundhouse's Blog (a Rails app, transpiled by roundhouse --target spinel into blog/, unmodified), served by shims/tep_shim.rb and driven by Net::HTTP (README.md).
+# Roundhouse's Blog (a Rails app, transpiled by roundhouse --target spinel into blog/, unmodified), served by the roundhouse-rugaroo gem and driven by Net::HTTP (README.md).
 $LOADED_FEATURES << File.expand_path("blog/runtime/tep/tep.rb", __dir__)
 $LOADED_FEATURES << File.expand_path("blog/runtime/db.rb", __dir__)
-$LOAD_PATH.unshift(File.expand_path("shims", __dir__), File.expand_path("blog/runtime", __dir__))
-require "ffi_shim"
-require "db_shim"
-require "tep_shim"
+$LOAD_PATH.unshift(File.expand_path("blog/runtime", __dir__))
+ENV["BUNDLE_GEMFILE"] = File.expand_path("Gemfile", __dir__)
+require "bundler/setup"
+require "roundhouse/rugaroo"
 require "net/http"
 require "socket"
 require "tmpdir"

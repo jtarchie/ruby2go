@@ -1,4 +1,0 @@
-# Roundhouse names this type in the blog's sidecars without declaring it; its definition from runtime/params.rb.
-module Roundhouse
-  type ParamValue = String | Hash[String, ParamValue] | Array[ParamValue]
-end

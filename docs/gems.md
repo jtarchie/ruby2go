@@ -73,7 +73,9 @@ for the Spinel compiler. rugaroo compiles that output unmodified: the `.rbs`
 files type it, and the few files that call C through Spinel's FFI (its HTTP
 server, its sqlite binding) are replaced by Ruby shims that the program loads
 first, marking the originals loaded with
-`$LOADED_FEATURES << File.expand_path("blog/runtime/db.rb", __dir__)`.
+`$LOADED_FEATURES << File.expand_path("blog/runtime/db.rb", __dir__)`. The
+shims are the [roundhouse-rugaroo](https://github.com/jtarchie/roundhouse-rugaroo)
+gem, whose README walks from `rails new` to a running binary.
 
 Proof: [example 135](../examples/135_roundhouse_blog/README.md), roundhouse's
 Blog app (articles, nested comments, validations, partials, JSON views) served

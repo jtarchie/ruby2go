@@ -7,46 +7,31 @@ Stream broadcasts, with no Rails left in it. rugaroo compiles it into one Go
 binary. `main.rb` serves it on a local port and sends it fifteen requests, and
 the binary's answers equal MRI's on the same files.
 
-Nothing in `blog/` is edited. Its few Spinel-only files are replaced by the
-shims in `shims/`, and `sig/` adds the types roundhouse's own `.rbs` files leave
-to Spinel's inference ([decisions 404](../../docs/decisions/404.md) and
-[405](../../docs/decisions/405.md)).
+Nothing in `blog/` is edited. Its few Spinel-only files (the tep HTTP server,
+sqlite and crypto over Spinel's FFI) are replaced by the
+[roundhouse-rugaroo](https://github.com/jtarchie/roundhouse-rugaroo) gem, which
+`Gemfile` pulls from GitHub, and the gem's `sig/` adds the types roundhouse's own
+`.rbs` files leave to Spinel's inference ([decisions 404](../../docs/decisions/404.md)
+and [405](../../docs/decisions/405.md)).
 
 ```sh
+bundle install --gemfile examples/135_roundhouse_blog/Gemfile   # once
 ruby main.rb                     # MRI
-rugaroo run -trace main.rb       # compiled; -trace because blog/runtime compiles as a gem does
+rugaroo run -trace main.rb       # compiled; -trace because blog/runtime and the gem compile as gems do
 ```
 
-## Shims
-
-`main.rb` marks a Spinel-only file loaded before anything requires it
+`main.rb` marks the Spinel-only files loaded before anything requires them
 (`$LOADED_FEATURES << File.expand_path("blog/runtime/db.rb", __dir__)`), then
-requires the shim that stands in for it. MRI and rugaroo both then skip the
-original.
-
-| Shim | Stands in for | Why |
-|---|---|---|
-| `shims/tep_shim.rb` | `blog/runtime/tep/` (tep, Spinel's HTTP and WebSocket server) | tep reads sockets through Spinel's FFI. The shim keeps the part of Tep the blog calls (`Tep::Request`, `Tep::Response`, `Tep::APP.dispatch`, `Tep::Server::Threaded#run`) on `TCPServer`, one thread per connection, and parses requests with tep's own `Tep::Parser`. A WebSocket upgrade (Action Cable) answers 501 for now. |
-| `shims/db_shim.rb` | `blog/runtime/db.rb` (sqlite through Spinel's FFI) | The same `Db` API on the `sqlite3` gem, which rugaroo compiles as [sqlite3-fiddle](../../docs/gems.md#vendored-gems). |
-| `shims/ffi_shim.rb` | the `ffi_func` lines in `blog/runtime/message_digest.rb` and `blog/runtime/csrf_token.rb` | Those files stay as they are: `ffi_func` does nothing here, and the shim writes the four crypto functions and the random token they declare in Ruby. |
-
-## Types (`sig/`)
-
-Roundhouse writes a `.rbs` beside most files. rugaroo reads them, and `sig/`
-here, which wins where both speak, adds what they leave out:
-
-| File | Says |
-|---|---|
-| `sig/roundhouse.rbs` | `Roundhouse::ParamValue`, a type the sidecars name but never declare. |
-| `sig/active_record.rbs` | The adapter slot holds the `SqliteAdapter` module, and `Base.find` returns the model it is called on (`-> instance`). |
-| `sig/main.rbs` | `blog/main.rb` has no sidecar; its request path's types, as its comments describe them. |
-| `sig/broadcasts.rbs` | `Broadcasts::TRANSPORTS` holds two unrelated classes in turn (a seed, then Cable's). |
+requires the gem, whose files stand in for them. MRI and rugaroo both then skip
+the originals.
 
 ## `main.rb`
 
-- `# trace:` and `$LOAD_PATH`: `blog/runtime/` and `shims/` are on the load
-  path, so rugaroo compiles them as it compiles a gem: only what the blog
-  reaches. `blog/app/` stays the program's own code, strictly typed.
+- `# trace:`, `$LOAD_PATH` and Bundler: `blog/runtime/` is on the load path and
+  the gem comes through Bundler (`ENV["BUNDLE_GEMFILE"]` and
+  `require "bundler/setup"`, as a Rails app's `config/boot.rb` does), so rugaroo
+  compiles both as it compiles a gem: only what the blog reaches. `blog/app/`
+  stays the program's own code, strictly typed.
 - `# nil_check: runtime`: the emitted code uses possibly-nil values where it
   knows they are not nil, as Ruby lets it. rugaroo checks those at run time
   instead of refusing to compile them.

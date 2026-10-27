@@ -57,7 +57,7 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 		}
 		if dir, rel := under(f, l.StdDirs); dir != "" {
 			name := strings.TrimSuffix(rel, filepath.Ext(rel))
-			if first, _, _ := strings.Cut(name, "/"); builtinLib(name) || mriLibs[first] && first != "enc" {
+			if first, _, _ := strings.Cut(name, "/"); builtinLib(name) || mriLibs[first] && first != "enc" && first != "bundler" && first != "rubygems" { // Bundler set up the load path the trace recorded; rerun at boot it hangs (decision 404)
 				add(name) // MRI internals (encodings, portable Ruby's helpers) have no rugaroo meaning
 			}
 			continue

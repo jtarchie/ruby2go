@@ -1,5 +1,0 @@
-# Broadcasts swaps its SeedTransport for Cable::Transport at boot: two unrelated classes with one broadcast method.
-module Broadcasts
-  TRANSPORTS: Array[untyped]
-  def self.set_transport: (untyped transport) -> Array[untyped]
-end
