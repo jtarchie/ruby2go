@@ -223,12 +223,8 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 		if f.lenient() { // a gem's other union, or a T? where nil is not a member: checked on arrival (decisions 225, 233)
 			return f.c.unionFn(to) + "(" + f.coerce(n, e, TAny{}) + ")"
 		}
-		if isOpt(e.typ) && f.nilRuntime() {
-			return f.coerceToUnion(n, f.nilUnwrap(e, to), to)
-		}
 	}
-	f.errorf(n, "%s where %s is expected", e.typ, to)
-	return ""
+	return f.unionMismatch(n, e, to)
 }
 
 // sameGoMembers reports whether every member of from is held in to as the
@@ -348,11 +344,8 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if code, ok := f.lenientClass(n, e, to); ok {
 		return code
 	}
-	if isOpt(e.typ) && f.nilRuntime() {
-		return f.coerceClass(n, f.nilUnwrap(e, to), to)
-	}
 	if isOpt(e.typ) {
-		f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
+		return f.optWhereClass(n, e, to)
 	}
 	if isNil(e.typ) && f.nilAsZero() {
 		return "*new(" + f.c.goType(to) + ")"

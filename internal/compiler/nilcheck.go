@@ -75,7 +75,7 @@ func (f *fctx) nilMessage(to Type) (string, bool) {
 
 // nilNumArgs unwraps a numeric T? argument before numericTower picks the class to convert to, as MRI's coerce fails on nil first.
 func (f *fctx) nilNumArgs(m *Method, recv Type, xs []expr, nodes []parser.Node) {
-	if !f.nilRuntime() {
+	if !f.nilRuntime() || nilEqualOps[m.Name] {
 		return
 	}
 	for i, x := range xs {
@@ -114,6 +114,24 @@ func (f *fctx) nilSpaceship(n parser.Node, recv expr, name string, args []parser
 	f.emit("%s = %s", res, f.coerce(n, x, ret))
 	f.emit("}")
 	return expr{code: res, typ: ret}, true
+}
+
+// optWhereClass is a T? where class T is expected: decision 20's error, or under --nil-check=runtime its T, checked.
+func (f *fctx) optWhereClass(n parser.Node, e expr, to TClass) string {
+	if f.nilRuntime() {
+		return f.coerceClass(n, f.nilUnwrap(e, to), to)
+	}
+	f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
+	return ""
+}
+
+// unionMismatch is a value no member of to takes; a T? whose T one does is checked under --nil-check=runtime.
+func (f *fctx) unionMismatch(n parser.Node, e expr, to TUnion) string {
+	if isOpt(e.typ) && f.nilRuntime() {
+		return f.coerceToUnion(n, f.nilUnwrap(e, to), to)
+	}
+	f.errorf(n, "%s where %s is expected", e.typ, to)
+	return ""
 }
 
 // nilUnwrap is a T? value as its T under --nil-check=runtime, raising nilMessage's error when it is nil (decision 393).

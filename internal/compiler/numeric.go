@@ -39,9 +39,7 @@ func (f *fctx) numericTower(n parser.Node, recv expr, e *entry, args []parser.No
 	if xs == nil {
 		return expr{}, args, false
 	}
-	if !nilEqualOps[name] {
-		f.nilNumArgs(e.M, recv.typ, xs, nodes)
-	}
+	f.nilNumArgs(e.M, recv.typ, xs, nodes)
 	f.curBlock = block
 	if tw := f.overload(e, recv.typ, nodes); tw != nil {
 		if len(args) == 1 && classTwins(name) && tw.M.Name != "__"+overloadBase(name)+"_"+strconv.Itoa(len(args)) && !strings.HasSuffix(tw.M.Name, "_enum") {
