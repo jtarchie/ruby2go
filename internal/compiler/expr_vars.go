@@ -70,12 +70,29 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	f.emit("%s = %s", code, f.coerce(n, val, iv.Type))
 	f.storing--
 	f.markIvar(iv)
+	return f.ivarWritten(n, iv, val, code)
+}
+
+// ivarWritten is an ivar write's value: what was assigned, as narrow as the write shows it.
+func (f *fctx) ivarWritten(n *parser.InstanceVariableWriteNode, iv *Ivar, val expr, code string) expr {
 	// the value is what was assigned: `@x = 1` is an Integer even when @x is Integer?
 	if isOpt(iv.Type) && !isAny(stripOpt(iv.Type)) && !isOpt(val.typ) && !isNil(val.typ) && !isAny(val.typ) {
 		f.narrowIvar(iv) // and reads after it, until a call through self (decision 148)
 		return expr{code: derefOpt(code, iv.Type), typ: stripOpt(iv.Type), done: true}
 	}
+	if isAny(iv.Type) && immediateLit(n.Value) { // `@a = @b = 0` with @b untyped: @a takes 0's Integer, not @b's untyped (decision 394)
+		return expr{code: val.code, typ: val.typ, done: true}
+	}
 	return expr{code: code, typ: iv.Type, done: true}
+}
+
+// immediateLit: generating an immediate's literal again yields the same object, as reading it back would.
+func immediateLit(n parser.Node) bool {
+	switch n.(type) {
+	case *parser.IntegerNode, *parser.FloatNode, *parser.SymbolNode, *parser.TrueNode, *parser.FalseNode:
+		return true
+	}
+	return false
 }
 
 // ivarWriteValue is the value an ivar write stores and the type it declares; a nil type: the write declares nothing.
@@ -83,10 +100,26 @@ func (f *fctx) ivarWriteValue(n *parser.InstanceVariableWriteNode, val expr, ann
 	switch {
 	case ann != nil:
 		return f.annotatedIvarValue(n, val, ann)
-	case val.provisional:
+	case val.provisional, f.awaitedWriterParam(n, val):
 		return f.provisionalIvarValue(n, val)
 	}
 	return val, val.typ
+}
+
+// awaitedWriterParam: a round's attr writer write of a still-awaited param is bottom, so `l.x += n` callers can type it (decision 394).
+func (f *fctx) awaitedWriterParam(n *parser.InstanceVariableWriteNode, val expr) bool {
+	if !f.c.round || f.m == nil || !f.m.attrWriter || len(f.m.Params) != 1 || !isAny(val.typ) {
+		return false
+	}
+	p := f.m.Params[0]
+	if _, ok := n.Value.(*parser.LocalVariableReadNode); !ok || p.Pending == "" || !isAny(p.Type) || f.c.infer != nil && f.c.infer.noDrop[p.Pending] {
+		return false
+	}
+	if f.c.roundDrops == nil {
+		f.c.roundDrops = map[pendingKey]bool{}
+	}
+	f.c.roundDrops[p.Pending] = true
+	return true
 }
 
 // provisionalIvarValue is bottom until converged (decision 383): a round's provisional value neither declares an ivar
@@ -391,6 +424,9 @@ func (f *fctx) ivarCode(iv *Ivar) string { return ivarPath(f.selfCode, iv) }
 func (f *fctx) readsUnassigned(name string) bool {
 	if !f.discover || f.owner == nil || f.c.findIvar(f.owner, name) != nil || f.c.pendingIvar(f.owner, name) != nil { // a module's too (decision 317)
 		return false
+	}
+	if w := f.c.initWritesOf(f.owner); f.m != nil && w.ivars[name] && !w.runs[f.m.Name] {
+		return true // initialize wrote it before this method could run (decision 394): nil here is discovery's order, not MRI's
 	}
 	if f.c.ivarReadFirst == nil {
 		f.c.ivarReadFirst = map[ivarKey]bool{}

@@ -104,3 +104,57 @@ end
 		}
 	}
 }
+
+// Counters `reset` sets and attr writers bump are Integer; a storage value initialize stores stays nilable (decision 394).
+func TestWriterIvarTyped(t *testing.T) {
+	gem := `class Limits
+  attr_accessor :length, :score
+  attr_reader :cur
+
+  def initialize(max, opts = {})
+    @max = max
+    reset(opts)
+  end
+
+  def reached? = @length > @max || @score > @max
+
+  def reset(opts)
+    @length = @score = 0
+    @cur = opts[:cur]
+  end
+
+  def enter(s) = @cur = s
+end
+
+class Body
+  def initialize(nodes)
+    @nodes = nodes
+  end
+
+  def render(limits, s)
+    limits.score += @nodes.length
+    limits.length += s.length
+    limits.reached?
+  end
+end
+`
+	app := "require \"limits\"\nl = Limits.new(9)\nb = Body.new([1, 2])\nb.render(l, \"abc\")\np b.render(l, \"defghij\"), l.length, l.score, l.cur\nl.enter(\"x\")\np l.cur\n"
+	out, err := compileGemApp(t, map[string]string{"limits.rb": gem}, app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, decl, ok := strings.Cut(out, "type Limits struct {")
+	if !ok {
+		t.Fatal("Limits not emitted")
+	}
+	decl, _, _ = strings.Cut(decl, "\n}\n")
+	fields := strings.Join(strings.Fields(decl), " ")
+	for _, want := range []string{"length Integer", "score Integer"} {
+		if !strings.Contains(fields, want) {
+			t.Errorf("Limits' fields lack %q:\n%s", want, decl)
+		}
+	}
+	if strings.Contains(fields, "cur String") {
+		t.Errorf("Limits' @cur lost its nil:\n%s", decl)
+	}
+}

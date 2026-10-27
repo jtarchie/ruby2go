@@ -373,3 +373,101 @@ func (c *Compiler) discoverMethod(cls *Class, m *Method) {
 	}
 	f.genBody(m.Node.Body, c.paramLocals(m), t, nil)
 }
+
+// initWrites: a non-nil ivar initialize's statements set is no read-first nil for methods initialize cannot run (decision 394).
+type initWrites struct {
+	cls         *Class
+	ivars, runs map[string]bool
+}
+
+func (c *Compiler) initWritesOf(cls *Class) *initWrites {
+	if w := c.initWrites[cls]; w != nil {
+		return w
+	}
+	w := &initWrites{cls: cls, ivars: map[string]bool{}, runs: map[string]bool{"initialize": true}}
+	if c.initWrites == nil {
+		c.initWrites = map[*Class]*initWrites{}
+	}
+	c.initWrites[cls] = w
+	for k := cls; k != nil; k = k.Super {
+		w.run(k.Methods["initialize"])
+	}
+	w.settle(cls.Methods["initialize"], map[*Method]bool{})
+	return w
+}
+
+// find is the method name self calls in cls.
+func (w *initWrites) find(name string) *Method {
+	for k := w.cls; k != nil; k = k.Super {
+		if m := k.Methods[name]; m != nil {
+			return m
+		}
+	}
+	return nil
+}
+
+// run notes every method m can call on self, transitively.
+func (w *initWrites) run(m *Method) {
+	if m == nil || m.Node == nil {
+		return
+	}
+	walkNode(m.Node.Body, func(n parser.Node) (bool, bool) {
+		if call, ok := n.(*parser.CallNode); ok && selfCall(call) && !w.runs[call.Name] {
+			w.runs[call.Name] = true
+			w.run(w.find(call.Name))
+		}
+		return false, !opensScope(n)
+	})
+}
+
+// settle notes the ivars m's statements set to a non-nil value, and those of the self calls that are statements.
+func (w *initWrites) settle(m *Method, seen map[*Method]bool) {
+	if m == nil || m.Node == nil || seen[m] {
+		return
+	}
+	seen[m] = true
+	body, ok := m.Node.Body.(*parser.StatementsNode)
+	if !ok {
+		return
+	}
+	for _, st := range body.Body {
+		switch st := st.(type) {
+		case *parser.InstanceVariableWriteNode:
+			var names []string
+			var v parser.Node = st
+			for iw, ok := v.(*parser.InstanceVariableWriteNode); ok; iw, ok = v.(*parser.InstanceVariableWriteNode) {
+				names, v = append(names, iw.Name), iw.Value // `@a = @b = 0` writes both
+			}
+			if nonNilValue(v) { // `@tree = opts[:tree]` may store nil: a read after it may see nil
+				for _, name := range names {
+					w.ivars[name] = true
+				}
+			}
+		case *parser.CallNode:
+			if st.Receiver == nil && st.Block == nil {
+				w.settle(w.find(st.Name), seen)
+			}
+		}
+	}
+}
+
+// nonNilValue is a value that is never nil: a literal other than nil, or a constant's `new`.
+func nonNilValue(n parser.Node) bool {
+	switch n := n.(type) {
+	case *parser.IntegerNode, *parser.FloatNode, *parser.StringNode, *parser.InterpolatedStringNode, *parser.SymbolNode,
+		*parser.TrueNode, *parser.FalseNode, *parser.ArrayNode, *parser.HashNode:
+		return true
+	case *parser.CallNode:
+		switch n.Receiver.(type) {
+		case *parser.ConstantReadNode, *parser.ConstantPathNode:
+			return n.Name == "new"
+		}
+	}
+	return false
+}
+
+// selfCall is a call on self, implicit or explicit.
+func selfCall(n *parser.CallNode) bool {
+	_, self := n.Receiver.(*parser.SelfNode)
+	return n.Receiver == nil || self
+}

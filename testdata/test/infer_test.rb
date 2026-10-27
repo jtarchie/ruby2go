@@ -594,6 +594,34 @@ module InferTests
     def self.get = @levar + 1
   end
 
+  # liquid's ResourceLimits: counters `reset` sets from initialize, bumped through their attr writers (decision 394)
+  class IvCycLimits
+    attr_accessor :length, :score
+
+    def initialize(max)
+      @max = max
+      reset
+    end
+
+    def reached? = @length > @max || @score > @max
+
+    def reset
+      @length = @score = 0
+    end
+  end
+
+  class IvCycBody
+    def initialize(nodes)
+      @nodes = nodes
+    end
+
+    def render(limits, s)
+      limits.score += @nodes.length
+      limits.length += s.length
+      limits.reached?
+    end
+  end
+
   class IvarCycleTest < Minitest::Test
     def test_ivar_typed_through_its_own_call
       h = IvCycHeap.new
@@ -611,6 +639,14 @@ module InferTests
 
     def test_class_body_literal_ivar
       assert_equal 4, IvCycLevar.get
+    end
+
+    def test_ivar_typed_through_its_writer
+      l = IvCycLimits.new(9)
+      b = IvCycBody.new([1, 2])
+      refute b.render(l, "abc")
+      assert b.render(l, "defghij")
+      assert_equal [10, 4], [l.length, l.score]
     end
   end
 end

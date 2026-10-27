@@ -18,6 +18,24 @@ module Kramdown
     def span?: () -> bool
   end
 
+  # The option definitions `define` adds (name.to_sym => Definition) and the defaults built from them (decision 394):
+  # a gem module's class-body `@options = {}` / `@defaults = nil` are untyped otherwise (decisions 172, 383), and so
+  # was `merge`'s Hash, every parser's and converter's @options.
+  module Options
+    self.@options: Hash[Symbol, Kramdown::Options::Definition]
+    self.@defaults: Hash[Symbol, untyped]?
+  end
+
+  module Parser
+    class Html < Base
+      class ElementConverter
+        # every caller passes the tree's elements; Document#to_*'s `Converter.const_get(name).convert(@root, @options)`
+        # is a dynamic call by the same name whose typed Hash would otherwise untype el (decision 331's dyn use)
+        def self.convert: (Kramdown::Element root, ?Kramdown::Element el) -> untyped
+      end
+    end
+  end
+
   module Converter
     class Kramdown < Base
       # el is every tree node; its convert_* methods are typed through convert's computed send (decision 353)

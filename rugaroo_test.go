@@ -1308,7 +1308,8 @@ p h.pop
 }
 
 // TestIvarCyclesTyped checks decision 383's typing, which minitest cannot see: an ivar typed only through a call whose
-// parameter it types, and a class body's unannotated `@levar = 1`, compile with no dynamic call.
+// parameter it types, a class body's unannotated `@levar = 1`, and counters bumped through their attr writers
+// (`l.score += n`, decision 394) compile with no dynamic call.
 func TestIvarCyclesTyped(t *testing.T) {
 	src, err := os.ReadFile(filepath.Join("testdata", "test", "infer_test.rb"))
 	if err != nil {
@@ -1325,7 +1326,9 @@ acc = IvCycAcc.new
 [1, 2, 3].each { |x| acc.add(x) }
 pg = IvCycPing.new
 3.times { |i| pg.step(i) }
-p h.peek, acc.total, pg.show, IvCycLevar.get
+l = IvCycLimits.new(10)
+IvCycBody.new([1, 2]).render(l, "abc")
+p h.peek, acc.total, pg.show, IvCycLevar.get, l.length, l.score
 `...)
 	out, warns, err := Compile(t.Context(), "main.rb", prog)
 	if err != nil || slices.ContainsFunc(warns, func(w string) bool { return strings.Contains(w, "dynamic call") || strings.Contains(w, "untyped") }) || bytes.Contains(out, []byte("rbDyn")) {

@@ -798,7 +798,7 @@ func (c *Compiler) stopUnjustifiedDrops(inf *inference) {
 		return
 	}
 	for k := range c.roundDrops {
-		if inf.none[k] {
+		if inf.none[k] || isAny(inf.types[k]) { // nothing typed it, or its uses joined to untyped (a gem's disagreeing calls, decision 244)
 			if inf.noDrop == nil {
 				inf.noDrop = map[pendingKey]bool{}
 			}

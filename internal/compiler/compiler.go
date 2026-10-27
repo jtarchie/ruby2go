@@ -118,6 +118,7 @@ type Compiler struct {
 	unnamedAnon           map[*parser.CallNode]bool         // Class.new literals no constant names: they run inherited where evaluated
 	anonRun               *[]parser.Node                    // collecting a Class.new block inside a method: its statements that run per evaluation (decision 259)
 	ivarReadFirst         map[ivarKey]bool                  // owner#@x read before any assignment typed it, in discovery: declared T?
+	initWrites            map[*Class]*initWrites            // what each class's construction settles before other methods run (decision 394)
 	interpOnly            map[pendingKey]bool               // a gem parameter its body only interpolates: any value does (decision 330)
 	gemByName             map[string][]*Method              // gem methods by name, for a dynamic call's uses (decision 331)
 	gemParams             map[pendingKey]bool               // a gem method's parameters: every caller's disagreeing uses widen them (decision 331)
