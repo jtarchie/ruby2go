@@ -614,9 +614,11 @@ func embeddedSuper(cls *Class, recv string) string {
 }
 
 // leaf is a user or gem class no class inherits from: its objects are exactly *C, so values typed as it are *C rather
-// than its interface, and its methods take self as *C, direct field access the Go compiler inlines (decision 359).
+// than its interface, and its methods take self as *C, direct field access the Go compiler inlines (decision 359). A
+// module's singleton class is one too: nothing can subclass it (decision 398). A class's is not: its subclasses'
+// metaclasses inherit its class methods, and that hierarchy lives on the class (metaOf.Subclasses), not the metaclass.
 func (c *Class) leaf() bool {
-	return c.isStruct() && !c.universal && len(c.Subclasses) == 0 && len(c.TypeParams) == 0 && c.metaOf == nil && !c.hashBase &&
+	return c.isStruct() && !c.universal && len(c.Subclasses) == 0 && len(c.TypeParams) == 0 && (c.metaOf == nil || c.metaOf.IsModule) && !c.hashBase &&
 		!c.isPerRun && !c.isTemplate() && c.template == nil && c.File != nil && !c.File.isPrelude() && !mixesUserModule(c)
 }
 

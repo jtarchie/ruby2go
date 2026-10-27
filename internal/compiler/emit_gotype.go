@@ -239,6 +239,9 @@ func staticCallCode(m *Method, targs, recv, args string) string {
 	if m.Kind == kindAttrReader || m.Kind == kindAttrWriter {
 		return recv + "._" + m.Owner.Name + "()." + m.GoName + "(" + args + ")"
 	}
+	if m.Kind == kindSynth { // a metaclass's name/to_s/inspect: Go methods on *M_Meta, no free func (decision 398)
+		return recv + "." + m.GoName + "(" + args + ")"
+	}
 	return freeFuncName(m) + targs + "(" + recv + comma(args) + ")"
 }
 

@@ -197,6 +197,7 @@ func (c *Compiler) dynShareable(w dynWrapper, name string) (iface, body string, 
 	}
 	body = w.body
 	if e.Owner.universal {
+		body = unboxLeafSelf(cls, body)
 		for _, t := range []string{c.goType(TClass{C: cls}), c.recvType(cls)} {
 			body = strings.ReplaceAll(body, "["+t+"](self", "[any](self")
 		}
@@ -281,6 +282,15 @@ func cutPlainSelf(s, lit string, build bool) (string, int) {
 	}
 	out.WriteString(s[last:])
 	return out.String(), n
+}
+
+// unboxLeafSelf: self is never nil, so a leaf's `-> self` needs no rbPtrAny and shares one [any] arm (decision 398).
+func unboxLeafSelf(cls *Class, body string) string {
+	box := "return rbPtrAny[" + cls.Name + "]("
+	if i := strings.Index(body, box); cls.leaf() && i >= 0 && strings.HasSuffix(body, "[*"+cls.Name+"](self))\n") && strings.Count(body[i:], "\n") == 1 {
+		return body[:i] + "return " + body[i+len(box):len(body)-2] + "\n"
+	}
+	return body
 }
 
 // shareableClass: a struct class, or a generic class whose wrapper body is a universal owner's naming none of its type

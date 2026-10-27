@@ -6718,3 +6718,62 @@ module ObjectTests
     end
   end
 end
+
+module ObjectTests
+  # decision 398: a module's singleton class is a leaf; its methods take the concrete *M_Meta
+  module ObjLeafModCounter
+    @count = 0
+    @names = [] #: Array[String]
+
+    #: (String) -> Integer
+    def self.add(name)
+      @names << name
+      @count += 1
+    end
+
+    #: () -> Array[String]
+    def self.names = @names
+
+    #: () -> Integer
+    def self.twice = add("x") + @count
+  end
+
+  module ObjLeafModHelper
+    #: () -> String
+    def helped = "helped"
+  end
+
+  module ObjLeafModExtended
+    extend ObjLeafModHelper
+
+    @v = 3
+
+    #: () -> String
+    def self.both = "#{helped} #{@v}"
+  end
+
+  module ObjLeafModFn
+    module_function
+
+    #: (Integer) -> Integer
+    def dbl(x) = x * 2
+  end
+
+  class ObjLeafModTest < Minitest::Test
+    def test_module_ivars_through_class_methods
+      assert_equal 1, ObjLeafModCounter.add("a")
+      assert_equal 2, ObjLeafModCounter.add("b")
+      assert_equal 6, ObjLeafModCounter.twice
+      assert_equal %w[a b x], ObjLeafModCounter.names
+    end
+
+    def test_module_as_value
+      mods = [ObjLeafModCounter, ObjLeafModExtended] #: Array[Module]
+      assert_equal ["ObjectTests::ObjLeafModCounter", "ObjectTests::ObjLeafModExtended"], mods.map(&:name)
+      assert_kind_of Module, ObjLeafModCounter
+      assert ObjLeafModExtended.is_a?(ObjLeafModHelper)
+      assert_equal "helped 3", ObjLeafModExtended.both
+      assert_equal 8, ObjLeafModFn.dbl(4)
+    end
+  end
+end
