@@ -156,7 +156,7 @@ Every other row is rugaroo's default.
 | bm_getivar | 0.18s | 0.18s | 0.014s | 0.006s |
 | bm_getivar_module | 1.25s | 1.25s | 0.15s | 0.006s |
 | bm_handle_read_loop | 3.06s | 1.93s | - | 0.19s |
-| bm_handle_readonly_param | 2.62s | 1.22s | - | 0.074s |
+| bm_handle_readonly_param † | 2.62s | 1.21s | 0.052s | 0.072s |
 | bm_histogram † | 18.54s | 18.49s | 1.07s | 0.41s |
 | bm_huffman † | 0.11s | 0.11s | 0.030s | 0.012s |
 | bm_inline | 1.72s | 1.17s | 0.098s | 0.033s |
@@ -186,7 +186,7 @@ Every other row is rugaroo's default.
 | bm_rbs_items_control | 0.20s | 0.22s | 0.013s | 0.033s |
 | bm_rbtree | 0.52s | 0.18s | 0.027s | 0.033s |
 | bm_reader_index † | 11.52s | 11.93s | 0.55s | 0.23s |
-| bm_ruby_xor | 1.47s | 0.38s | - | 0.090s |
+| bm_ruby_xor † | 1.45s | 0.38s | 0.096s | 0.088s |
 | bm_send_bmethod | 0.31s | 0.29s | - | 0.007s |
 | bm_send_cfunc_block | 1.07s | 1.09s | 0.033s | 0.17s |
 | bm_send_rubyfunc_block | 1.79s | 1.06s | 0.093s | 0.071s |
@@ -202,7 +202,7 @@ Every other row is rugaroo's default.
 | bm_splay | 0.21s | 0.12s | 0.016s | 0.020s |
 | bm_stark_field | 1.25s | 0.91s | - | 0.10s |
 | bm_str_concat | 0.055s | 0.056s | 0.008s | 0.006s |
-| bm_str_readonly_param | 0.053s | 0.055s | - | 0.008s |
+| bm_str_readonly_param † | 0.051s | 0.053s | 0.011s | 0.007s |
 | bm_structaref | 0.24s | 0.24s | 0.014s | 0.008s |
 | bm_structaset | 0.45s | 0.45s | 0.047s | 0.017s |
 | bm_sudoku † | 0.18s | 0.11s | 0.017s | 0.009s |
@@ -215,19 +215,19 @@ Every other row is rugaroo's default.
 | bm_tree_walker † | 2.11s | 0.47s | 0.28s | 0.18s |
 | bm_tree_walker_frames | 0.40s | 0.13s | - | 0.044s |
 | bm_wordfreq | 0.057s | 0.058s | 0.011s | 0.006s |
-| total (rows run) | 106.34s | 81.92s | 6.75s | 5.30s |
-| vs MRI | 1.0x | 1.3x | 13.9x | 20.1x |
+| total (rows run) | 106.32s | 81.92s | 6.91s | 5.30s |
+| vs MRI | 1.0x | 1.3x | 15.4x | 20.0x |
 
-rugaroo builds 61 of the 74 unmodified: 48 by default, 13 more with
-`--nil-check=runtime` (45 before decisions 381-388). On the 60 rows both ran,
-the totals are MRI 93.5s, YJIT 73.8s, rugaroo 6.76s (13.8x MRI), spinel 4.09s
+rugaroo builds 64 of the 74 unmodified: 48 by default, 16 more with
+`--nil-check=runtime` (45 before decisions 381-388). On the 63 rows both ran,
+the totals are MRI 97.6s, YJIT 75.4s, rugaroo 6.91s (14.1x MRI), spinel 4.26s
 (22.9x MRI); before decisions 381-388 that was 9.5x against 23.3x on 44 rows.
 The footer's ratios above are over different row sets, so spinel's there
-includes the 13 programs rugaroo does not build.
+includes the 10 programs rugaroo does not build.
 
 - **rugaroo ahead of spinel:** `bm_send_cfunc_block` (5.2x), `bm_rbs_items*`
   (1.9-2.5x), `bm_splay`, `bm_gcbench`, `bm_rbtree`, `bm_linked_list`,
-  `bm_threaded_render` (1.1-1.25x): the allocation and block-call rows, as in
+  `bm_threaded_render`, `bm_handle_readonly_param` (1.1-1.4x): the allocation and block-call rows, as in
   the main table. `bm_loops_times` and `bm_nil_recv_loop` are even.
 - **Closed by decision 387** (counted loops as Go `for` loops, in-place
   `Array#[]=`, unboxed compares): `bm_loops_times` 0.19s to 0.040s,
@@ -244,7 +244,7 @@ includes the 13 programs rugaroo does not build.
   `bm_life` (3x), `bm_so_lists` (2.7x: Array growth and `(1..n).to_a`).
 - Rows under 10 ms are mostly process start-up for both binaries.
 
-Why 26 do not compile by default, by the first error each reports (13 of them build with `--nil-check=runtime`):
+Why 26 do not compile by default, by the first error each reports (16 of them build with `--nil-check=runtime`):
 
 | cause | programs | |
 |---|---:|---|
@@ -260,9 +260,8 @@ rugaroo the most programs here: by default it makes a program prove `a[i]` is
 not `nil` before using it as the element type. `--nil-check=runtime` (decision
 393) puts a run-time check in its place, as spinel and MRI do, and is the
 program's choice; `NIL_CHECK=runtime[:name,...]` passes it to rugaroo only. With
-it, 13 of the 18 compile and print what MRI prints (the † rows). Of the other
-five, `bm_fannkuch` (loops forever) and `bm_stark_field` (wrong numbers)
+it, 16 of the 18 compile and print what MRI prints (the † rows; three of them
+also need `setbyte` on a String only they hold, decision 395). Of the other
+two, `bm_fannkuch` (loops forever) and `bm_stark_field` (wrong numbers)
 compile but hit #133: `t = a[i]; a[i] = a[j]; a[j] = t` swaps nothing, since
-`Array#[]` answers a pointer into the Array's storage; the other three
-(`handle_readonly_param`, `ruby_xor`, `str_readonly_param`) need
-`String#setbyte`.
+`Array#[]` answers a pointer into the Array's storage.
