@@ -29,16 +29,16 @@ func (c *Compiler) loadSigs(sources []Source) {
 		seen[dir] = true
 		c.loadSigDir(dir, false)
 	}
-	for _, path := range slices.Sorted(maps.Keys(c.parsed)) { // a foo.rbs beside foo.rb, as roundhouse and spinel write them (decision 404)
-		if side := strings.TrimSuffix(path, ".rb") + ".rbs"; side != path {
-			c.loadSigFile(side, true, true)
-		}
-	}
 	c.loadGemSigs()
 	for _, lib := range c.gemDirs { // a gem's own sig/ beside its lib/ (decision 306), after the vendored ones it may need patching by
 		if dir := filepath.Join(filepath.Dir(lib), "sig"); filepath.Base(lib) == "lib" && !seen[dir] {
 			seen[dir] = true
 			c.loadSigDir(dir, true)
+		}
+	}
+	for _, path := range slices.Sorted(maps.Keys(c.parsed)) { // a foo.rbs beside foo.rb, as roundhouse and spinel write them: hints, so last, any other sig wins (decision 404)
+		if side := strings.TrimSuffix(path, ".rb") + ".rbs"; side != path {
+			c.loadSigFile(side, true, true)
 		}
 	}
 }
