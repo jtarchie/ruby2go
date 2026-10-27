@@ -52,7 +52,7 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 
 ## Core classes — stable
 
-ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-26 (commit f06d141). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
+ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-26 (commit 8c16d5b). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
 
 | Class | Tier | ruby/spec pass (of those run) | Skipped | Notes |
 |---|---|---:|---:|---|
@@ -68,7 +68,7 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-26 (commit f06d141). 
 | `Range` | stable | 294 of 337 (87%) | 269 |  |
 | `Set` | stable | 69 of 78 (88%) | 98 | Core, as in MRI 4.0. |
 | `Struct`, `Data` | stable | 99 of 139 (71%) | 119 |  |
-| `Enumerable` | stable | 159 of 212 (75%) | 279 | Elements with equal keys can come out of `sort_by`, `max_by(n)` and `min_by(n)` in another order than MRI's, whose order depends on the platform's `qsort_r`. |
+| `Enumerable` | stable | 160 of 213 (75%) | 278 | Elements with equal keys can come out of `sort_by`, `max_by(n)` and `min_by(n)` in another order than MRI's, whose order depends on the platform's `qsort_r`. |
 | `Enumerator`, `Enumerator::Lazy`, arithmetic sequences | stable | 45 of 68 (66%) | 280 | `next`/`peek`, `Enumerator.new` generators. |
 | `Comparable` | stable | 0 of 46 (0%) | 8 | ruby/spec's fixture class doesn't compile, so every example errors; covered by rugaroo's own tests. |
 | `Regexp`, `MatchData` | stable | 250 of 339 (74%) | 101 | Ruby syntax translated to Go's regexp engines. |
