@@ -505,7 +505,7 @@ func (f *fctx) varToUnion(n parser.Node, e expr, t TVar, to TUnion) string {
 	return f.noteConv(n, f.c.unionFn(to)+"(any("+e.code+"))")
 }
 
-// plainOptEq: an Integer?, Float? or Symbol? against a value of its own class, whose == (the prelude's) is Go's.
+// plainOptEq: an Integer?, Float?, Symbol? or String? (decision 399) against a value of its own class, whose == (the prelude's) is Go's.
 func (f *fctx) plainOptEq(recv, arg Type) bool {
 	o, ok := recv.(TOpt)
 	if !ok {
@@ -516,7 +516,7 @@ func (f *fctx) plainOptEq(recv, arg Type) bool {
 		return false
 	}
 	switch c.C.RubyName {
-	case "Integer", "Float", "Symbol":
+	case "Integer", "Float", "Symbol", "String":
 	default:
 		return false
 	}

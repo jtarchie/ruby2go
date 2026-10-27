@@ -2292,4 +2292,71 @@ module StringTests
       assert_equal 5, g.size
     end
   end
+
+  # ASCII fast paths of #length, #[](i), #[](start, count) and String? == String (decision 399)
+  class StringAsciiIndexTest < Minitest::Test
+    def test_length
+      assert_equal 0, "".length
+      assert_equal 17, "abcdefghijklmnopq".length
+      assert_equal 17, "abcdefghijklmnopé".length + 0
+      assert_equal 3, "aéb".length
+      assert_equal 12, "日本語abcdefghi".length
+    end
+
+    def test_index_ascii_prefix
+      s = "abcdefghijklmnopé日本"
+      assert_equal "a", s[0]
+      assert_equal "p", s[15]
+      assert_equal "é", s[16]
+      assert_equal "日", s[17]
+      assert_equal "本", s[18]
+      assert_nil s[19]
+      assert_equal "本", s[-1]
+      t = "é" + "abcdefghij"
+      assert_equal "a", t[1]
+      assert_equal "j", t[10]
+      assert_nil t[11]
+    end
+
+    def test_index_invalid_utf8
+      b = "abcdefghij\xff"
+      assert_equal "j", b[9]
+      assert_equal 11, b.length
+      assert_equal "c", b[2]
+    end
+
+    def test_slice_ascii_prefix
+      s = "abcdefghijklmnopé日本"
+      assert_equal "cde", s[2, 3]
+      assert_equal "nopé", s[13, 4]
+      assert_equal "p", s[15, 1]
+      assert_equal "", s[19, 2]
+      assert_nil s[20, 1]
+      assert_equal "abcdefghij", "abcdefghij"[0, 100]
+      assert_equal "", "abc"[3, 5]
+      w = "abcdefghijé"
+      assert_equal 11, w.length
+      assert_equal "é", w[10]
+      assert_nil w[11]
+      assert_equal "jé", w[9, 2]
+      assert_equal "ij日", "abcdefghij日"[8, 5]
+      assert_nil "abc"[4, 1]
+      assert_nil "abc"[1, -1]
+      assert_equal "bc", "abc"[-2, 5]
+    end
+
+    def string_ascii_at(s, i) #: String?
+      s[i]
+    end
+
+    def test_opt_eq
+      s = "{{x}}"
+      assert string_ascii_at(s, 0) == "{"
+      refute string_ascii_at(s, 2) == "{"
+      refute string_ascii_at(s, 9) == "{"
+      assert string_ascii_at(s, 9) != "}"
+      assert string_ascii_at("é", 0) == "é"
+    end
+  end
+
 end

@@ -267,8 +267,16 @@ func rbASCIIMapBytes(s string, f func(byte) byte) string {
 	return b.String()
 }
 
-// rbASCII reports s is all ASCII, where a character is a byte.
+// rbASCII reports s is all ASCII, where a character is a byte: eight bytes a step (Go combines the loads), as
+// String#length and #[] ask it of the String on every call (decision 399).
 func rbASCII(s string) bool {
+	for len(s) >= 8 {
+		w := uint64(s[0]) | uint64(s[1])<<8 | uint64(s[2])<<16 | uint64(s[3])<<24 | uint64(s[4])<<32 | uint64(s[5])<<40 | uint64(s[6])<<48 | uint64(s[7])<<56
+		if w&0x8080808080808080 != 0 {
+			return false
+		}
+		s = s[8:]
+	}
 	for i := range len(s) {
 		if s[i] >= utf8.RuneSelf {
 			return false
@@ -703,6 +711,9 @@ func rbEachChar(s string) iter.Seq[string] {
 }
 
 func rbStrLen(s string) int {
+	if rbASCII(s) { // one pass, not a validity pass and then a rune count (decision 399)
+		return len(s)
+	}
 	if utf8.ValidString(s) {
 		return utf8.RuneCountInString(s)
 	}
@@ -853,6 +864,9 @@ var rbRadixPrefixes = map[string]int{"0b": 2, "0B": 2, "0o": 8, "0O": 8, "0x": 1
 //
 //go:noinline
 func rbStrAt(s String, i Integer) (String, bool) {
+	if i >= 0 && int(i) < len(s) && rbASCII(string(s[:i+1])) { // an ASCII prefix: character i is byte i, UTF-8 or binary (decision 399)
+		return rbNewStr(s, s[i:i+1]), true
+	}
 	if !rbValidUTF8(string(s)) { // ASCII-8BIT by decision 136: a byte is a character
 		return rbBinAt(s, i)
 	}
@@ -873,6 +887,15 @@ func rbStrAt(s String, i Integer) (String, bool) {
 //
 //go:noinline
 func rbStrSub(s String, start, count Integer) (String, bool) {
+	if start >= 0 && count >= 0 && int(start) <= len(s) { // an ASCII prefix through the end: characters are bytes (decision 399)
+		e := len(s)
+		if int(count) < e-int(start) {
+			e = int(start + count)
+		}
+		if rbASCII(string(s[:e])) {
+			return rbNewStr(s, s[start:e]), true
+		}
+	}
 	if !rbValidUTF8(string(s)) { // ASCII-8BIT by decision 136: bytes, not runes (patchelf's section data)
 		return rbBinSub(s, start, count)
 	}
