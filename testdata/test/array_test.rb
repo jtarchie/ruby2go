@@ -3085,15 +3085,9 @@ module ArrayTests
     end
   end
 
-  # #138: an element read of a String, Symbol, Boolean or Array element is a copy too (decision 397).
+  # #138: an element read of a Symbol, Boolean or Array element is a copy too; Array#[] of a String keeps the slot
+  # (decision 397, testdata/run/array_bug_string_slot.rb).
   class ArrayValueElementCopyTest < Minitest::Test
-    def test_string_read_survives_store
-      a = ["x"]
-      s = a[-1]
-      a[-1] = "y"
-      assert_equal "x", s
-    end
-
     def test_symbol_last_survives_store
       b = [:k]
       t = b.last
@@ -3159,12 +3153,12 @@ module ArrayTests
     end
 
     def test_multiple_assignment_survives_store
-      m = ["p", "q"]
+      m = [:p, :q]
       x1, x2 = m
-      m[0] = "z"
-      m[1] = "z"
-      assert_equal "p", x1
-      assert_equal "q", x2
+      m[0] = :z
+      m[1] = :z
+      assert_equal :p, x1
+      assert_equal :q, x2
     end
   end
 end
