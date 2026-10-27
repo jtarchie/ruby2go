@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -13,6 +14,11 @@ import (
 func (f *fctx) hoistLocals(scope int) {
 	if f.pass != 2 {
 		return
+	}
+	if scope == methodScope {
+		for _, name := range slices.Sorted(maps.Keys(f.ivarBufs)) {
+			f.emit("var %s []byte", ivarBuf(name))
+		}
 	}
 	for _, li := range sortedLocals(f.locals) {
 		if li.scope == scope && li.appended {

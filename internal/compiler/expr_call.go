@@ -23,7 +23,7 @@ func (f *fctx) whyUndefined(n parser.Node, t TClass, recv expr, name string) {
 		f.errorf(n, "undefined method %s for String: Strings are immutable in rugaroo, so assign the result of %s instead (decision 136)", name, plain)
 	}
 	if t.C.RubyName == "String" && stringMutators[name] {
-		f.errorf(n, "undefined method %s for String: Strings are immutable in rugaroo; build a new one (s += x, s = s.sub(...)), write into a StringIO (decision 58), or append to a String local nothing else holds (decision 382)", name)
+		f.errorf(n, "undefined method %s for String: Strings are immutable in rugaroo; build a new one (s += x, s = s.sub(...)), write into a StringIO (decision 58), or append to (decision 382) or setbyte (decision 396) a String local nothing else holds", name)
 	}
 	if name == "eval" {
 		f.errorf(n, "undefined method eval for %s: %s", recv.typ, noEval)

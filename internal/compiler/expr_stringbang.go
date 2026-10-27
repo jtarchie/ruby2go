@@ -40,6 +40,9 @@ func (f *fctx) genStringBang(n *parser.CallNode) (expr, bool) {
 	if e, ok := f.userAppend(n); ok {
 		return e, true
 	}
+	if e, ok := f.userSetbyte(n); ok {
+		return e, true
+	}
 	if e, ok := f.genOutBuffer(n); ok {
 		return e, true
 	}

@@ -2211,4 +2211,85 @@ module StringTests
       assert_equal "a", s.dup
     end
   end
+
+  class SetbyteGrid
+    attr_reader :cells #: String
+    attr_reader :size #: Integer
+
+    #: (Integer) -> void
+    def initialize(n)
+      @cells = "." * n
+      i = 0
+      while i < n
+        @cells.setbyte(i, 35) if i.even?
+        i += 1
+      end
+      @size = @cells.bytesize
+    end
+  end
+
+  class StringSetbyteTest < Minitest::Test
+    #: (String, String) -> String
+    def xor(a, b)
+      out = a.dup
+      i = 0
+      while i < out.bytesize
+        out.setbyte(i, (a.getbyte(i) || 0) ^ (b.getbyte(i) || 0))
+        i += 1
+      end
+      out
+    end
+
+    def test_xor_leaves_its_source
+      a = "hello"
+      b = "WORLD"
+      x = xor(a, b)
+      assert_equal "hello", a
+      assert_equal [63, 42, 62, 32, 43], x.bytes
+      assert_equal "hello", xor(x, b)
+    end
+
+    def test_masks_and_returns_the_argument
+      s = +"abc"
+      r = s.setbyte(0, 300)
+      assert_equal 300, r
+      s.setbyte(-1, 65)
+      assert_equal ",bA", s
+    end
+
+    def test_index_error
+      s = +"ab"
+      e = assert_raises(IndexError) { s.setbyte(2, 1) }
+      assert_equal "index 2 out of string", e.message
+      e = assert_raises(IndexError) { s.setbyte(-3, 1) }
+      assert_equal "index -3 out of string", e.message
+      assert_equal "ab", s
+    end
+
+    def test_copy_before_first_write_and_after_last
+      t = "xyz"
+      s = t.dup
+      4.times { |i| s.setbyte(i % 3, 97 + i) }
+      head = s[0, 2]
+      assert_equal "xyz", t
+      assert_equal "dbc", s
+      assert_equal "db", head
+    end
+
+    def test_mixed_with_append
+      s = +"ab"
+      s << "cd"
+      s.setbyte(1, 66)
+      s << "e"
+      assert_equal "aBcde", s
+    end
+
+    def test_ivar_built_in_initialize
+      g = SetbyteGrid.new(5)
+      h = SetbyteGrid.new(3)
+      assert_equal "#.#.#", g.cells
+      assert_equal "#.#", h.cells
+      assert_equal 5, g.size
+    end
+  end
 end

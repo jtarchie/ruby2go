@@ -124,8 +124,8 @@ rugaroo compiles a *closed world*: every class and method must be visible when
 the program compiles, and the binary has no interpreter. So there is no `eval`
 and no `define_method` in your own code (a gem's load-time `define_method` is
 compiled in). Strings are immutable Go strings, so `upcase!` is a compile
-error and `<<` works only on a local nothing else holds (built fresh, not
-stored or passed before its last append); build new strings or use `StringIO`. Integers are 64-bit and
+error and `<<` and `setbyte` work only on a local nothing else holds (built fresh, not
+stored or passed before its last change; `setbyte` also on an ivar built in `initialize`); build new strings or use `StringIO`. Integers are 64-bit and
 raise `RangeError` on overflow unless you opt into `--int-overflow=wrap` or
 `promote`. `Hash#[]` returns `T?`, so typed code checks for nil or uses
 `fetch`, unless you opt into `--nil-check=runtime`. Each of these trade-offs has a numbered decision in the

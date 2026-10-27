@@ -93,6 +93,7 @@ type fctx struct {
 	inMarker       bool                // markerCall's own Boolean arm: past its check (decision 241)
 	scopeRoot      parser.Node         // the method or program body genBody is generating: where an appended local's proof looks (decision 382)
 	appendProofs   map[localKey]string // appendWhy's answers for scopeRoot
+	ivarBufs       map[string]bool     // initialize's setbyte'd ivars, whose buffers hoistLocals declares (decision 396)
 }
 
 // genEnd is `END { }`: Kernel#at_exit with that block, registered the

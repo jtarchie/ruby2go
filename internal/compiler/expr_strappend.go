@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -37,6 +38,20 @@ var freshStrCalls = setOf("dup", "clone", "+", "*", "%", "join", "format", "spri
 	"capitalize", "swapcase", "strip", "lstrip", "rstrip", "chomp", "chop", "center", "ljust", "rjust", "reverse",
 	"tr", "delete", "squeeze", "sub", "gsub", "inspect")
 
+// scalarStrMethods return no String, so none shares the receiver's bytes: the only reads a setbyte target allows before its last write (decision 396).
+var scalarStrMethods = setOf("size", "length", "bytesize", "empty?", "getbyte", "bytes", "codepoints", "==", "!=", "eql?",
+	"hash", "<=>", "<", ">", "<=", ">=", "casecmp", "casecmp?", "include?", "start_with?", "end_with?", "index", "rindex",
+	"byteindex", "count", "match?", "ascii_only?", "valid_encoding?", "encoding", "frozen?", "nil?", "is_a?", "kind_of?",
+	"instance_of?", "respond_to?", "class", "to_i", "to_f", "hex", "oct", "ord", "sum", "!")
+
+// scalarArgCalls take a String argument and keep none of its bytes.
+var scalarArgCalls = setOf("==", "!=", "eql?", "include?", "start_with?", "end_with?", "<=>", "index", "rindex",
+	"casecmp", "casecmp?", "match?", "count")
+
+// selfFreeCalls are receiverless calls that cannot reach an ivar through self: initialize's setbyte proof allows only these (decision 396).
+var selfFreeCalls = setOf("puts", "print", "p", "pp", "warn", "raise", "fail", "format", "sprintf", "rand", "srand",
+	"sleep", "Integer", "Float", "loop", "require", "require_relative")
+
 func setOf(names ...string) map[string]bool {
 	m := make(map[string]bool, len(names))
 	for _, n := range names {
@@ -54,6 +69,8 @@ type appendProof struct {
 	root   parser.Node      // the scope: a method or program body, or the block whose local it is
 	rootFn *parser.CallNode // the call a block root belongs to
 	frozen bool             // the file freezes its literals
+	ivar   bool             // name is an ivar of initialize's self (decision 396)
+	strict bool             // the String is setbyte'd: no read may share its bytes before the seal (decision 396)
 	depth  int              // blocks entered below root
 	loops  []int            // end offsets of the loops and blocks enclosing the position, outermost first
 	later  int              // > 0 inside a block that may run after its call
@@ -89,6 +106,7 @@ func (f *fctx) proveAppend(key localKey) string {
 	if p.root == nil {
 		return "rugaroo cannot see the scope of `" + key.name + "`"
 	}
+	p.strict = setbyteOn(p.root, key.name)
 	if key.scope != methodScope {
 		walkNode(f.scopeRoot, func(n parser.Node) (bool, bool) {
 			if c, ok := n.(*parser.CallNode); ok && c.Block != nil && c.Block.GetLocation().StartOffset == key.scope {
@@ -108,13 +126,93 @@ func (f *fctx) proveAppend(key localKey) string {
 	} else {
 		p.walk(p.root, nil)
 	}
+	return p.verdict()
+}
+
+func (p *appendProof) verdict() string {
 	if p.bad != "" {
 		return p.bad
 	}
+	last := " before its last append"
+	if p.strict {
+		last = " before its last change"
+	}
 	for _, l := range p.leaks {
 		if l.off < p.seal {
-			return l.why + " before its last append"
+			return l.why + last
 		}
+	}
+	return ""
+}
+
+// setbyteOn: root calls setbyte on the local or ivar name.
+func setbyteOn(root parser.Node, name string) bool {
+	return anyNode(root, func(x parser.Node) bool {
+		c, ok := x.(*parser.CallNode)
+		if !ok || c.Name != "setbyte" {
+			return false
+		}
+		switch r := c.Receiver.(type) {
+		case *parser.LocalVariableReadNode:
+			return r.Name == name
+		case *parser.InstanceVariableReadNode:
+			return r.Name == name
+		}
+		return false
+	})
+}
+
+// ivarSetbyteWhy is "" when initialize may setbyte the ivar in place: first set fresh, and neither it nor self escapes before its last setbyte (decision 396).
+func (f *fctx) ivarSetbyteWhy(name string) string {
+	key := localKey{methodScope, name}
+	if why, ok := f.appendProofs[key]; ok {
+		return why
+	}
+	why := f.proveIvarSetbyte(name)
+	if f.appendProofs == nil {
+		f.appendProofs = map[localKey]string{}
+	}
+	f.appendProofs[key] = why
+	return why
+}
+
+func (f *fctx) proveIvarSetbyte(name string) string {
+	if f.m == nil || f.m.Name != "initialize" || f.m.Node == nil || f.scopeRoot == nil || f.scopeRoot != f.m.Node.Body {
+		return "`" + name + "` is changed outside initialize"
+	}
+	st, ok := f.scopeRoot.(*parser.StatementsNode)
+	if !ok {
+		return "rugaroo cannot follow initialize's body"
+	}
+	p := &appendProof{f: f, name: name, root: st, frozen: frozenLiteralComment.Match(f.f.Src), ivar: true, strict: true}
+	for _, s := range st.Body {
+		if !anyNode(s, func(x parser.Node) bool { return ivarNamed(x) == name }) {
+			continue
+		}
+		if w, ok := s.(*parser.InstanceVariableWriteNode); !ok || w.Name != name || !p.fresh(w.Value) {
+			return fmt.Sprintf("`%s` is not first assigned a new String in initialize (line %d)", name, p.line(s))
+		}
+		break
+	}
+	p.walk(st, nil)
+	return p.verdict()
+}
+
+// ivarNamed is the ivar a read or write node names, or "".
+func ivarNamed(n parser.Node) string {
+	switch t := n.(type) {
+	case *parser.InstanceVariableReadNode:
+		return t.Name
+	case *parser.InstanceVariableWriteNode:
+		return t.Name
+	case *parser.InstanceVariableOrWriteNode:
+		return t.Name
+	case *parser.InstanceVariableAndWriteNode:
+		return t.Name
+	case *parser.InstanceVariableOperatorWriteNode:
+		return t.Name
+	case *parser.InstanceVariableTargetNode:
+		return t.Name
 	}
 	return ""
 }
@@ -137,6 +235,10 @@ func (p *appendProof) mine(name string, depth uint32) bool {
 
 func (p *appendProof) walk(n parser.Node, stack []parser.Node) {
 	if n == nil || opensScope(n) {
+		return
+	}
+	if p.ivar {
+		p.walkIvar(n, stack)
 		return
 	}
 	switch t := n.(type) {
@@ -166,6 +268,44 @@ func (p *appendProof) walk(n parser.Node, stack []parser.Node) {
 			p.fail(t, "`%s` is bound to a String that something else may hold", p.name)
 		}
 		return
+	}
+	p.enter(n, stack)
+}
+
+// walkIvar is walk for initialize's ivar: self, its methods and its other ivars are how the String could escape.
+func (p *appendProof) walkIvar(n parser.Node, stack []parser.Node) {
+	switch t := n.(type) {
+	case *parser.InstanceVariableReadNode:
+		if t.Name == p.name {
+			p.read(t, stack)
+		}
+		return
+	case *parser.InstanceVariableWriteNode:
+		if t.Name == p.name && !p.fresh(t.Value) {
+			p.fail(t, "`%s` is assigned a String that something else may hold", p.name)
+		}
+	case *parser.InstanceVariableOrWriteNode, *parser.InstanceVariableAndWriteNode, *parser.InstanceVariableOperatorWriteNode,
+		*parser.InstanceVariableTargetNode:
+		if ivarNamed(n) == p.name {
+			p.fail(n, "`%s` is assigned a String that something else may hold", p.name)
+		}
+	case *parser.SelfNode:
+		p.leak(n, "self is used")
+	case *parser.SuperNode, *parser.ForwardingSuperNode:
+		p.leak(n, "super is called")
+	case *parser.YieldNode:
+		p.leak(n, "initialize yields")
+	case *parser.CallNode:
+		if t.Receiver == nil && !selfFreeCalls[t.Name] {
+			p.leak(n, fmt.Sprintf("`%s` is called on self", t.Name))
+		}
+	}
+	p.enter(n, stack)
+}
+
+// enter tracks the loops and blocks around n, then walks its children.
+func (p *appendProof) enter(n parser.Node, stack []parser.Node) {
+	switch t := n.(type) {
 	case *parser.WhileNode, *parser.UntilNode, *parser.ForNode:
 		p.loops = append(p.loops, endOf(n))
 		defer func() { p.loops = p.loops[:len(p.loops)-1] }()
@@ -255,18 +395,28 @@ func (p *appendProof) fresh(v parser.Node) bool {
 	return false
 }
 
-func (p *appendProof) read(n *parser.LocalVariableReadNode, stack []parser.Node) {
+func (p *appendProof) read(n parser.Node, stack []parser.Node) {
+	if len(stack) == 0 {
+		p.leak(n, fmt.Sprintf("`%s` is stored or passed", p.name))
+		return
+	}
 	parent := stack[len(stack)-1]
 	if p.later > 0 { // another goroutine or a later call would read the local while it is appended to
-		if c, ok := parent.(*parser.CallNode); !ok || c.Receiver != n || c.Name != "<<" && c.Name != "concat" {
+		if c, ok := parent.(*parser.CallNode); !ok || c.Receiver != n || c.Name != "<<" && c.Name != "concat" && c.Name != "setbyte" {
 			p.leak(n, fmt.Sprintf("`%s` is captured by a block that may run after its call returns", p.name))
 			return
 		}
 	}
 	if c, ok := parent.(*parser.CallNode); ok && c.Receiver == n {
 		switch {
-		case c.Name == "<<" || c.Name == "concat":
+		case c.Name == "setbyte":
+			p.changeAt(c)
+		case (c.Name == "<<" || c.Name == "concat") && !p.ivar:
 			p.appendAt(c, stack[:len(stack)-1])
+		case p.strict:
+			if !scalarStrMethods[c.Name] || c.Block != nil {
+				p.leak(n, fmt.Sprintf("`%s.%s` may share the String's bytes", p.name, c.Name))
+			}
 		case readOnlyStrMethods[c.Name] && c.Block == nil || c.Name == "each_char" || c.Name == "each_byte" || c.Name == "each_line":
 		default:
 			p.leak(n, fmt.Sprintf("`%s.%s` may keep, return or change the String", p.name, c.Name))
@@ -284,11 +434,7 @@ func (p *appendProof) appendAt(c *parser.CallNode, stack []parser.Node) {
 		p.fail(c, "`%s` is appended to inside a block that may run after its call returns", p.name)
 		return
 	}
-	end := endOf(c)
-	if len(p.loops) > 0 {
-		end = p.loops[0]
-	}
-	p.seal = max(p.seal, end)
+	p.sealAt(c)
 	top := parser.Node(c) // `s << a << b`: the chain's value is s itself
 	for len(stack) > 0 {
 		up, ok := stack[len(stack)-1].(*parser.CallNode)
@@ -300,6 +446,24 @@ func (p *appendProof) appendAt(c *parser.CallNode, stack []parser.Node) {
 	if why := p.use(top, stack); why != "" {
 		p.leak(top, "the value of `"+p.name+" <<` (the String itself)"+why[len("`"+p.name+"`"):])
 	}
+}
+
+// changeAt records a setbyte c on the target; its value is the byte argument, not the String.
+func (p *appendProof) changeAt(c *parser.CallNode) {
+	if p.later > 0 {
+		p.fail(c, "`%s` is changed inside a block that may run after its call returns", p.name)
+		return
+	}
+	p.sealAt(c)
+}
+
+// sealAt moves the seal past c, or past the outermost loop or block around it.
+func (p *appendProof) sealAt(c parser.Node) {
+	end := endOf(c)
+	if len(p.loops) > 0 {
+		end = p.loops[0]
+	}
+	p.seal = max(p.seal, end)
 }
 
 // use is why n's value (the local's String) may end up held elsewhere, or "" (stack ends at n's parent).
@@ -319,6 +483,9 @@ func (p *appendProof) use(n parser.Node, stack []parser.Node) string {
 		}
 		return p.use(t, up)
 	case *parser.EmbeddedStatementsNode:
+		if p.strict { // a lone `"#{s}"` may be s itself
+			return fmt.Sprintf("`%s` is interpolated", p.name)
+		}
 		return "" // interpolation copies
 	case *parser.IfNode:
 		if t.Predicate == n {
@@ -364,13 +531,21 @@ func (p *appendProof) use(n parser.Node, stack []parser.Node) string {
 				}
 			}
 		case *parser.CallNode:
-			if strArgCalls[g.Name] {
+			if p.argSafe(g) {
 				return ""
 			}
 			return fmt.Sprintf("`%s` is passed to %s", p.name, g.Name)
 		}
 	}
 	return held
+}
+
+// argSafe: g takes the String as an argument without keeping it (nor, for a setbyte target, any of its bytes).
+func (p *appendProof) argSafe(g *parser.CallNode) bool {
+	if !p.strict {
+		return strArgCalls[g.Name]
+	}
+	return scalarArgCalls[g.Name] || g.Receiver == nil && (g.Name == "puts" || g.Name == "print")
 }
 
 // userAppend compiles user code's `s << x` (and chains of it) or `s.concat(a, ...)` on a String local (decision 382).
@@ -431,6 +606,57 @@ func (f *fctx) userAppend(n *parser.CallNode) (expr, bool) {
 	v := f.genExpr(lv, nil)
 	return expr{code: v.code, typ: v.typ, stmt: true, done: true}, true
 }
+
+// userSetbyte compiles user code's `s.setbyte(i, b)` on a String local, or an ivar in initialize, that the proof clears (decision 396).
+func (f *fctx) userSetbyte(n *parser.CallNode) (expr, bool) {
+	if f.lenient() || n.Name != "setbyte" || n.Block != nil || n.IsSAFE_NAVIGATION() || f.c.classes["String"].lookup(n.Name) != nil {
+		return expr{}, false
+	}
+	var why, buf string
+	str := f.cls("String")
+	switch r := n.Receiver.(type) {
+	case *parser.LocalVariableReadNode:
+		if !typeEq(f.probeType(r, nil), str) {
+			return expr{}, false
+		}
+		why, buf = f.appendWhy(r.Name), appendBuf(r.Name)
+		if li := f.localInfo(r.Name); li != nil && why == "" {
+			li.appended = true
+		}
+	case *parser.InstanceVariableReadNode:
+		if !typeEq(f.probeType(r, nil), str) {
+			return expr{}, false
+		}
+		why, buf = f.ivarSetbyteWhy(r.Name), ivarBuf(r.Name)
+		if why == "" {
+			if f.ivarBufs == nil {
+				f.ivarBufs = map[string]bool{}
+			}
+			f.ivarBufs[r.Name] = true
+		}
+	default:
+		return expr{}, false
+	}
+	if why != "" {
+		f.errorf(n, "undefined method setbyte for String: Strings are immutable in rugaroo, and %s (decision 396)", why)
+	}
+	args := callArgs(n)
+	if len(args) != 2 || isSplat(args[0]) || isSplat(args[1]) {
+		f.errorf(n, "wrong number of arguments (given %d, expected 2) for String#setbyte", len(args))
+	}
+	intT := f.cls("Integer")
+	codes := [2]string{}
+	for j, a := range args { // MRI evaluates both before it checks the index
+		codes[j] = f.newTmp()
+		f.emit("%s := Integer(%s)", codes[j], f.coerce(a, f.genExpr(a, intT), intT))
+	}
+	_, write, _ := f.stringBangTarget(n, n.Receiver)
+	write(expr{code: fmt.Sprintf("rbStrSetbyte(&%s, %s, %s, %s)", buf, f.genExpr(n.Receiver, nil).code, codes[0], codes[1]), typ: str})
+	return expr{code: codes[1], typ: intT, stmt: true, done: true}, true
+}
+
+// ivarBuf is the Go name of initialize's buffer for a setbyte'd ivar, declared by hoistLocals.
+func ivarBuf(name string) string { return "rbBufIv_" + goLocalName(strings.TrimPrefix(name, "@")) }
 
 // appendBuf is the Go name of an appended local's buffer, declared with it by hoistLocals.
 func appendBuf(name string) string { return "rbBuf_" + goLocalName(name) }

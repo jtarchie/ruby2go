@@ -133,6 +133,65 @@ s = +"a"
 t = (s << "b")
 s << "c"
 puts t
+-- setbyte_shared.rb --
+# error: main.rb:5: undefined method setbyte for String: Strings are immutable in rugaroo, and `s.[]` may share the String's bytes on line 4 before its last change (decision 396)
+# rbs_inline: enabled
+s = +"abc"
+t = s[0, 2]
+s.setbyte(0, 65)
+puts t
+-- setbyte_interpolated.rb --
+# error: `s` is interpolated on line 4 before its last change
+# rbs_inline: enabled
+s = +"abc"
+t = "#{s}"
+s.setbyte(0, 65)
+puts t
+-- setbyte_param.rb --
+# error: `s` is a parameter, so the caller's String would see the append
+# rbs_inline: enabled
+#: (String) -> Integer
+def poke(s) = s.setbyte(0, 65)
+s = +"abc"
+poke(s)
+puts s
+-- setbyte_ivar_outside_initialize.rb --
+# error: `@buf` is changed outside initialize (decision 396)
+# rbs_inline: enabled
+class Buf
+  #: () -> void
+  def initialize = @buf = +"abc"
+
+  #: () -> Integer
+  def poke = @buf.setbyte(0, 65)
+end
+Buf.new.poke
+-- setbyte_ivar_self.rb --
+# error: `show` is called on self on line 7 before its last change
+# rbs_inline: enabled
+class Buf
+  #: () -> void
+  def initialize
+    @buf = +"abc"
+    show
+    @buf.setbyte(0, 65)
+  end
+
+  #: () -> void
+  def show = puts(@buf)
+end
+Buf.new
+-- setbyte_ivar_not_fresh.rb --
+# error: `@buf` is not first assigned a new String in initialize (line 6)
+# rbs_inline: enabled
+class Buf
+  #: (String) -> void
+  def initialize(s)
+    @buf = s
+    @buf.setbyte(0, 65)
+  end
+end
+Buf.new(+"abc")
 -- global_never_assigned.rb --
 # error: main.rb:3: global variable $nope is never assigned
 # rbs_inline: enabled

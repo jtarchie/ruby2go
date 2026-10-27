@@ -809,6 +809,26 @@ func rbStrAppend(buf *[]byte, s, x String) String {
 	return String(unsafe.String(unsafe.SliceData(b), len(b))) //nolint:gosec // buf's bytes up to here are never written again
 }
 
+// rbStrSetbyte is a proven `s.setbyte(i, v)` (decision 396): it writes inside bytes other Strings over buf could cover, so the proof that none exist is what keeps them unchanged.
+func rbStrSetbyte(buf *[]byte, s String, i, v Integer) String {
+	j := i
+	if j < 0 {
+		j += Integer(len(s))
+	}
+	if j < 0 || j >= Integer(len(s)) {
+		panic(NewIndexError(Ref(String(fmt.Sprintf("index %d out of string", i)))))
+	}
+	b := *buf
+	if len(b) != len(s) || unsafe.SliceData(b) != unsafe.StringData(string(s)) { //nolint:gosec // pointer compare only
+		b = make([]byte, len(s))
+		copy(b, s)
+		*buf = b
+		s = String(unsafe.String(unsafe.SliceData(b), len(b))) //nolint:gosec // only this builder writes buf, while nothing else shares it
+	}
+	b[j] = byte(v)
+	return s
+}
+
 // rbRuneOffset is the byte offset of rune k in s, or len(s) when s has exactly k runes; past that, len(s) and false.
 func rbRuneOffset(s string, k int) (int, bool) {
 	i := 0
