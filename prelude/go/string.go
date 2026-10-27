@@ -809,7 +809,7 @@ func rbStrAppend(buf *[]byte, s, x String) String {
 	return String(unsafe.String(unsafe.SliceData(b), len(b))) //nolint:gosec // buf's bytes up to here are never written again
 }
 
-// rbStrSetbyte is a proven `s.setbyte(i, v)` (decision 396): it writes inside bytes other Strings over buf could cover, so the proof that none exist is what keeps them unchanged.
+// rbStrSetbyte is a proven `s.setbyte(i, v)` (decision 395): it writes inside bytes other Strings over buf could cover, so the proof that none exist is what keeps them unchanged.
 func rbStrSetbyte(buf *[]byte, s String, i, v Integer) String {
 	j := i
 	if j < 0 {

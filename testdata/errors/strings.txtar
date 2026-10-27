@@ -134,7 +134,7 @@ t = (s << "b")
 s << "c"
 puts t
 -- setbyte_shared.rb --
-# error: main.rb:5: undefined method setbyte for String: Strings are immutable in rugaroo, and `s.[]` may share the String's bytes on line 4 before its last change (decision 396)
+# error: main.rb:5: undefined method setbyte for String: Strings are immutable in rugaroo, and `s.[]` may share the String's bytes on line 4 before its last change (decision 395)
 # rbs_inline: enabled
 s = +"abc"
 t = s[0, 2]
@@ -156,7 +156,7 @@ s = +"abc"
 poke(s)
 puts s
 -- setbyte_ivar_outside_initialize.rb --
-# error: `@buf` is changed outside initialize (decision 396)
+# error: `@buf` is changed outside initialize (decision 395)
 # rbs_inline: enabled
 class Buf
   #: () -> void

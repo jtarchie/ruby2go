@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# setbyte writes in place on a String nothing else holds: a fresh local, or an ivar built in initialize (decision 396).
+# setbyte writes in place on a String nothing else holds: a fresh local, or an ivar built in initialize (decision 395).
 
 #: (String, String) -> String
 def xor(data, key)

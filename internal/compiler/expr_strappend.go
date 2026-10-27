@@ -38,7 +38,7 @@ var freshStrCalls = setOf("dup", "clone", "+", "*", "%", "join", "format", "spri
 	"capitalize", "swapcase", "strip", "lstrip", "rstrip", "chomp", "chop", "center", "ljust", "rjust", "reverse",
 	"tr", "delete", "squeeze", "sub", "gsub", "inspect")
 
-// scalarStrMethods return no String, so none shares the receiver's bytes: the only reads a setbyte target allows before its last write (decision 396).
+// scalarStrMethods return no String, so none shares the receiver's bytes: the only reads a setbyte target allows before its last write (decision 395).
 // ponytail: by name; a per-method "always copies in Go" table would also allow upcase, center, ... before a write.
 var scalarStrMethods = setOf("size", "length", "bytesize", "empty?", "getbyte", "bytes", "codepoints", "==", "!=", "eql?",
 	"hash", "<=>", "<", ">", "<=", ">=", "casecmp", "casecmp?", "include?", "start_with?", "end_with?", "index", "rindex",
@@ -49,7 +49,7 @@ var scalarStrMethods = setOf("size", "length", "bytesize", "empty?", "getbyte", 
 var scalarArgCalls = setOf("==", "!=", "eql?", "include?", "start_with?", "end_with?", "<=>", "index", "rindex",
 	"casecmp", "casecmp?", "match?", "count")
 
-// selfFreeCalls are receiverless calls that cannot reach an ivar through self: initialize's setbyte proof allows only these (decision 396).
+// selfFreeCalls are receiverless calls that cannot reach an ivar through self: initialize's setbyte proof allows only these (decision 395).
 var selfFreeCalls = setOf("puts", "print", "p", "pp", "warn", "raise", "fail", "format", "sprintf", "rand", "srand",
 	"sleep", "Integer", "Float", "loop", "require", "require_relative")
 
@@ -70,8 +70,8 @@ type appendProof struct {
 	root   parser.Node      // the scope: a method or program body, or the block whose local it is
 	rootFn *parser.CallNode // the call a block root belongs to
 	frozen bool             // the file freezes its literals
-	ivar   bool             // name is an ivar of initialize's self (decision 396)
-	strict bool             // the String is setbyte'd: no read may share its bytes before the seal (decision 396)
+	ivar   bool             // name is an ivar of initialize's self (decision 395)
+	strict bool             // the String is setbyte'd: no read may share its bytes before the seal (decision 395)
 	depth  int              // blocks entered below root
 	loops  []int            // end offsets of the loops and blocks enclosing the position, outermost first
 	later  int              // > 0 inside a block that may run after its call
@@ -163,7 +163,7 @@ func setbyteOn(root parser.Node, name string) bool {
 	})
 }
 
-// ivarSetbyteWhy is "" when initialize may setbyte the ivar in place: first set fresh, and neither it nor self escapes before its last setbyte (decision 396).
+// ivarSetbyteWhy is "" when initialize may setbyte the ivar in place: first set fresh, and neither it nor self escapes before its last setbyte (decision 395).
 func (f *fctx) ivarSetbyteWhy(name string) string {
 	key := localKey{methodScope, name}
 	if why, ok := f.appendProofs[key]; ok {
@@ -608,7 +608,7 @@ func (f *fctx) userAppend(n *parser.CallNode) (expr, bool) {
 	return expr{code: v.code, typ: v.typ, stmt: true, done: true}, true
 }
 
-// userSetbyte compiles user code's `s.setbyte(i, b)` on a String local, or an ivar in initialize, that the proof clears (decision 396).
+// userSetbyte compiles user code's `s.setbyte(i, b)` on a String local, or an ivar in initialize, that the proof clears (decision 395).
 func (f *fctx) userSetbyte(n *parser.CallNode) (expr, bool) {
 	if f.lenient() || n.Name != "setbyte" || n.Block != nil || n.IsSAFE_NAVIGATION() || f.c.classes["String"].lookup(n.Name) != nil {
 		return expr{}, false
@@ -639,7 +639,7 @@ func (f *fctx) userSetbyte(n *parser.CallNode) (expr, bool) {
 		return expr{}, false
 	}
 	if why != "" {
-		f.errorf(n, "undefined method setbyte for String: Strings are immutable in rugaroo, and %s (decision 396)", why)
+		f.errorf(n, "undefined method setbyte for String: Strings are immutable in rugaroo, and %s (decision 395)", why)
 	}
 	args := callArgs(n)
 	if len(args) != 2 || isSplat(args[0]) || isSplat(args[1]) {
