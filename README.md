@@ -139,7 +139,7 @@ A compiled program does no interpretation. Over the workloads in
 [BENCHMARKS.md](BENCHMARKS.md) has the table, the comparison columns (YJIT,
 spinel, Crystal, hand-written Go) and where rugaroo trails. On spinel's own
 73-program suite it builds 65 unmodified (47 by default, 18 more with
-`--nil-check=runtime`) and runs them 14.6x faster than MRI (spinel: 23.9x on
+`--nil-check=runtime`) and runs them 17.0x faster than MRI (spinel: 24.1x on
 the same programs).
 
 Correctness is measured against MRI: every [example](examples/), minitest
