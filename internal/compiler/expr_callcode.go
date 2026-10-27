@@ -521,17 +521,14 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 		return "any(" + recv.code + ").(interface{ New(" + ps + ") " + ret + " }).New(" + argList + ")"
 	}
 	selfRecv := f.nilSelf(recv, m)
-	if code, ok := f.dispatchCall(e, selfRecv, argList); ok {
-		return code
-	}
-	if code, ok := inlineOperator(m, recv, args); ok {
+	if code, ok := f.directCall(e, selfRecv, recv, args, env); ok {
 		return code
 	}
 	// A primitive's non-direct method is called by its free func, never its forwarder, so the pruner drops unused forwarders (decision 86).
 	direct := f.c.isDirectMethod(m)
 	free := f.staticDef == m || m.generic() || (staticPrivate(m) && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
 		m.Owner.universal && mentionsSelf(m.Ret) || // an interface declares `-> self` as `any`; the free func returns Self
-		f.leafCall(recv) || exactMetaCall(recv, m)
+		f.leafCall(recv)
 	if !free && f.plainCalls && recv.code == "self" && f.owner != nil && !direct {
 		if code, ok := f.wrapperSelfCall(e, argList); ok {
 			return code
@@ -1027,6 +1024,21 @@ func (f *fctx) leafSelf(e expr, cls *Class) expr {
 // that runs, so the call is its free func, no forwarder (decision 359).
 func (f *fctx) leafCall(recv expr) bool {
 	return leafRecv(recv.typ) || isSelfVar(recv.typ) && f.owner != nil && f.owner.leaf()
+}
+
+// directCall is a call settled before the Go method or free func choice: a dispatcher, an operator body, a class constant's own method.
+func (f *fctx) directCall(e *entry, selfRecv, recv expr, args []string, env map[string]Type) (string, bool) {
+	argList := strings.Join(args, ", ")
+	if code, ok := f.dispatchCall(e, selfRecv, argList); ok {
+		return code, true
+	}
+	if code, ok := inlineOperator(e.M, recv, args); ok {
+		return code, true
+	}
+	if exactMetaCall(recv, e.M) {
+		return staticCallCode(e.M, f.typeArgs(e.M, recv.typ, env), selfRecv.code, argList), true
+	}
+	return "", false
 }
 
 // exactMetaCall: `Math.sqrt(x)` on the constant itself can only be Math's own singleton method, so its free func, which Go inlines, not a Math_MetaI call (decision 400).
