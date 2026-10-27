@@ -195,7 +195,7 @@ func (p *Ractor_Port) receiveOwned() any {
 }
 
 func rbNewRactor() *Ractor {
-	r := &Ractor{done: make(chan struct{}), id: int(rbRactorIDs.Add(1)) + 1, loc: rbCallerLoc()}
+	r := &Ractor{done: make(chan struct{}), id: int(rbRactorIDs.Add(1)) + 1, loc: rbCallerPCs()} // resolved by inspect (decision 403)
 	r.port = &Ractor_Port{owner: r, id: int(rbPortIDs.Add(1))}
 	return r
 }

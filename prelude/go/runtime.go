@@ -1606,14 +1606,15 @@ func rbCallerLoc() string { return rbCallerLocN(0) }
 
 // rbCallerLocN skips n user-code frames first (warn's uplevel:); "" past the stack.
 func rbCallerLocN(n int) string {
-	c := rbCallerPCs()
-	return c.loc(n)
+	var pcs [64]uintptr
+	return rbUserLoc(pcs[:runtime.Callers(2, pcs[:])], n)
 }
 
-// rbCallerFrames is a call stack as runtime.Callers records it: cheap to take, resolved to a file:line only when
-// something prints it (Thread#inspect; decision 403).
+// rbCallerFrames is the top of a call stack as runtime.Callers records it: cheap to take, resolved to a file:line
+// only when something prints it (Thread#inspect, Ractor#inspect; decision 403). The creating user frame sits a few
+// frames up, so 16 is room enough.
 type rbCallerFrames struct {
-	pcs [64]uintptr
+	pcs [16]uintptr
 	n   int
 }
 
@@ -1625,11 +1626,14 @@ func rbCallerPCs() rbCallerFrames {
 }
 
 // loc is the file:line of the first user-code frame after skipping n of them; "" past the stack or when nothing was recorded.
-func (c *rbCallerFrames) loc(n int) string {
-	if c.n == 0 {
+func (c *rbCallerFrames) loc(n int) string { return rbUserLoc(c.pcs[:c.n], n) }
+
+// rbUserLoc is the file:line of the (n+1)th user-code frame among pcs; "" when there is none.
+func rbUserLoc(pcs []uintptr, n int) string {
+	if len(pcs) == 0 {
 		return ""
 	}
-	frames := runtime.CallersFrames(c.pcs[:c.n])
+	frames := runtime.CallersFrames(pcs)
 	_, self, _, _ := runtime.Caller(0)
 	mod := strings.TrimSuffix(self, "prelude/go/runtime.go")
 	for {

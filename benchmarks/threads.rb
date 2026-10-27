@@ -2,7 +2,7 @@
 # Eight CPU-bound threads with no shared state: how far threads scale without a GVL (decision 26).
 
 N = 8
-ITER = 20_000_000
+ITER = 1_000_000
 out = Array.new(N, 0)
 threads = (0...N).map do |i|
   Thread.new do

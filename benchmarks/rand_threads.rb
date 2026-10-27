@@ -2,7 +2,7 @@
 # Eight threads drawing from Kernel#rand at once: a shared generator serializes them unless the program never seeds (decision 403).
 
 N = 8
-PER = 1_000_000
+PER = 200_000
 acc = Array.new(N, 0)
 threads = (0...N).map do |i|
   Thread.new do

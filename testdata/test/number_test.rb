@@ -474,6 +474,15 @@ module NumberTests
   end
 
   class NumberBooleanTest < Minitest::Test
+    # This file never seeds, so these draw from math/rand/v2 when it runs alone (decision 403).
+    def test_unseeded_rand_ranges
+      ints = 200.times.map { rand(10) }
+      floats = 200.times.map { rand }
+      rolls = 200.times.map { rand(1..6) }
+      assert_equal [true, true, true], [ints.all? { |i| i >= 0 && i < 10 }, floats.all? { |f| f >= 0.0 && f < 1.0 }, rolls.all? { |r| r >= 1 && r <= 6 }]
+      assert_equal true, Random.rand(3) < 3
+    end
+
     def test_bool_operators_and_conversions
       t = true #: bool
       f = false #: bool

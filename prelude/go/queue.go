@@ -334,14 +334,19 @@ func (q *rbBounded[E]) popUntil(nonBlock bool, timeout <-chan time.Time) *E {
 		case <-q.done:
 			q.waiting.Add(-1)
 			select {
-			case x := <-st.ch:
+			case x := <-q.state.Load().ch: // the current channel: a resize may have moved the items since st was read
 				return &x
 			default:
 				return nil
 			}
 		case <-timeout:
 			q.waiting.Add(-1)
-			return nil
+			select {
+			case x := <-q.state.Load().ch:
+				return &x
+			default:
+				return nil
+			}
 		case <-interrupt:
 			q.waiting.Add(-1)
 			rbTakeInterrupt() // raises on main
@@ -352,7 +357,7 @@ func (q *rbBounded[E]) popUntil(nonBlock bool, timeout <-chan time.Time) *E {
 // waitResize returns once no resize is running: setMax holds mu throughout.
 func (q *rbBounded[E]) waitResize() {
 	q.mu.Lock()
-	q.mu.Unlock() //nolint:staticcheck // an empty critical section: waiting for the holder is the point
+	defer q.mu.Unlock() // nothing to do inside: waiting for the holder is the point
 }
 
 func (q *rbBounded[E]) size() Integer { return Integer(len(q.state.Load().ch)) }

@@ -6,7 +6,7 @@
 # Ractor.current is the ractor registered for the running goroutine
 # (rbCurrentRactor, decision 104), main when none.
 
-# @go_type struct { port *Ractor_Port; done chan struct{}; val any; err any; name *String; id int; loc string; catches []any }
+# @go_type struct { port *Ractor_Port; done chan struct{}; val any; err any; name *String; id int; loc rbCallerFrames; catches []any }
 class Ractor < Object
   class Error < RuntimeError; end
   class IsolationError < Error; end
@@ -164,10 +164,11 @@ class Ractor < Object
       status = "terminated"
     default:
     }
-    if self.loc == "" {
+    loc := self.loc.loc(0)
+    if loc == "" {
       return String(fmt.Sprintf("#<Ractor:#%d %s>", self.id, status))
     }
-    return String(fmt.Sprintf("#<Ractor:#%d %s %s>", self.id, self.loc, status))
+    return String(fmt.Sprintf("#<Ractor:#%d %s %s>", self.id, loc, status))
   }
 
   #: () -> String
