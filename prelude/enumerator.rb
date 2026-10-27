@@ -429,7 +429,8 @@ class Enumerator
         for x := range self.seq {
           var y *U
           if i < len(other.s) {
-            y = &other.s[i]
+            v := other.s[i] // a copy, not the slot (decision 397)
+            y = &v
           }
           i++
           if !yield(Tuple2[E, *U]{x, y}) {

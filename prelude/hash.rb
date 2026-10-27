@@ -118,7 +118,8 @@ class Hash < Object
   #: () -> V?
   def default = %x{
     if self.hasDef {
-      return &self.defVal
+      v := self.defVal // a copy: a later `default=` must not show through (decision 397)
+      return &v
     }
     return nil
   }

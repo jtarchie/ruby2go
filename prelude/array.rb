@@ -186,7 +186,8 @@ class Array < Object
     if i < 0 || int(i) >= len(self.s) {
       return nil
     }
-    return &self.s[i]
+    x := self.s[i] // a copy: the slot's later writes must not show through (decision 397)
+    return &x
   }
 
   #: (Range[Integer]) -> Array[E]?
@@ -422,7 +423,8 @@ class Array < Object
     if i == len(self.s) {
       return nil
     }
-    return &self.s[i]
+    x := self.s[i] // a copy: the slot's later writes must not show through (decision 397)
+    return &x
   }
 
   #: () -> self
@@ -1233,7 +1235,8 @@ class Array < Object
   def rfind = %x{
     for i := len(self.s) - 1; i >= 0; i-- {
       if bool(blk(self.s[i])) {
-        return &self.s[i]
+        x := self.s[i] // a copy (decision 397)
+        return &x
       }
     }
     return nil

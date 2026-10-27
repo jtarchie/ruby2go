@@ -38,7 +38,8 @@ func rbSplatAt[E comparable](a *Array[E], i int) *E {
 	if a == nil || i >= len(a.s) {
 		return nil
 	}
-	return &a.s[i]
+	x := a.s[i] // a copy, not the slot (decision 397)
+	return &x
 }
 
 // rbIntEqGo says Integer#== is the prelude's, Go's ==; emitProgram flips it for a program that redefines it.
@@ -253,7 +254,8 @@ func rbTrailIdx[E comparable](a *Array[E], lead, trail, j int) *E {
 	if i >= len(a.s) {
 		return nil
 	}
-	return &a.s[i]
+	x := a.s[i] // a copy, not the slot (decision 397)
+	return &x
 }
 
 // rbAssoc is Array#assoc (at 0) and #rassoc (at 1): elements that are not Arrays are skipped.
@@ -262,7 +264,8 @@ func rbAssoc[E comparable](a *Array[E], key any, at int) *E {
 	for i := range a.s {
 		if x, ok := any(a.s[i]).(interface{ _ToAny() *Array[any] }); ok {
 			if xs := x._ToAny().s; len(xs) > at && bool(rbEq[any](xs[at], key)) {
-				return &a.s[i]
+				x := a.s[i] // a copy (decision 397)
+				return &x
 			}
 		}
 	}

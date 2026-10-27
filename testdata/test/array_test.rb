@@ -3084,4 +3084,87 @@ module ArrayTests
       assert_equal 2.5, f
     end
   end
+
+  # #138: an element read of a String, Symbol, Boolean or Array element is a copy too (decision 397).
+  class ArrayValueElementCopyTest < Minitest::Test
+    def test_string_read_survives_store
+      a = ["x"]
+      s = a[-1]
+      a[-1] = "y"
+      assert_equal "x", s
+    end
+
+    def test_symbol_last_survives_store
+      b = [:k]
+      t = b.last
+      b[0] = :j
+      assert_equal :k, t
+    end
+
+    def test_boolean_read_survives_store
+      c = [true, false]
+      u = c[0]
+      c[0] = false
+      assert_equal true, u
+    end
+
+    def test_array_element_survives_store
+      d = [[1], [2]]
+      v = d[0]
+      d[0] = [9]
+      assert_equal [1], v
+    end
+
+    def test_hash_string_value_survives_store
+      h = { a: "x" }
+      w = h[:a]
+      h[:a] = "y"
+      assert_equal "x", w
+    end
+
+    def test_hash_default_survives_store
+      h = Hash.new("dx") #: Hash[Symbol, String]
+      d = h.default
+      h.default = "dy"
+      assert_equal "dx", d
+    end
+
+    def test_string_swap
+      a = ["a", "b", "c"]
+      t = a[0]
+      a[0] = a[2]
+      a[2] = t
+      assert_equal ["c", "b", "a"], a
+    end
+
+    def test_symbol_swap
+      a = [:a, :b]
+      t = a[0]
+      a[0] = a[1]
+      a[1] = t
+      assert_equal [:b, :a], a
+    end
+
+    def test_rfind_bsearch_assoc_survive_store
+      f = ["a", "b", "c"]
+      r = f.rfind { |q| q < "c" }
+      b = f.bsearch { |q| q >= "b" }
+      f[1] = "z"
+      assert_equal "b", r
+      assert_equal "b", b
+      ys = [["k", "v"]]
+      as = ys.assoc("k")
+      ys[0] = ["k2", "v2"]
+      assert_equal ["k", "v"], as
+    end
+
+    def test_multiple_assignment_survives_store
+      m = ["p", "q"]
+      x1, x2 = m
+      m[0] = "z"
+      m[1] = "z"
+      assert_equal "p", x1
+      assert_equal "q", x2
+    end
+  end
 end
