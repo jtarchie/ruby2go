@@ -1384,6 +1384,8 @@ func rbWrapPanic(r any) any {
 		return r
 	case rbStop, rbThrow, rbBreak, rbIterBreak, *rbReturn:
 		return r
+	case rbIntOverflowed:
+		return e.err()
 	case RxUnsupported:
 		return NewRegexpError(Ref(String(e)))
 	case RxTimeout:
@@ -1535,7 +1537,17 @@ func rbFloatToI(f float64) Integer {
 //
 //go:noinline
 func rbIntOverflow(a Integer, op string, b Integer) {
-	panic(NewRangeError(Ref(String(fmt.Sprintf("%d %s %d overflows Integer (64-bit; no Bignum)", a, op, b)))))
+	panic(rbIntOverflowed{a, b, op}.err())
+}
+
+// rbIntOverflowed is panicked as a value, not built by a call: Go's inliner charges a call ~57 of 80, a panic 1; rbWrapPanic makes it the RangeError (decision 401).
+type rbIntOverflowed struct {
+	a, b Integer
+	op   string
+}
+
+func (o rbIntOverflowed) err() *RangeError {
+	return NewRangeError(Ref(String(fmt.Sprintf("%d %s %d overflows Integer (64-bit; no Bignum)", o.a, o.op, o.b))))
 }
 
 // rbIntMul is Integer#* past its 32-bit fast path, out of line too.

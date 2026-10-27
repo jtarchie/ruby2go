@@ -1457,6 +1457,47 @@ func TestInlinePush(t *testing.T) {
 	}
 }
 
+// TestIntOverflowValuePanic: no MRI oracle, MRI promotes to a Bignum; rescue, ensure and the top level must still see the RangeError (decision 401).
+func TestIntOverflowValuePanic(t *testing.T) {
+	requireToolchain(t)
+	t.Parallel()
+	src := "# int_overflow: raise\ndef add(a, b) = a + b\ndef neg(a) = -a\n\ndef check\n  yield\nrescue RangeError => e\n  puts \"#{e.class}: #{e.message} #{(e.backtrace || [])[0]}\"\nend\n\n" +
+		"big = 4611686018427387904\ncheck { add(big, big) }\ncheck { add(-big, -big - 1) }\ncheck { neg(-big - big) }\ncheck { (-big - big) / -1 }\n" +
+		"x = begin\n  add(big, big)\nrescue => e\n  e.class.name\nensure\n  puts \"ensure\"\nend\nputs x\nadd(big, big)\n"
+	gen := transpile(t, "overflow.rb", []byte(src))
+	code, err := os.ReadFile(filepath.Join(gen, "main.go")) //nolint:gosec // under t.TempDir()
+	if err != nil || !bytes.Contains(code, []byte("panic(rbIntOverflowed{")) {
+		t.Fatalf("Integer#+ no longer panics rbIntOverflowed (err %v)", err)
+	}
+	got := binOutput(t, gen, progIO{}, goBuild(t, gen, ""), nil)
+	const msg = " overflows Integer (64-bit; no Bignum)"
+	want := "RangeError: 4611686018427387904 + 4611686018427387904" + msg + " overflow.rb:2\n" +
+		"RangeError: -4611686018427387904 + -4611686018427387905" + msg + " overflow.rb:2\n" +
+		"RangeError: 0 - -9223372036854775808" + msg + " overflow.rb:3\n" +
+		"RangeError: -9223372036854775808 / -1" + msg + " overflow.rb:15\n" +
+		"ensure\nRangeError\n"
+	if stdout := regexp.MustCompile(`:in '[^']*'`).ReplaceAllString(got.Stdout, ""); stdout != want || got.Code != 1 || !strings.Contains(got.Stderr, "4611686018427387904 + 4611686018427387904"+msg+" (RangeError)") {
+		t.Errorf("exit %d\nstdout:\n%s\nwant:\n%s\nstderr:\n%s", got.Code, got.Stdout, want, got.Stderr)
+	}
+}
+
+// TestStructWriterFrozenConst: the writer's frozen check folds away only when nothing can freeze (decision 401).
+func TestStructWriterFrozenConst(t *testing.T) {
+	t.Parallel()
+	for src, want := range map[string]bool{
+		"P = Struct.new(:x) #: [Integer]\np = P.new(1)\np.x = 2\np p\n":           false,
+		"P = Struct.new(:x) #: [Integer]\np = P.new(1)\np.freeze\np.x = 2\np p\n": true,
+	} {
+		out, _, err := Compile(t.Context(), "main.rb", []byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bytes.Contains(out, []byte("Struct___FrozenFlagQ(self)")); got != want {
+			t.Errorf("%q: writer checks the flag = %v, want %v", src, got, want)
+		}
+	}
+}
+
 // TestSpinelBenchmarksTyped guards spinel's unmodified benchmarks against falling back to dynamic calls (decisions 355-357).
 func TestSpinelBenchmarksTyped(t *testing.T) {
 	t.Parallel()

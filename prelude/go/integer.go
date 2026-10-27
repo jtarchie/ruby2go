@@ -19,7 +19,7 @@ const rbIntWrap = false
 func rbIntCheckedplus(a, b Integer) Integer {
 	r := a + b
 	if (r > a) != (b > 0) {
-		rbIntOverflow(a, "+", b)
+		panic(rbIntOverflowed{a, b, "+"})
 	}
 	return r
 }
@@ -27,7 +27,7 @@ func rbIntCheckedplus(a, b Integer) Integer {
 func rbIntCheckedminus(a, b Integer) Integer {
 	r := a - b
 	if (r < a) != (b > 0) {
-		rbIntOverflow(a, "-", b)
+		panic(rbIntOverflowed{a, b, "-"})
 	}
 	return r
 }
@@ -41,7 +41,7 @@ func rbIntCheckedmul(a, b Integer) Integer {
 
 func rbIntCheckedneg(a Integer) Integer {
 	if a == math.MinInt {
-		rbIntOverflow(0, "-", a)
+		panic(rbIntOverflowed{0, a, "-"})
 	}
 	return -a
 }

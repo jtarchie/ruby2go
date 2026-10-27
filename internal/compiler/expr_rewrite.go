@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -36,7 +37,7 @@ func (f *fctx) genCallRewrite(n *parser.CallNode, expected Type) (expr, bool) {
 			return f.genExpr(&parser.OrNode{Location: n.Location, Left: isA, Right: &parser.NilNode{Location: n.Location}}, expected), true // nil when unrelated
 		}
 	}
-	if e, ok := f.genStringLowering(n); ok {
+	if e, ok := f.genFoldOrLower(n); ok {
 		return e, true
 	}
 	if e, ok := f.symbolToProc(n, expected); ok {
@@ -338,4 +339,18 @@ func (f *fctx) genStringLowering(n *parser.CallNode) (expr, bool) {
 		return e, true
 	}
 	return f.genStrChain(n)
+}
+
+// genFoldOrLower is a Struct writer's __frozen_flag? as a constant, else a String lowering.
+func (f *fctx) genFoldOrLower(n *parser.CallNode) (expr, bool) {
+	if f.frozenFlagConst(n) {
+		return expr{code: "Boolean(false)", typ: f.cls("Boolean")}, true
+	}
+	return f.genStringLowering(n)
+}
+
+// frozenFlagConst: a Go constant when nothing can freeze (rbObjFrozenFlag is nil), so Go's inliner skips the writer's raise (decision 401).
+func (f *fctx) frozenFlagConst(n *parser.CallNode) bool {
+	return n.Name == "__frozen_flag?" && n.Receiver == nil && n.Arguments == nil && n.Block == nil && f.m != nil &&
+		!f.c.objFreeze() && slices.Contains(f.m.Owner.allAncestors(), f.c.classes["Struct"])
 }

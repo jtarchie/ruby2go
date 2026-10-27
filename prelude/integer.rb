@@ -54,7 +54,7 @@ class Integer < Object
     }
     r := self + other
     if (r > self) != (other > 0) {
-      rbIntOverflow(self, "+", other)
+      panic(rbIntOverflowed{self, other, "+"})
     }
     return r
   }
@@ -66,7 +66,7 @@ class Integer < Object
     }
     r := self - other
     if (r < self) != (other > 0) {
-      rbIntOverflow(self, "-", other)
+      panic(rbIntOverflowed{self, other, "-"})
     }
     return r
   }
@@ -89,7 +89,7 @@ class Integer < Object
   #: (Integer) -> Integer
   def /(other) = %x{
     if other == -1 && self == math.MinInt {
-      rbIntOverflow(self, "/", other)
+      panic(rbIntOverflowed{self, other, "/"})
     }
     q := self / other
     if q*other != self && (self^other) < 0 {
@@ -150,7 +150,7 @@ class Integer < Object
       return -self
     }
     if self == math.MinInt {
-      rbIntOverflow(0, "-", self)
+      panic(rbIntOverflowed{0, self, "-"})
     }
     return -self
   }
