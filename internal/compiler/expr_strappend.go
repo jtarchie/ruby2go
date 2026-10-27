@@ -39,6 +39,7 @@ var freshStrCalls = setOf("dup", "clone", "+", "*", "%", "join", "format", "spri
 	"tr", "delete", "squeeze", "sub", "gsub", "inspect")
 
 // scalarStrMethods return no String, so none shares the receiver's bytes: the only reads a setbyte target allows before its last write (decision 396).
+// ponytail: by name; a per-method "always copies in Go" table would also allow upcase, center, ... before a write.
 var scalarStrMethods = setOf("size", "length", "bytesize", "empty?", "getbyte", "bytes", "codepoints", "==", "!=", "eql?",
 	"hash", "<=>", "<", ">", "<=", ">=", "casecmp", "casecmp?", "include?", "start_with?", "end_with?", "index", "rindex",
 	"byteindex", "count", "match?", "ascii_only?", "valid_encoding?", "encoding", "frozen?", "nil?", "is_a?", "kind_of?",

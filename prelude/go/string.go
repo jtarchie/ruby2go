@@ -823,7 +823,7 @@ func rbStrSetbyte(buf *[]byte, s String, i, v Integer) String {
 		b = make([]byte, len(s))
 		copy(b, s)
 		*buf = b
-		s = String(unsafe.String(unsafe.SliceData(b), len(b))) //nolint:gosec // only this builder writes buf, while nothing else shares it
+		s = String(unsafe.String(unsafe.SliceData(b), len(b))) //nolint:gosec // the proof: s is the only String over buf, and every later read of it follows this store
 	}
 	b[j] = byte(v)
 	return s
