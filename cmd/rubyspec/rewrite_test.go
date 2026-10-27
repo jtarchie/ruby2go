@@ -195,8 +195,13 @@ func TestDropStatement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := "describe \"x\" do\n  next unless ok?\n  input = <<'END'\n<% x %>\nEND\n  it \"a\" do\n  end\nend\n"
-	for _, line := range []int{2, 3} {
+	heredoc := "describe \"x\" do\n  next unless ok?\n  input = <<'END'\n<% x %>\nEND\n  it \"a\" do\n  end\nend\n"
+	block := "describe \"x\" do\n  evaluate <<-ruby do\n    a\n  ruby\n    b\n  end\n  evaluate <<-ruby do\n    c\n  ruby\n  end\nend\n" // the block spans its heredoc
+	for _, c := range []struct {
+		src  string
+		line int
+	}{{heredoc, 2}, {heredoc, 3}, {block, 2}} {
+		src, line := c.src, c.line
 		res, err := p.Parse(ctx, []byte(src))
 		if err != nil {
 			t.Fatal(err)

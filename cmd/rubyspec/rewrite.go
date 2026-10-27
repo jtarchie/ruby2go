@@ -58,15 +58,22 @@ func blankLoc(src string, l parser.Location) edit {
 // heredocOpener is a heredoc's `<<ID`, `<<~ID`, `<<-'ID'` or `<<"ID"`; one of its groups is the terminator.
 var heredocOpener = regexp.MustCompile(`<<[~-]?(?:'([A-Za-z_]\w*)'|"([A-Za-z_]\w*)"|([A-Za-z_]\w*))`)
 
-// heredocEnd is past the terminator line of the last heredoc src[s:e] opens: a node's span ends at the opener, so
-// blanking only the span would leave the body behind as code.
+// heredocEnd is past the terminator line of each heredoc src[s:e] opens, when that is past e: a node's span ends at the opener, so
+// blanking only the span would leave the body behind as code (a do-block after the opener already spans it).
 func heredocEnd(src string, s, e int) int {
-	for _, m := range heredocOpener.FindAllStringSubmatch(src[s:e], -1) {
-		lineEnd := strings.IndexByte(src[e:], '\n')
+	end := e
+	for _, m := range heredocOpener.FindAllStringSubmatchIndex(src[s:e], -1) {
+		lineEnd := strings.IndexByte(src[s+m[1]:], '\n')
 		if lineEnd < 0 {
-			return e
+			break
 		}
-		at := e + lineEnd + 1
+		id := ""
+		for g := 2; g < len(m); g += 2 {
+			if m[g] >= 0 {
+				id = src[s+m[g] : s+m[g+1]]
+			}
+		}
+		at := s + m[1] + lineEnd + 1
 		for at < len(src) {
 			next := strings.IndexByte(src[at:], '\n')
 			if next < 0 {
@@ -77,13 +84,13 @@ func heredocEnd(src string, s, e int) int {
 			if at < len(src) {
 				at++
 			}
-			if strings.TrimSpace(line) == m[1]+m[2]+m[3] {
-				e = at - 1
+			if strings.TrimSpace(line) == id {
+				end = max(end, at-1)
 				break
 			}
 		}
 	}
-	return e
+	return end
 }
 
 func span(l parser.Location) (int, int) { return l.StartOffset, l.StartOffset + l.Length }
