@@ -232,3 +232,18 @@ puts Rational(1, 4) ** Rational(1, 2)
 # error: main.rb: # int_overflow: "saturate" is not raise, wrap or promote
 # int_overflow: saturate
 puts 1
+-- nil_check_default_compile.rb --
+# error: possibly-nil Integer? where Integer is expected
+#: (Integer) -> Integer?
+def maybe(i) = i > 0 ? i : nil
+puts 1 + maybe(0)
+-- nil_check_compile_comment.rb --
+# error: possibly-nil String? where String is expected
+# nil_check: compile
+#: (Integer) -> String?
+def maybe(i) = i > 0 ? "s" : nil
+puts "x" + maybe(0)
+-- nil_check_bad_mode.rb --
+# error: main.rb: # nil_check: "lenient" is not compile or runtime
+# nil_check: lenient
+puts 1

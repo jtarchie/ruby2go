@@ -254,5 +254,36 @@ Why the other 26 do not compile, by the first error each reports:
 
 spinel compiles and runs all 74. The nil row is the design choice that costs
 rugaroo the most programs here: it makes a program prove `a[i]` is not `nil`
-before using it as the element type. With a run-time check in its place (an
-experiment, #129), 12 of those 18 compile and print what MRI prints.
+before using it as the element type. `--nil-check=runtime` (decision 393)
+puts a run-time check in its place, as spinel and MRI do, and is the program's
+choice, so the table above builds them without it. `NIL_CHECK=runtime[:name,...]`
+passes the flag to rugaroo only (spinel needs nothing). With it, 13 of the 18
+compile and print what MRI prints (median of 3, 2026-10-26):
+
+```sh
+NIL_CHECK=runtime RUNS=3 MARKDOWN=1 BENCH_DIR=$S/benchmark SPINEL=$S/spinel \
+  COLS=ruby,rugaroo,spinel scripts/benchmark bm_fasta bm_histogram ...
+```
+
+| workload | MRI | rugaroo | spinel |
+|---|---:|---:|---:|
+| bm_fasta | 0.062s | 0.008s | 0.006s |
+| bm_histogram | 19.47s | 1.09s | 0.41s |
+| bm_huffman | 0.11s | 0.028s | 0.012s |
+| bm_jekyll_lite | 0.054s | 0.007s | 0.005s |
+| bm_json_parse | 0.41s | 0.27s | 0.061s |
+| bm_matmul | 0.44s | 0.025s | 0.012s |
+| bm_nqueens | 0.31s | 0.027s | 0.013s |
+| bm_reader_index | 14.69s | 0.56s | 0.27s |
+| bm_sinatra_mini | 0.055s | 0.006s | 0.004s |
+| bm_spectral_norm | 0.10s | 0.009s | 0.005s |
+| bm_sudoku | 0.18s | 0.015s | 0.007s |
+| bm_template | 0.93s | 0.68s | 0.14s |
+| bm_tree_walker | 2.14s | 0.29s | 0.18s |
+| total | 38.95s | 3.01s | 1.13s |
+
+Of the other five, `bm_fannkuch` (loops forever) and `bm_stark_field` (wrong
+numbers) compile but hit #133: `t = a[i]; a[i] = a[j]; a[j] = t` swaps
+nothing, since `Array#[]` answers a pointer into the Array's storage; the
+other three (`handle_readonly_param`, `ruby_xor`, `str_readonly_param`) need
+`String#setbyte`.

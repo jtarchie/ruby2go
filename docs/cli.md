@@ -15,7 +15,7 @@ anything after the file is passed to the program. Tiers are as in
 
 ## Build flags
 
-For `run`, `build` and `gen`; `test` takes `-I`, `-int-overflow`, `-race`,
+For `run`, `build` and `gen`; `test` takes `-I`, `-int-overflow`, `-nil-check`, `-race`,
 `-gcflags` and `-work`.
 
 | Flag | Tier | What it does |
@@ -23,6 +23,7 @@ For `run`, `build` and `gen`; `test` takes `-I`, `-int-overflow`, `-race`,
 | `-o prog` | stable | `build` only: the output binary. |
 | `-I dir` | stable | A directory `require` searches for your own files, as `ruby -I`. Repeatable. |
 | `-int-overflow mode` | stable (`raise`, `wrap`), experimental (`promote`) | What an Integer result past 64 bits does: `raise` a `RangeError` (the default), `wrap` around as two's complement, or `promote` to a Bignum as MRI does. A `# int_overflow: mode` line in a file does the same for the arithmetic written in that file, whatever the flag says (decision 381). |
+| `-nil-check mode` | experimental (`runtime`) | A possibly-nil value (`T?`) where a `T` is expected: `compile` makes it a compile error until you check it (the default), `runtime` compiles it to a check that raises when it is nil, MRI's own `TypeError`/`ArgumentError` at a core operator (`"x" + nil`, `1 + nil`, `1 < nil`). A `# nil_check: mode` line in a file does the same for the code written in that file (decision 393). |
 | `-race` | stable | Build with Go's race detector. |
 | `-gcflags flags` | stable | Passed to `go build`; `-gcflags=-e` shows every Go error when generated code fails to build (please report those). |
 | `-work` | stable | Keep the temporary module (`main.go`, `go.mod`) and print its path as `WORK=...`. |
@@ -61,6 +62,7 @@ For the compiler:
 | Variable | What it does |
 |---|---|
 | `RUGAROO_INT_OVERFLOW=mode` | The same as `-int-overflow`. |
+| `RUGAROO_NIL_CHECK=mode` | The same as `-nil-check`. |
 | `RUGAROO_GEM_WARNINGS=1` | Also print warnings from gem files (hidden by default, since they are not yours to fix). |
 | `RUGAROO_UNTYPED_WHY=1` | Each dynamic-call warning also names where the untyped value came from. |
 | `RUGAROO_INFER_DEBUG=1` | Show what each round of parameter inference typed and what it could not compile. |

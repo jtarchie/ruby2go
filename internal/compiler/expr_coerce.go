@@ -223,6 +223,9 @@ func (f *fctx) coerceToUnion(n parser.Node, e expr, to TUnion) string {
 		if f.lenient() { // a gem's other union, or a T? where nil is not a member: checked on arrival (decisions 225, 233)
 			return f.c.unionFn(to) + "(" + f.coerce(n, e, TAny{}) + ")"
 		}
+		if isOpt(e.typ) && f.nilRuntime() {
+			return f.coerceToUnion(n, f.nilUnwrap(e, to), to)
+		}
 	}
 	f.errorf(n, "%s where %s is expected", e.typ, to)
 	return ""

@@ -97,7 +97,10 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-26 (commit f06d141). 
 `Integer` is 64-bit: overflow raises `RangeError` unless the program opts into
 `--int-overflow=wrap` (stable) or `promote` (Bignum, experimental;
 [decision 372](decisions/372.md)). `Hash#[]` is typed `V?`, so typed code
-nil-checks it or uses `fetch` ([decision 5](decisions/005.md)). `Marshal`
+nil-checks it or uses `fetch` ([decision 5](decisions/005.md)), unless the
+program opts into `--nil-check=runtime` or a `# nil_check: runtime` line
+(experimental; [decision 393](decisions/393.md)), which checks it when it runs
+as MRI does. `Marshal`
 round-trips its own bytes, not MRI's.
 
 ### Encodings
@@ -209,5 +212,6 @@ at build time, with your environment and no sandbox
 | `rugaroo run`, `build`, `gen`, `test` | stable | Shaped like `go run`/`build`/`test`; `-race`, `-gcflags`, `-o`, `-work`, `-I` pass through. |
 | `--int-overflow=raise` (default), `wrap` | stable | [decision 372](decisions/372.md) |
 | `--int-overflow=promote` | experimental | Bignum where MRI would grow past 64 bits ([126](../examples/126_bignum/main.rb)). |
+| `--nil-check=compile` (default), `runtime` | experimental (`runtime`) | A `T?` where `T` is expected raises on nil when it runs instead of failing the compile ([132](../examples/132_nil_check_runtime/main.rb), [decision 393](decisions/393.md)). |
 | `-trace`, `-trace-also`, `-rubyopt`, `-main` | experimental | See gems above. |
 | `rugaroo web` and the [playground](https://play.rugaroo.dev) | experimental | [decision 102](decisions/102.md) |

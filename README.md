@@ -110,7 +110,7 @@ their fixes. Or try it in the browser at the [playground](https://play.rugaroo.d
 | Classes, modules, blocks, procs, exceptions, pattern matching, `Struct`/`Data`, threads and fibers, Ruby 4.0 syntax, reflection the compiler can answer (`send`, `method_missing`, `const_get`, `instance_variable_get`) | stable |
 | Core classes: `String`, `Array`, `Hash`, `Integer`, `Float`, `Range`, `Set`, `Enumerable`, `Regexp`, `Time`, `File`, `IO`, `Kernel`, ... (Array 87%, Hash 88%, String 77% of the ruby/spec examples that run; per class in docs/support.md) | stable |
 | Standard library: `json`, `csv`, `date`, `time`, `net/http`, `webrick`, `socket`, `fileutils`, `optparse`, `logger`, `erb`, `bigdecimal`, `rexml`, `minitest` and about 25 more | stable |
-| Gems compiled from source (rack, Cuba, pairing_heap; kramdown and liquid through `-trace`), `fiddle`, `sqlite3`, `yaml` (loads by Psych's rules; dump text is not libyaml's), `openssl` (RSA verify only), Sorbet signatures, `Ractor`, `--int-overflow=promote` | experimental |
+| Gems compiled from source (rack, Cuba, pairing_heap; kramdown and liquid through `-trace`), `fiddle`, `sqlite3`, `yaml` (loads by Psych's rules; dump text is not libyaml's), `openssl` (RSA verify only), Sorbet signatures, `Ractor`, `--int-overflow=promote`, `--nil-check=runtime` | experimental |
 | `eval`, `define_method` in your own code, in-place String mutation, encodings beyond ten | not supported |
 
 [docs/support.md](docs/support.md) lists every feature, core class and
@@ -128,7 +128,7 @@ error and `<<` works only on a local nothing else holds (built fresh, not
 stored or passed before its last append); build new strings or use `StringIO`. Integers are 64-bit and
 raise `RangeError` on overflow unless you opt into `--int-overflow=wrap` or
 `promote`. `Hash#[]` returns `T?`, so typed code checks for nil or uses
-`fetch`. Each of these trade-offs has a numbered decision in the
+`fetch`, unless you opt into `--nil-check=runtime`. Each of these trade-offs has a numbered decision in the
 [design record](docs/design.md); [docs/support.md](docs/support.md#language--not-supported)
 lists them with workarounds.
 

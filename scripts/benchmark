@@ -12,6 +12,7 @@
 #   RUNS=9 MARKDOWN=1 scripts/benchmark  # the README table
 #   BENCH_DIR=/path/to/spinel/benchmark COLS=ruby,yjit,rugaroo,spinel scripts/benchmark  # spinel's own suite
 #   INT_OVERFLOW=promote:bm_pidigits,bm_bigint_fib ...   # --int-overflow for both compilers (all, or the named), where the file has no magic comment
+#   NIL_CHECK=runtime:bm_fasta,bm_matmul ...   # --nil-check for rugaroo only (all, or the named): spinel checks nil at run time already
 #
 # A workload with a `# trace: why` line builds with `rugaroo build -trace`, as an example with one does. spinel
 # (github.com/matz/spinel) is used when SPINEL names it or it is on PATH; crystal and go when on PATH.
@@ -59,9 +60,9 @@ def quiet(*cmd, **opts)
   status.success?
 end
 
-# INT_OVERFLOW=mode for every workload, or mode:name,name for some
-def int_overflow(name)
-  mode, names = ENV.fetch("INT_OVERFLOW", "").split(":", 2)
+# INT_OVERFLOW (or another variable) as mode for every workload, or mode:name,name for some
+def int_overflow(name, var = "INT_OVERFLOW")
+  mode, names = ENV.fetch(var, "").split(":", 2)
   mode if mode && !mode.empty? && (names.nil? || names.split(",").include?(name))
 end
 
@@ -87,6 +88,8 @@ def builders(tmp)
       bin = File.join(dir, "rugaroo_#{name}")
       trace = File.read(src).match?(/^# trace: /) ? ["-trace"] : [] # a gem that loads by computed name (example 123's kramdown)
       mode = (m = int_overflow(name)) ? ["--int-overflow=#{m}"] : [] # a suite without the magic comment
+      nil_check = int_overflow(name, "NIL_CHECK")
+      mode << "--nil-check=#{nil_check}" if nil_check
       quiet(rugaroo, "build", *trace, *mode, "-o", bin, src, chdir: ROOT) ? [bin] : nil
     end,
     "spinel" => lambda do |name, src, dir|
