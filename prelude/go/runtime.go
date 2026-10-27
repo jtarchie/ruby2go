@@ -1558,17 +1558,6 @@ func (o rbIntOverflowed) err() *RangeError {
 	return NewRangeError(Ref(String(fmt.Sprintf("%d %s %d overflows Integer (64-bit; no Bignum)", o.a, o.op, o.b))))
 }
 
-// rbIntMul is Integer#* past its 32-bit fast path, out of line too.
-//
-//go:noinline
-func rbIntMul(a, b Integer) Integer {
-	r, ok := rbIntMulOk(a, b)
-	if !ok {
-		rbIntOverflow(a, "*", b)
-	}
-	return r
-}
-
 // rbIntMulOk is a*b and whether it fits: the signed high word of the
 // 128-bit product must be the low word's sign extension.
 func rbIntMulOk(a, b Integer) (Integer, bool) {

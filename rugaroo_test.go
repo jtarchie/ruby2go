@@ -1463,12 +1463,13 @@ func TestIntOverflowValuePanic(t *testing.T) {
 	t.Parallel()
 	src := "# int_overflow: raise\ndef add(a, b) = a + b\ndef neg(a) = -a\n\ndef check\n  yield\nrescue RangeError => e\n  puts \"#{e.class}: #{e.message} #{(e.backtrace || [])[0]}\"\nend\n\n" +
 		"big = 4611686018427387904\ncheck { add(big, big) }\ncheck { add(-big, -big - 1) }\ncheck { neg(-big - big) }\ncheck { (-big - big) / -1 }\n" +
+		"def mul(a, b) = a * b\ncheck { mul(big, 2) }\ncheck { mul(-big - big, -1) }\ncheck { mul(-1, -big - big) }\nputs mul(-big, 2)\nputs mul(1099511627776, 1048576)\ncheck { mul(4294967296, 2147483648) }\n" +
 		"x = begin\n  add(big, big)\nrescue => e\n  e.class.name\nensure\n  puts \"ensure\"\nend\nputs x\n" +
 		"def inner(b)\n  add(b, b)\nrescue ZeroDivisionError\n  0\nend\ncheck { inner(big) }\nadd(big, big)\n"
 	gen := transpile(t, "overflow.rb", []byte(src))
 	code, err := os.ReadFile(filepath.Join(gen, "main.go")) //nolint:gosec // under t.TempDir()
-	if err != nil || !bytes.Contains(code, []byte("panic(rbIntOverflowed{")) {
-		t.Fatalf("Integer#+ no longer panics rbIntOverflowed (err %v)", err)
+	if err != nil || !bytes.Contains(code, []byte("panic(rbIntOverflowed{")) || bytes.Contains(code, []byte("rbIntMul(")) {
+		t.Fatalf("Integer#+ or #* no longer panics rbIntOverflowed (err %v)", err)
 	}
 	got := binOutput(t, gen, progIO{}, goBuild(t, gen, ""), nil)
 	const msg = " overflows Integer (64-bit; no Bignum)"
@@ -1476,6 +1477,11 @@ func TestIntOverflowValuePanic(t *testing.T) {
 		"RangeError: -4611686018427387904 + -4611686018427387905" + msg + " overflow.rb:2\n" +
 		"RangeError: 0 - -9223372036854775808" + msg + " overflow.rb:3\n" +
 		"RangeError: -9223372036854775808 / -1" + msg + " overflow.rb:15\n" +
+		"RangeError: 4611686018427387904 * 2" + msg + " overflow.rb:16\n" +
+		"RangeError: -9223372036854775808 * -1" + msg + " overflow.rb:16\n" +
+		"RangeError: -1 * -9223372036854775808" + msg + " overflow.rb:16\n" +
+		"-9223372036854775808\n1152921504606846976\n" +
+		"RangeError: 4294967296 * 2147483648" + msg + " overflow.rb:16\n" +
 		"ensure\nRangeError\n" +
 		"RangeError: 4611686018427387904 + 4611686018427387904" + msg + " overflow.rb:2\n" // through a rescue that did not match: the overflow's own frames
 	if stdout := regexp.MustCompile(`:in '[^']*'`).ReplaceAllString(got.Stdout, ""); stdout != want || got.Code != 1 || !strings.Contains(got.Stderr, "4611686018427387904 + 4611686018427387904"+msg+" (RangeError)") {

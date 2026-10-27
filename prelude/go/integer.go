@@ -6,6 +6,7 @@ package prelude
 import (
 	"errors"
 	"math"
+	"math/bits"
 	"strconv"
 	"strings"
 )
@@ -33,10 +34,14 @@ func rbIntCheckedminus(a, b Integer) Integer {
 }
 
 func rbIntCheckedmul(a, b Integer) Integer {
+	r := a * b
 	if (uint64(a)+1<<31)|(uint64(b)+1<<31) >= 1<<32 {
-		return rbIntMul(a, b)
+		hi, _ := bits.Mul64(uint64(a), uint64(b))
+		if Integer(hi)-(a>>63&b)-(b>>63&a) != r>>63 {
+			panic(rbIntOverflowed{a, b, "*"})
+		}
 	}
-	return a * b
+	return r
 }
 
 func rbIntCheckedneg(a Integer) Integer {

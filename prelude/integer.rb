@@ -71,16 +71,23 @@ class Integer < Object
     return r
   }
 
-  # Operands within 32 bits cannot overflow; only larger ones pay for the check.
+  # Operands within 32 bits cannot overflow; only larger ones pay for the
+  # check: the 128-bit product's signed high word must be the low word's sign
+  # extension. bits.Mul64 is an instruction, and the failure is a panic, so
+  # no call rejoins the hot path (decision 400).
   #: (Integer) -> Integer
   def *(other) = %x{
     if rbIntWrap {
       return self * other
     }
+    r := self * other
     if (uint64(self)+1<<31)|(uint64(other)+1<<31) >= 1<<32 {
-      return rbIntMul(self, other)
+      hi, _ := bits.Mul64(uint64(self), uint64(other))
+      if Integer(hi)-(self>>63&other)-(other>>63&self) != r>>63 {
+        panic(rbIntOverflowed{self, other, "*"})
+      }
     }
-    return self * other
+    return r
   }
 
   # Ruby floors; Go truncates. A zero divisor is Go's own divide panic,
