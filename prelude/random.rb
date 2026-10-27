@@ -15,22 +15,19 @@ class Random < Object
   #: () -> Integer
   def self.new_seed = %x{ rbNewSeed() }
 
+  # On the default generator (decision 403: lock-free unless the program can seed); a negative bound is an error here, unlike Kernel#rand's.
   #: (Integer) -> Integer
-  def self.rand(n) = %x{ rbDefaultRandom.Rand(n) }
+  def self.rand(n) = %x{
+    rbRandArg(n)
+    return Integer(rbRandInt(int(n)))
+  }
 
   #: () -> Float
-  def self.__rand_0 = %x{ Float(rbDefaultRandom.mt.real()) }
+  def self.__rand_0 = %x{ Float(rbRandFloat()) }
 
   # Kernel#srand on the class: returns the previous seed.
   #: (?Integer) -> Integer
-  def self.srand(seed = 0) = %x{
-    old := rbDefaultRandom.seed
-    if seed == 0 {
-      seed = rbNewSeed()
-    }
-    rbDefaultRandom = rbNewRandom(seed)
-    return old
-  }
+  def self.srand(seed = 0) = %x{ rbSrand(seed) }
 
   #: () -> Integer
   def seed = %x{ self.seed }
@@ -94,25 +91,27 @@ module Kernel
       n = -n
     }
     rbRandArg(n)
-    return Integer(rbDefaultRandom.mt.upto(int(n)))
+    return Integer(rbRandInt(int(n)))
   }
 
   #: () -> Float
-  def __rand_0 = %x{ Float(rbDefaultRandom.mt.real()) }
+  def __rand_0 = %x{ Float(rbRandFloat()) }
 
   #: (Range[Integer]) -> Integer
-  def __rand_range(r) = Random.__default.rand(r)
+  def __rand_range(r) = %x{
+    b, e := r.b, r.e
+    if !r.excl {
+      e++
+    }
+    if e <= b {
+      panic(NewArgumentError(Ref(String("invalid argument - " + string(r.Inspect())))))
+    }
+    return b + Integer(rbRandInt(int(e-b)))
+  }
 
   # Returns the previous seed, as MRI.
   #: (?Integer) -> Integer
-  def srand(seed = 0) = %x{
-    old := rbDefaultRandom.seed
-    if seed == 0 {
-      seed = rbNewSeed()
-    }
-    rbDefaultRandom = rbNewRandom(seed)
-    return old
-  }
+  def srand(seed = 0) = %x{ rbSrand(seed) }
 end
 
 class Array

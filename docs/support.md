@@ -30,7 +30,7 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 | `require_relative`, `require` with `-I`, `autoload` | [89](../examples/89_require_relative/main.rb), [90](../examples/90_load_path/main.rb), [118](../examples/118_autoload/main.rb) | The path must be a string literal at a file's top level. |
 | `at_exit`, `trap`, `freeze`/`frozen?` | [72](../examples/72_freeze/main.rb), [75](../examples/75_trap/main.rb) | |
 | Types: rbs-inline `#:` annotations, `.rbs` files in `sig/` (with overloads), union types, inference | [20](../examples/20_untyped/main.rb), [34](../examples/34_inferred_returns/main.rb), [101](../examples/101_inferred_params/main.rb), [104](../examples/104_union_types/main.rb), [107](../examples/107_rbs_sig/main.rb), [117](../examples/117_rbs_overloads/main.rb) | Inline overloads (`#\|`) are not supported; put them in a `.rbs` file. A union member must be a class, tuple, proc or nil, not a module ([decision 385](decisions/385.md)). |
-| Threads, `Queue`, `Mutex`, `Monitor`, `Fiber`, enumerator generators | [23](../examples/23_threads/main.rb), [42](../examples/42_queues/main.rb), [79](../examples/79_monitor/main.rb), [92](../examples/92_generators/main.rb) | Goroutines and channels underneath; programs that start goroutines are built with `-race` in the tests. |
+| Threads, `Queue`, `Mutex`, `Monitor`, `Fiber`, enumerator generators | [23](../examples/23_threads/main.rb), [42](../examples/42_queues/main.rb), [79](../examples/79_monitor/main.rb), [92](../examples/92_generators/main.rb) | Goroutines and channels underneath, a Fiber an `iter.Pull` coroutine, and `rand` lock-free unless the program seeds (decision 403); programs that start goroutines are built with `-race` in the tests. |
 
 ## Language — experimental
 
@@ -84,7 +84,7 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-27 (commit 7c2e5b6). 
 | `Proc`, `Method`, `UnboundMethod` | stable | 85 of 230 (37%) | 168 |  |
 | `Module`, `Class` | stable | 186 of 323 (58%) | 781 | No `define_method` or runtime reopening in user code. |
 | `BasicObject`, `Object`, `nil`, `true`, `false` | stable | 66 of 114 (58%) | 69 |  |
-| `Thread`, `Queue`, `SizedQueue`, `Mutex`, `ThreadGroup` | stable | 156 of 223 (70%) | 247 | Goroutines and channels. |
+| `Thread`, `Queue`, `SizedQueue`, `Mutex`, `ThreadGroup` | stable | 156 of 223 (70%) | 247 | Goroutines and channels; `SizedQueue` is a Go channel (decision 403). |
 | `Fiber` | stable | 25 of 66 (38%) | 122 |  |
 | `Signal`, `Process` | stable | 35 of 79 (44%) | 237 | `trap`, `Process.kill`, `spawn`, `wait`. |
 | `Marshal` | stable | 29 of 255 (11%) | 97 | Round-trips its own bytes, not MRI's, so specs that compare bytes fail. |

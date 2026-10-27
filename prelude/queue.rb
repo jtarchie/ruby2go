@@ -204,18 +204,18 @@ class Queue < Object
 end
 
 # @rbs generic E
-# @go_type struct { q *rbQueue[E] }
+# @go_type struct { q *rbBounded[E] }
 class SizedQueue < Object
   #: [X] (Integer) -> SizedQueue[X]
   def self.new(max) = %x{
     if max <= 0 {
       panic(NewArgumentError(Ref(String("queue size must be positive"))))
     }
-    return &SizedQueue[X]{q: newRbQueue[X](int(max))}
+    return &SizedQueue[X]{q: newRbBounded[X](int(max))}
   }
 
   #: () -> Integer
-  def max = %x{ Integer(self.q.max) }
+  def max = %x{ Integer(self.q.max.Load()) }
 
   #: (Integer) -> Integer
   def max=(m)

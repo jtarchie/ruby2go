@@ -2,7 +2,7 @@
 
 require "minitest/autorun"
 
-# Fiber (decision 140): one goroutine per fiber, handed control over channels, against MRI.
+# Fiber (decisions 140, 403): a coroutine per fiber (iter.Pull), against MRI.
 module FiberTests
   class FiberTest < Minitest::Test
     def test_resume_and_yield
@@ -65,6 +65,37 @@ module FiberTests
       err = assert_raises(ArgumentError) { boom.resume }
       assert_equal "boom", err.message
       refute boom.alive?
+    end
+
+    def fiber_step(x)
+      Fiber.yield x
+    end
+
+    # Fiber.yield from a method the body calls, a raise after a yield, a fiber resumed from inside a thread.
+    def test_yield_deep_and_late_raise
+      deep = Fiber.new do
+        a = fiber_step(1)
+        fiber_step(a + 1)
+        :end
+      end
+      assert_equal [1, 11, :end], [deep.resume, deep.resume(10), deep.resume]
+
+      late = Fiber.new do
+        Fiber.yield :ok
+        raise ArgumentError, "late"
+      end
+      assert_equal :ok, late.resume
+      err = assert_raises(ArgumentError) { late.resume }
+      assert_equal "late", err.message
+      refute late.alive?
+
+      in_thread = Thread.new do
+        f = Fiber.new { Fiber.yield Fiber.current.alive?; :done }
+        [f.resume, f.resume, f.alive?]
+      end
+      assert_equal [true, :done, false], in_thread.value
+      many = Fiber.new { loop { Fiber.yield 1 } }
+      assert_equal 1000, 1000.times.sum { many.resume }
     end
 
     def test_nested

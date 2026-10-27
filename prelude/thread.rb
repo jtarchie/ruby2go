@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; quiet atomic.Bool; name atomic.Pointer[String]; loc string; locals sync.Map; fiddleErrno atomic.Int64; tvars sync.Map; group atomic.Pointer[ThreadGroup]; catches []any; pid int; errinfo atomic.Pointer[any] }
+# @go_type struct { done chan struct{}; err any; val any; aborting atomic.Bool; quiet atomic.Bool; name atomic.Pointer[String]; loc rbCallerFrames; locals sync.Map; fiddleErrno atomic.Int64; tvars sync.Map; group atomic.Pointer[ThreadGroup]; catches []any; pid int; errinfo atomic.Pointer[any] }
 class Thread < Object
   # The block's value is kept for #value, untyped: Thread is not generic.
   #: () { () -> untyped } -> Thread
@@ -220,10 +220,11 @@ class Thread < Object
         status = "aborting"
       }
     }
-    if self.loc == "" {
+    loc := self.loc.loc(0)
+    if loc == "" {
       return String(fmt.Sprintf("#<Thread:%p %s>", self, status))
     }
-    return String(fmt.Sprintf("#<Thread:%p %s %s>", self, self.loc, status))
+    return String(fmt.Sprintf("#<Thread:%p %s %s>", self, loc, status))
   }
 
   # "run", "aborting", false (finished) or nil (unhandled exception); MRI's "sleep" is not reported (decision 45).

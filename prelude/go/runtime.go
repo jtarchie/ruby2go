@@ -1606,8 +1606,30 @@ func rbCallerLoc() string { return rbCallerLocN(0) }
 
 // rbCallerLocN skips n user-code frames first (warn's uplevel:); "" past the stack.
 func rbCallerLocN(n int) string {
-	var pcs [64]uintptr
-	frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs[:])])
+	c := rbCallerPCs()
+	return c.loc(n)
+}
+
+// rbCallerFrames is a call stack as runtime.Callers records it: cheap to take, resolved to a file:line only when
+// something prints it (Thread#inspect; decision 403).
+type rbCallerFrames struct {
+	pcs [64]uintptr
+	n   int
+}
+
+// rbCallerPCs records the caller's stack.
+func rbCallerPCs() rbCallerFrames {
+	var c rbCallerFrames
+	c.n = runtime.Callers(2, c.pcs[:])
+	return c
+}
+
+// loc is the file:line of the first user-code frame after skipping n of them; "" past the stack or when nothing was recorded.
+func (c *rbCallerFrames) loc(n int) string {
+	if c.n == 0 {
+		return ""
+	}
+	frames := runtime.CallersFrames(c.pcs[:c.n])
 	_, self, _, _ := runtime.Caller(0)
 	mod := strings.TrimSuffix(self, "prelude/go/runtime.go")
 	for {

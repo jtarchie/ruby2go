@@ -4,6 +4,7 @@
 package prelude
 
 import (
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -229,3 +230,178 @@ func (c *rbCondVar) wake(all bool) {
 type Queue_Any interface{ _ToAny() *Queue[any] }
 
 type SizedQueue_Any interface{ _ToAny() *SizedQueue[any] }
+
+// rbBounded is SizedQueue: a bounded Go channel, so a push or pop is one channel operation with no lock to contend on
+// (decision 403). Resizing (max=) swaps in a new channel: it raises resizing, so no push starts on either channel,
+// waits out the pushes already past that check, moves the old channel's items over (poppers may still take from
+// it meanwhile), then publishes the new one; whoever was blocked on the old one wakes through its gen and waits for
+// the resize to finish. So no item is lost or reordered. close never closes the channel (a racing push would
+// panic): done wakes the blocked instead.
+type rbBounded[E any] struct {
+	state    atomic.Pointer[rbBoundedState[E]]
+	mu       sync.Mutex // max=, close and clear, one at a time
+	closed   atomic.Bool
+	done     chan struct{} // closed by close: a blocked push raises ClosedQueueError, a blocked pop drains then answers nil
+	inflight atomic.Int64  // pushes between checking resizing and finishing their send, which setMax waits out
+	resizing atomic.Bool   // set by setMax while it moves items: a push waits for it instead of sending
+	waiting  atomic.Int64  // goroutines blocked in push or pop, for num_waiting
+	max      atomic.Int64
+}
+
+type rbBoundedState[E any] struct {
+	ch  chan E
+	gen chan struct{} // closed when this state is replaced
+}
+
+func newRbBounded[E any](max int) *rbBounded[E] {
+	q := &rbBounded[E]{done: make(chan struct{})}
+	q.max.Store(int64(max))
+	q.state.Store(&rbBoundedState[E]{ch: make(chan E, max), gen: make(chan struct{})})
+	return q
+}
+
+func (q *rbBounded[E]) push(x E) {
+	for {
+		if q.closed.Load() {
+			panic(NewClosedQueueError(Ref(String("queue closed"))))
+		}
+		q.inflight.Add(1)
+		if q.resizing.Load() { // both are sequentially consistent: either setMax sees this push in flight or it sees resizing
+			q.inflight.Add(-1)
+			q.waitResize()
+			continue
+		}
+		st := q.state.Load()
+		select {
+		case st.ch <- x:
+			q.inflight.Add(-1)
+			return
+		default:
+		}
+		q.waiting.Add(1)
+		select {
+		case st.ch <- x:
+			q.waiting.Add(-1)
+			q.inflight.Add(-1)
+			return
+		case <-st.gen: // resized: retry on the new channel
+			q.waiting.Add(-1)
+			q.inflight.Add(-1)
+			q.waitResize()
+		case <-q.done:
+			q.waiting.Add(-1)
+			q.inflight.Add(-1)
+			panic(NewClosedQueueError(Ref(String("queue closed"))))
+		}
+	}
+}
+
+// pop blocks until an item arrives; nil once the queue is closed and empty (or empty with nonBlock, which raises in MRI).
+func (q *rbBounded[E]) pop(nonBlock bool) *E {
+	return q.popUntil(nonBlock, nil)
+}
+
+// popDeadline is pop with a wall-clock deadline: nil if it passes before an item arrives or the queue closes.
+func (q *rbBounded[E]) popDeadline(deadline time.Time) *E {
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	return q.popUntil(false, timer.C)
+}
+
+func (q *rbBounded[E]) popUntil(nonBlock bool, timeout <-chan time.Time) *E {
+	for {
+		st := q.state.Load()
+		select {
+		case x := <-st.ch:
+			return &x
+		default:
+		}
+		if nonBlock {
+			panic(NewThreadError(Ref(String("queue empty"))))
+		}
+		var interrupt <-chan struct{} // Ctrl-C wakes main's wait (decision 60); a nil channel never fires
+		if rbGoID() == rbMainGoID {
+			interrupt = rbInterruptC()
+		}
+		q.waiting.Add(1)
+		select {
+		case x := <-st.ch:
+			q.waiting.Add(-1)
+			return &x
+		case <-st.gen: // resized: retry on the new channel
+			q.waiting.Add(-1)
+			q.waitResize()
+		case <-q.done:
+			q.waiting.Add(-1)
+			select {
+			case x := <-st.ch:
+				return &x
+			default:
+				return nil
+			}
+		case <-timeout:
+			q.waiting.Add(-1)
+			return nil
+		case <-interrupt:
+			q.waiting.Add(-1)
+			rbTakeInterrupt() // raises on main
+		}
+	}
+}
+
+// waitResize returns once no resize is running: setMax holds mu throughout.
+func (q *rbBounded[E]) waitResize() {
+	q.mu.Lock()
+	q.mu.Unlock() //nolint:staticcheck // an empty critical section: waiting for the holder is the point
+}
+
+func (q *rbBounded[E]) size() Integer { return Integer(len(q.state.Load().ch)) }
+
+func (q *rbBounded[E]) close() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !q.closed.Swap(true) {
+		close(q.done)
+	}
+}
+
+func (q *rbBounded[E]) isClosed() bool { return q.closed.Load() }
+
+func (q *rbBounded[E]) clear() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	ch := q.state.Load().ch
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
+}
+
+// setMax replaces the channel with one of the new capacity (or the current length, if more is held: those items
+// stay, and pushes block until pops bring the queue under max), wakes what is blocked on the old one, and moves
+// the old items over once every push that read the old state has finished with it.
+func (q *rbBounded[E]) setMax(n int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.resizing.Store(true)
+	defer q.resizing.Store(false)
+	old := q.state.Load()
+	close(old.gen) // blocked pushers and poppers let go of the old channel
+	for q.inflight.Load() != 0 {
+		runtime.Gosched()
+	}
+	q.max.Store(int64(n))
+	st := &rbBoundedState[E]{ch: make(chan E, max(n, len(old.ch))), gen: make(chan struct{})}
+	for moving := true; moving; {
+		select {
+		case x := <-old.ch:
+			st.ch <- x
+		default:
+			moving = false
+		}
+	}
+	q.state.Store(st)
+}

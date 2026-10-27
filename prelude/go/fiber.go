@@ -4,6 +4,7 @@
 package prelude
 
 import (
+	"iter"
 	"sync"
 )
 
@@ -20,22 +21,15 @@ func (s rbFiberState) String() string {
 	return [...]string{"created", "resumed", "suspended", "terminated"}[s]
 }
 
-// rbFiberMsg is what a fiber hands its resumer: a Fiber.yield's values, or the block's value or exception at the end.
-type rbFiberMsg struct {
-	val  any
-	err  any
-	done bool
-}
-
 var (
-	rbFiberOf    sync.Map // goroutine id → the *Fiber it runs, for Fiber.current and Fiber.yield (decision 104)
+	rbFiberOf    sync.Map // goroutine id → the *Fiber it runs, for catch/throw's tag list (decision 104)
 	rbRootFibers sync.Map // *Thread → its root *Fiber
 )
 
-// rbCurrentFiber is the fiber this goroutine runs, else the running thread's root fiber.
+// rbCurrentFiber is the fiber this goroutine runs (its tag's, decision 403), else the running thread's root fiber.
 func rbCurrentFiber() *Fiber {
-	if f, ok := rbFiberOf.Load(rbGoID()); ok {
-		return f.(*Fiber)
+	if t := (*rbGoTag)(rbGetGoTag()); t != nil && t.fiber != nil {
+		return t.fiber
 	}
 	f, _ := rbRootFibers.LoadOrStore(rbCurrentThread(), &Fiber{state: rbFiberResumed})
 	return f.(*Fiber)
@@ -53,6 +47,8 @@ func rbFiberPack(vals []any) any {
 }
 
 // resume hands control to f until it yields or ends; its exception re-raises here. The checks and messages are MRI's.
+// The body runs as a coroutine (iter.Pull, decision 403): resume is one next() call, Fiber.yield one yield() call,
+// so the switch is a coroutine handoff, not a goroutine wake through channels.
 func (f *Fiber) resume(args []any) any {
 	cur := rbCurrentFiber()
 	switch {
@@ -64,26 +60,30 @@ func (f *Fiber) resume(args []any) any {
 		panic(NewFiberError(Ref(String("attempt to resume a resuming fiber"))))
 	}
 	if f.state == rbFiberCreated {
-		id := rbGoID()
+		parent := rbGoID()
 		rbSpawned.Store(true)
-		go f.run(id)
+		f.next, f.stop = iter.Pull(func(yield func(any) bool) { f.run(parent, yield) })
 	}
 	f.state = rbFiberResumed
-	f.in <- rbFiberPack(args)
-	m := <-f.out
-	f.state = rbFiberSuspended
-	if m.done {
+	f.arg = rbFiberPack(args)
+	v, ok := f.next()
+	if !ok {
 		f.state = rbFiberDead
+		f.stop()
+		if err := f.err; err != nil {
+			f.err = nil
+			panic(err)
+		}
+		return f.val
 	}
-	if m.err != nil {
-		panic(m.err)
-	}
-	return m.val
+	f.state = rbFiberSuspended
+	return v
 }
 
-// run is the fiber's goroutine: it belongs to the thread and ractor of the goroutine that first resumed it.
-func (f *Fiber) run(parent int64) {
-	id := rbTagGoroutine()
+// run is the fiber's body on its coroutine's goroutine, which belongs to the thread and ractor of the goroutine that
+// first resumed it. The block's value or exception is kept for the resume that sees the coroutine end.
+func (f *Fiber) run(parent int64, yield func(any) bool) {
+	id := rbTagGoroutineFiber(f)
 	rbFiberOf.Store(id, f)
 	defer rbFiberOf.Delete(id)
 	if t, ok := rbThreadOf.Load(parent); ok {
@@ -94,25 +94,22 @@ func (f *Fiber) run(parent int64) {
 		rbRactorOf.Store(id, r)
 		defer rbRactorOf.Delete(id)
 	}
-	arg := <-f.in
-	var m rbFiberMsg
 	defer func() {
 		if r := recover(); r != nil {
-			m.err = rbWrapPanic(rbCaptureBacktrace(r))
+			f.err = rbWrapPanic(rbCaptureBacktrace(r))
 		}
-		m.done = true
-		f.out <- m
 	}()
-	m.val = f.blk(arg)
+	f.yield = yield
+	f.val = f.blk(f.arg)
 }
 
 // rbFiberYield is Fiber.yield: hand vals to the resumer and wait for the next resume's arguments.
 func rbFiberYield(vals []any) any {
-	v, ok := rbFiberOf.Load(rbGoID())
-	if !ok {
+	t := (*rbGoTag)(rbGetGoTag())
+	if t == nil || t.fiber == nil {
 		panic(NewFiberError(Ref(String("attempt to yield on a not resumed fiber"))))
 	}
-	f := v.(*Fiber)
-	f.out <- rbFiberMsg{val: rbFiberPack(vals)}
-	return <-f.in
+	f := t.fiber
+	f.yield(rbFiberPack(vals))
+	return f.arg
 }

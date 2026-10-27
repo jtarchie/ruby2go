@@ -6,6 +6,7 @@ package prelude
 import (
 	"crypto/rand"
 	"encoding/binary"
+	mrand "math/rand/v2"
 	"slices"
 	"strconv"
 	"sync"
@@ -134,6 +135,43 @@ func rbNewRandom(seed Integer) *Random {
 }
 
 var rbDefaultRandom = rbNewRandom(rbNewSeed())
+
+// rbRandSeeded is whether the program can seed the default generator: true only when rbSrand survives pruning, by
+// rbRandSeededMark's initializer, so it is decided at compile time by what the program reaches (decision 403). A
+// seeded program draws Kernel#rand and Random.rand from the shared MT19937 under its lock, so `srand(1); rand` matches
+// MRI; an unseeded one draws from math/rand/v2's per-P generators, with no lock to contend on across threads, since
+// no output can depend on a sequence nobody can reproduce.
+var (
+	rbRandSeeded     bool
+	rbRandSeededMark = func() bool { rbRandSeeded = true; return true }()
+)
+
+// rbSrand is Kernel#srand and Random.srand: reseeds the default generator and answers the old seed, as MRI.
+func rbSrand(seed Integer) Integer {
+	_ = rbRandSeededMark // names the marker, so a program that can reach srand keeps every draw on the shared generator
+	old := rbDefaultRandom.seed
+	if seed == 0 {
+		seed = rbNewSeed()
+	}
+	rbDefaultRandom = rbNewRandom(seed)
+	return old
+}
+
+// rbRandInt is Kernel#rand(n) for n > 0: uniform in [0, n).
+func rbRandInt(n int) int {
+	if rbRandSeeded {
+		return rbDefaultRandom.mt.upto(n)
+	}
+	return mrand.IntN(n)
+}
+
+// rbRandFloat is Kernel#rand with no bound: uniform in [0, 1).
+func rbRandFloat() float64 {
+	if rbRandSeeded {
+		return rbDefaultRandom.mt.real()
+	}
+	return mrand.Float64()
+}
 
 func rbShuffle[E any](xs []E, m *rbMT) {
 	for i := len(xs); i > 0; {

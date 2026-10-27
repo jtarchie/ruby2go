@@ -882,6 +882,60 @@ module StdlibTests
       filler.join
       assert_equal 0, sq.num_waiting
     end
+
+    # SizedQueue is a Go channel (decision 403): max= swaps it under blocked pushers, close wakes poppers, order holds.
+    def test_sized_queue_channel
+      sq = SizedQueue.new(2) #: SizedQueue[Integer]
+      sq << 1
+      sq << 2
+      pusher = Thread.new { sq.push(3) }
+      until sq.num_waiting > 0
+      end
+      sq.max = 4
+      pusher.join
+      sq << 4
+      assert_equal [4, 4, 0], [sq.max, sq.size, sq.num_waiting]
+      sq.max = 1
+      assert_equal [1, 2, 3, 4], 4.times.map { sq.pop }
+      assert_equal 0, sq.size
+
+      waiter = Thread.new { sq.pop }
+      until sq.num_waiting > 0
+      end
+      sq.close
+      assert_nil waiter.value
+      err = begin
+        sq.push(5)
+        nil
+      rescue ClosedQueueError => e
+        e.class
+      end
+      assert_equal ClosedQueueError, err
+
+      drained = SizedQueue.new(3) #: SizedQueue[Integer]
+      drained << 7
+      drained << 8
+      drained.close
+      assert_equal [7, 8, nil], [drained.pop, drained.pop, drained.pop]
+      assert_nil SizedQueue.new(1).pop(timeout: 0.01)
+      assert_raises(ThreadError) { SizedQueue.new(1).pop(true) }
+
+      busy = SizedQueue.new(8) #: SizedQueue[Integer]
+      producers = 4.times.map { |i| Thread.new { 500.times { |j| busy << (i * 500 + j) } } }
+      got = [] #: Array[Integer]
+      lock = Mutex.new
+      consumers = 3.times.map do
+        Thread.new do
+          while (v = busy.pop)
+            lock.synchronize { got << v }
+          end
+        end
+      end
+      producers.each(&:join)
+      busy.close
+      consumers.each(&:join)
+      assert_equal (0...2000).to_a, got.sort
+    end
   end
 
   # Was testdata/run/time_mid.rb.
@@ -2445,6 +2499,15 @@ module StdlibTests
       old = Random.srand(5)
       assert_equal 5, Random.srand(7)
       assert_equal 7, Random.srand(old)
+    end
+
+    # A program that seeds keeps MRI's sequence on every thread (decision 403).
+    def test_srand_sequence_across_threads
+      srand(42)
+      got = [rand(1000)]
+      Thread.new { got.push(rand(1000), rand(1..6), Random.rand(50)) }.join
+      srand(42)
+      assert_equal got, [rand(1000), rand(1000), rand(1..6), Random.rand(50)]
     end
   end
 end

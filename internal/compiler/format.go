@@ -16,12 +16,15 @@ import (
 	"strings"
 )
 
+// stdImportAlias is the name a std package is imported under when its own name is taken (stdImports' key for it).
+var stdImportAlias = map[string]string{"math/rand/v2": "mrand"}
+
 // stdImports replaces goimports, which runs the go command; a package missing here fails `go build` with "undefined: name".
 var stdImports = map[string]string{
 	"big": "math/big", "bits": "math/bits", "binary": "encoding/binary", "bufio": "bufio", "bytes": "bytes", "cmp": "cmp", "context": "context",
 	"errors": "errors", "exec": "os/exec", "fmt": "fmt", "fnv": "hash/fnv", "fs": "io/fs", "filepath": "path/filepath", "http": "net/http",
 	"io": "io", "iter": "iter", "json": "encoding/json", "maphash": "hash/maphash", "maps": "maps", "math": "math", "mime": "mime", "tls": "crypto/tls",
-	"net": "net", "netip": "net/netip", "os": "os", "rand": "crypto/rand", "regexp": "regexp",
+	"net": "net", "netip": "net/netip", "os": "os", "rand": "crypto/rand", "mrand": "math/rand/v2", "regexp": "regexp",
 	"runtime": "runtime", "signal": "os/signal", "syscall": "syscall", "slices": "slices", "sort": "sort", "strconv": "strconv",
 	"strings": "strings", "sync": "sync", "atomic": "sync/atomic",
 	"base64": "encoding/base64", "hex": "encoding/hex", "md5": "crypto/md5", "sha1": "crypto/sha1",
@@ -185,6 +188,10 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	var imp strings.Builder
 	imp.WriteString("\nimport (\n")
 	for _, p := range slices.Sorted(maps.Keys(used)) {
+		if alias := stdImportAlias[p]; alias != "" { // a package whose name clashes with another's (math/rand/v2 beside crypto/rand)
+			imp.WriteString("\t" + alias + " " + strconv.Quote(p) + "\n")
+			continue
+		}
 		imp.WriteString("\t" + strconv.Quote(p) + "\n")
 	}
 	imp.WriteString(")\n")
