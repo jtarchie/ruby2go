@@ -177,6 +177,10 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 		if f.lenient() { // a gem's defensive `x or raise(...)`: MRI never runs the right side either (decision 172)
 			return l
 		}
+		if f.nilRuntime() { // the program took MRI's nil semantics: a defensive default is dead code, not an error (decision 404)
+			f.warn(n, "`||` on a non-nilable %s is always the left side", l.typ)
+			return l
+		}
 		f.errorf(n, "`||` on a non-nilable %s is always the left side", l.typ)
 	}
 	// Ruby: the left when it is truthy, else the right; types that share
@@ -225,6 +229,10 @@ func (f *fctx) genOr(n *parser.OrNode) expr {
 func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 	if !unionFalsy(u) {
 		if f.lenient() {
+			return l
+		}
+		if f.nilRuntime() {
+			f.warn(n, "`||` on %s, which is never nil or false, is always the left side", u)
 			return l
 		}
 		f.errorf(n, "`||` on %s, which is never nil or false, is always the left side", u)

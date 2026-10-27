@@ -1,0 +1,6 @@
+module Views
+  module Layouts
+    def self.application_into: (String io, untyped body, untyped notice, untyped alert) -> nil
+    def self.application: (String body, ?String? notice, ?String? alert) -> String
+  end
+end

@@ -1,0 +1,16 @@
+class CommentRow
+  attr_reader id: Integer
+  attr_writer id: Integer
+  attr_reader article_id: Integer
+  attr_writer article_id: Integer
+  attr_reader commenter: String?
+  attr_writer commenter: String?
+  attr_reader body: String?
+  attr_writer body: String?
+  attr_reader created_at: String
+  attr_writer created_at: String
+  attr_reader updated_at: String
+  attr_writer updated_at: String
+  def initialize: () -> nil
+  def self.from_raw: (Hash[String, untyped] row) -> CommentRow
+end

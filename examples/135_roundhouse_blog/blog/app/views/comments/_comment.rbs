@@ -1,0 +1,6 @@
+module Views
+  module Comments
+    def self.comment_into: (String io, untyped comment, untyped notice, untyped alert) -> nil
+    def self.comment: (Comment comment, ?String? notice, ?String? alert) -> String
+  end
+end

@@ -1,0 +1,14 @@
+class CommentParams
+  def initialize: () -> nil
+  attr_reader commenter: String
+  attr_writer commenter: String
+  attr_reader commenter_provided: bool
+  attr_writer commenter_provided: bool
+  attr_reader body: String
+  attr_writer body: String
+  attr_reader body_provided: bool
+  attr_writer body_provided: bool
+  def self.from_raw: (Hash[String, Roundhouse::ParamValue] params) -> CommentParams
+  def []: (Symbol key) -> untyped
+  def to_h: () -> Hash[String, String]
+end

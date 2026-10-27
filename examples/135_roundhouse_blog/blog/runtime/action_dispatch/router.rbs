@@ -1,0 +1,92 @@
+# Path router: matches (method, path) against a typed route table
+# and resolves to (controller, action, path_params).
+module ActionDispatch
+  module Router
+    # One typed entry in the route table. `verb` (not `method`) to
+    # avoid shadowing Ruby's `Object#method` reflection method.
+    class Route
+      def verb: () -> String
+      def pattern: () -> String
+      def controller: () -> Symbol
+      def action: () -> Symbol
+      def req_format: () -> Symbol?
+      def int_params: () -> String
+      # The pattern split on "/" once at construction, so a `Router.match`
+      # table walk never re-splits it per request.
+      def pattern_parts: () -> Array[String]
+
+      def initialize: (String verb, String pattern, Symbol controller, Symbol action, ?Symbol? req_format, ?String int_params) -> void
+    end
+
+    # Successful match result: the resolved controller + action symbols
+    # plus the path parameters extracted from the URL pattern.
+    class MatchResult
+      def controller: () -> Symbol
+      def action: () -> Symbol
+      def path_params: () -> Hash[String, String]
+      def req_format: () -> Symbol?
+
+      def initialize: (Symbol controller, Symbol action, Hash[String, String] path_params, ?Symbol? req_format) -> void
+    end
+
+    # Match a request against the route table. Returns a MatchResult
+    # on success; nil otherwise.
+    #
+    # Absolute `::ActionDispatch::Router::Route` (not bare or partially
+    # qualified): the RBS class-ref resolver's drop-innermost-segment
+    # heuristic mishandles nested classes, and the ingest path registers
+    # the class under its fully-qualified name. The absolute form bypasses
+    # both lookups and matches the registry exactly.
+    def self.match: (
+      String method,
+      String path,
+      Array[::ActionDispatch::Router::Route] table
+    ) -> ::ActionDispatch::Router::MatchResult?
+
+    # One table scan for a literal path, with the format extension the
+    # request carried (`.turbo_stream` stripped off the last segment by
+    # `match`) — the empty string when the path carried none. A match
+    # puts it in `path_params["format"]`.
+    def self.match_path: (
+      String method,
+      String path,
+      Array[::ActionDispatch::Router::Route] table,
+      String format
+    ) -> ::ActionDispatch::Router::MatchResult?
+
+    # Is `ext` one of Rails' registered format extensions?
+    def self.format_extension: (String ext) -> bool
+
+    # Match a path against a `:name`-segment pattern. Returns a
+    # `Hash[String, String]` of captured params (URL segments are
+    # always strings), or nil if no match. `int_params` is the route's
+    # space-joined digit-only constraint list — a constrained segment
+    # that isn't all digits makes the pattern a non-match.
+    def self.match_pattern: (
+      String pattern,
+      String path,
+      ?String int_params
+    ) -> Hash[String, String]?
+
+    # The same segment loop over already-split parts — what `Router.match`
+    # calls with the route's precomputed `pattern_parts`, so a table walk
+    # allocates no segment arrays per candidate.
+    def self.glob_rest: (Array[String] path_parts, Integer from) -> String
+    def self.match_parts: (
+      Array[String] pattern_parts,
+      Array[String] path_parts,
+      ?String int_params,
+      ?String format
+    ) -> Hash[String, String]?
+
+    # Digit-only (`Integer` matcher / `constraints: /\d+/`) param
+    # enforcement — is `name` in the route's space-joined constraint
+    # list? A constrained non-digit segment makes the route a non-match.
+    def self.int_constrained: (
+      String int_params,
+      String name
+    ) -> bool
+
+    def self.digits_only: (String s) -> bool
+  end
+end

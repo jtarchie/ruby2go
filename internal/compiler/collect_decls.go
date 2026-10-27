@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -16,6 +17,8 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 	switch {
 	case n.Receiver == nil && n.Name == "require_relative" && f.isPrelude():
 		c.requireRelative(ctx, f, n)
+	case !f.isPrelude() && c.loadedFeature(f, n) != "": // marked loaded: a later require of it loads nothing (decision 404)
+		c.loaded[c.real(c.loadedFeature(f, n))] = true
 	case n.Receiver == nil && n.Name == "require_relative":
 		if uf := c.userRequireRelative(ctx, f, n); uf != nil {
 			c.addMainStmt(f, &loadFile{call: n, file: uf})
@@ -56,6 +59,30 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 		c.scanAnon(ctx, f, n, nil)
 		c.addMainStmt(f, n)
 	}
+}
+
+// loadedFeature is the file `$LOADED_FEATURES << File.expand_path("x.rb", __dir__)` marks loaded, so a shim can stand in for it (decision 404); "" for any other statement.
+func (c *Compiler) loadedFeature(f *File, n *parser.CallNode) string {
+	if n.Name != "<<" && n.Name != "push" {
+		return ""
+	}
+	if g, ok := n.Receiver.(*parser.GlobalVariableReadNode); !ok || g.Name != "$LOADED_FEATURES" && g.Name != `$"` {
+		return ""
+	}
+	args := callArgs(n)
+	if len(args) == 1 {
+		if ex, ok := args[0].(*parser.CallNode); ok && ex.Name == "expand_path" && constName(ex.Receiver) == "File" {
+			if a := callArgs(ex); len(a) == 2 {
+				str, sok := a[0].(*parser.StringNode)
+				dir, dok := a[1].(*parser.CallNode)
+				if sok && dok && dir.Receiver == nil && dir.Name == "__dir__" && strings.HasSuffix(str.Unescaped.Value, ".rb") {
+					return filepath.Join(filepath.Dir(f.path), filepath.FromSlash(str.Unescaped.Value))
+				}
+			}
+		}
+	}
+	c.errorf(f, n, `$LOADED_FEATURES takes File.expand_path("file.rb", __dir__) only: rugaroo resolves requires at compile time (decision 404)`)
+	return ""
 }
 
 // beginRequires splices the files a top-level begin requires where they stand, as rackup.rb's `begin; require_relative ...; rescue LoadError`.

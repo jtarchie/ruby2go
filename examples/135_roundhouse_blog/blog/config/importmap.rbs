@@ -1,0 +1,4 @@
+module Importmap
+  def self.pins: () -> Array[{ name: String, path: String }]
+  def self.entry: () -> String
+end

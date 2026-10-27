@@ -1,0 +1,235 @@
+module ActiveRecord
+  # The 9-method adapter contract `Base.find` / `Base.create!` / etc.
+  # dispatch through. Phantom RBS-only class — no Ruby source body,
+  # each target ships its own concrete implementation (Rust trait +
+  # impls, Crystal abstract class + SqliteAdapter, TS interface +
+  # SqliteActiveRecordAdapter). Methods are marked `%a{abstract}`
+  # so the orphan check skips them; the analyzer's runtime body-typer
+  # gets the same info via `seed_well_known_classes` so per-file
+  # dispatch (which doesn't see this class declaration) still
+  # resolves.
+  class AdapterInterface
+    %a{abstract}
+    def all: (String table_name) -> Array[Hash[String, untyped]]
+    %a{abstract}
+    def find: (String table_name, Integer id) -> Hash[String, untyped]?
+    %a{abstract}
+    def where: (String table_name, Hash[String, untyped] conditions) -> Array[Hash[String, untyped]]
+    %a{abstract}
+    def count: (String table_name) -> Integer
+    %a{abstract}
+    def exists?: (String table_name, Integer id) -> bool
+    %a{abstract}
+    def insert: (String table_name, Hash[String, untyped] attributes) -> Integer
+    %a{abstract}
+    def update: (String table_name, Integer id, Hash[String, untyped] attributes) -> void
+    %a{abstract}
+    def delete: (String table_name, Integer id) -> void
+    %a{abstract}
+    def delete_all: (String table_name) -> void
+    %a{abstract}
+    def truncate: (String table_name) -> void
+    # Raw-SQL escape hatch used by ActiveRecord::Relation: run a composed
+    # SELECT and return its rows; escape a value for inline SQL. The
+    # SqliteAdapter (CRuby/spinel) already implements both.
+    %a{abstract}
+    def select_rows: (String sql) -> Array[Hash[String, untyped]]
+    %a{abstract}
+    def execute_ddl: (String sql) -> void
+    %a{abstract}
+    def changes: () -> Integer
+    %a{abstract}
+    def escape_value: (untyped value) -> String
+  end
+
+  # The global adapter slot. Set once during boot; read everywhere
+  # `Base.find` / `Base.create!` / etc. needs to dispatch a query.
+  # `class << self; attr_accessor :adapter; end` lowers to
+  # `def self.adapter` / `def self.adapter=` at ingest time.
+  def self.adapter: () -> ActiveRecord::AdapterInterface
+  def self.adapter=: (ActiveRecord::AdapterInterface) -> ActiveRecord::AdapterInterface
+
+  # Enum column assigned by LABEL — see `base.rb`. `labels`/`values`
+  # are the declaration's parallel arrays.
+  def self.enum_int: (String text, Array[String] labels, Array[Integer] values) -> Integer
+
+  # Base class for all models. Spinel-friendly shape: zero
+  # metaprogramming. Per-model subclasses define their own column
+  # accessors, attributes hash, and `[]/[]=` indexers; Base supplies
+  # the shared CRUD + lifecycle protocol.
+  class Base
+    EMPTY_ATTRS: Hash[Symbol, untyped]
+
+    # `attr_accessor :id` — instance-level, lowers at ingest to a
+    # getter/setter pair that the RBS must declare.
+    def id: () -> Integer
+    def id=: (Integer) -> Integer
+
+    # Error message accumulator populated by the lowerer-emitted
+    # `validate` body. Phase 2.5(a) inlines every `validates :x, …`
+    # declaration so the runtime `ActiveRecord::Validations` mixin no
+    # longer ships; `errors` lives on Base directly.
+    #
+    # The ivar is declared as well as the reader. Our own emitters infer
+    # it from the reader (a pure reader donates its return type to the
+    # ivar — see kotlin/library.rs's infer_body_ivar_types), but a
+    # consumer that only reads signatures seeds `@errors` from the bare
+    # `[]` in `initialize` instead, which carries no element type. Under
+    # spinel that produced `sp_IntArray *iv_errors` behind a reader typed
+    # `sp_StrArray *`, so a `validate` body's `errors << "..."` pushed a
+    # `const char *` into int storage — where the scan hook does not mark
+    # it as a pointer and the message is swept while the array holds it.
+    @errors: Array[String]
+    def errors: () -> Array[String]
+
+    def initialize: (?Hash[Symbol, untyped] attrs) -> void
+
+    # Per-model overrides — base bodies raise NotImplementedError.
+    # The contract is what subclasses MUST satisfy; declare the
+    # contract type even though the Base body itself never returns
+    # one. The body-typer treats `raise` as divergent; it doesn't
+    # contradict the declared return type.
+    def self.table_name: () -> String
+    def self.primary_key: () -> String
+    def self.schema_columns: () -> Array[Symbol]
+    def self.schema_time_columns: () -> Array[Symbol]
+    def self.instantiate: (Hash[String, untyped] _row) -> Base
+
+    # Eager-load hook consumed by `Relation#to_a`; the Ruby emit path
+    # synthesizes per-model overrides, this default is a no-op.
+    def self.preload_associations: (Array[untyped] _records, Array[untyped] _specs) -> void
+
+    # Subclass-overridden instance API. `attributes` returns the
+    # column hash for adapter writes; `assign_from_row` populates
+    # state from a fetched row (raises in Base).
+    def attributes: () -> Hash[String, untyped]
+    def assign_from_row: (Hash[String, untyped] _row) -> void
+
+    # Saved-change tracking (ActiveModel::Dirty subset) — see save.
+    def __track_saved_changes: (bool was_new) -> void
+    def saved_changes: () -> Hash[String, untyped]
+    def _note_hydrated: () -> void
+    def attribute_previously_was: (String name) -> untyped
+    def saved_change_to_attribute?: (Symbol name) -> bool
+    def saved_change_to_attribute: (Symbol name) -> untyped
+    def id_previously_changed?: () -> bool
+
+    # Per-model DOM prefix (`"article"`, `"comment"`). Used by
+    # `ActionView::ViewHelpers.dom_id(record)` to build CSS-id strings
+    # like `"article_42"`. Synthesized per-model by the lowerer (see
+    # `push_dom_prefix_method` in `model_to_library`); the Base
+    # declaration here is abstract — the per-model body produces the
+    # actual constant string at transpile time.
+    %a{abstract}
+    def dom_prefix: () -> String
+
+    # Per-model DOM row key (`"42"`, or `to_key.join("_")` on a model
+    # that overrides `to_key` — campfire's Message keys rows by
+    # client_message_id). `dom_id`'s other half; synthesized per-model
+    # by `push_dom_record_key_method`, abstract here like dom_prefix.
+    %a{abstract}
+    def dom_record_key: () -> String
+
+    # `[]/[]=` are defined on Base as raise-NotImplementedError
+    # markers; subclasses (per-model emitted classes) override with
+    # their column-specific indexer. The Base body is required so
+    # callers typed against `ActiveRecord::Base` (FormBuilder.text_
+    # field's `@model[field]`) compile under static targets like
+    # Crystal — the static type needs the method to exist.
+    def []: (Symbol name) -> untyped
+    def []=: (Symbol name, untyped value) -> untyped
+    def has_attribute?: (Symbol name) -> bool
+
+    # Persistence state — backed by `@persisted` / `@destroyed`.
+    def persisted?: () -> bool
+    def new_record?: () -> bool
+    def destroyed?: () -> bool
+    # Side-effecting bang method; return value isn't meaningful.
+    # `void` keeps TS from requiring an explicit `return ...;` for
+    # the trailing assignment.
+    def mark_persisted!: () -> void
+
+    # Class-level CRUD — delegate to the adapter. Returns Base
+    # nominally; per-target emit can refine to the actual subclass
+    # via cast at the call site (RBS's `instance` / `self` self-type
+    # would express this directly but the roundhouse RBS parser
+    # doesn't support those nodes yet).
+    def self.all: () -> Array[Base]
+    def self.find: (Integer id) -> Base
+    # Per-model `_adapter_*` Level-3 primitives — synthesized by the
+    # lowerer per concrete model. Declared here so public `Base.X`
+    # methods (find/all/save/destroy/count/exists?) can delegate via
+    # `self._adapter_X` and the body-typer resolves the call against
+    # the receiver class's emitted override. Underscore-prefix marks
+    # framework-internal; not part of the public AR API.
+    def self._adapter_find_by_id: (Integer id) -> Base?
+    def self._adapter_all: () -> Array[Base]
+    def self._adapter_last: () -> Base?
+    def self._columns_sql: () -> String
+    def self._hydrate_all: (String sql) -> Array[Base]
+    def _adapter_insert: () -> Integer
+    def _adapter_update: () -> void
+    def _adapter_delete: () -> void
+    def self._adapter_count: () -> Integer
+    def self._adapter_exists_by_id?: (Integer id) -> bool
+    def self._adapter_truncate: () -> void
+    def _adapter_reload: () -> Base?
+    def self.find_by: (Hash[Symbol, untyped] conditions) -> Base?
+    def self.find_by!: (Hash[Symbol, untyped] conditions) -> Base
+    def self.where: (Hash[Symbol, untyped] conditions) -> Array[Base]
+    def self.count: () -> Integer
+    def self.exists?: (Integer id) -> bool
+    def self.none?: () -> bool
+    def self.any?: () -> bool
+    def self.delete_all: () -> nil
+    def self.destroy_all: () -> Array[Base]
+    def self.create: (Hash[Symbol, untyped] attrs) -> Base
+    def self.create!: (Hash[Symbol, untyped] attrs) -> Base
+    def self.last: () -> Base?
+
+    # Instance lifecycle. `save` returns true/false based on
+    # validity; `save!` returns self or raises; `destroy` returns
+    # self either way (idempotent on already-destroyed records).
+    def save: () -> bool
+    def save_after_validation: () -> bool
+    def save!: () -> Base
+    def destroy: () -> Base
+    def destroy!: () -> Base
+    def reload: () -> Base
+    # `touch` is no-arg on purpose; see the note on the body.
+    def touch: () -> bool
+
+    # Lifecycle hooks — no-op defaults. Subclasses override.
+    def after_initialize: () -> void
+    def before_validation: () -> void
+    def after_validation: () -> void
+    def before_save: () -> void
+    def after_save: () -> void
+    def before_create: () -> void
+    def after_create: () -> void
+    def before_update: () -> void
+    def after_update: () -> void
+    def before_destroy: () -> void
+    def after_destroy: () -> void
+    def after_commit: () -> void
+    def after_create_commit: () -> void
+    def after_update_commit: () -> void
+    def after_destroy_commit: () -> void
+    def after_save_commit: () -> void
+    def after_touch: () -> void
+
+    def validate: () -> void
+
+    # `creating:` is a required keyword; body uses
+    # `self.class.schema_columns` and `self[]=`. Returns whatever
+    # the last expression returns — `nil` for the false branches,
+    # `untyped` from `self[]=` otherwise. Declare `void` since
+    # callers ignore the result.
+    def fill_timestamps: (bool creating) -> void
+
+    def valid?: () -> bool
+
+    # Equality protocol intentionally not defined here — see comment
+    # in base.rb for the cross-target rationale.
+  end
+end

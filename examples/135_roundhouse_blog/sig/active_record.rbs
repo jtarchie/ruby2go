@@ -1,0 +1,9 @@
+# Typing facts the sidecars leave to Spinel's inference: the adapter slot holds the SqliteAdapter module, and find returns the receiver's model.
+module ActiveRecord
+  def self.adapter: () -> singleton(SqliteAdapter)?
+  def self.adapter=: (singleton(SqliteAdapter)) -> singleton(SqliteAdapter)
+
+  class Base
+    def self.find: (Integer id) -> instance
+  end
+end

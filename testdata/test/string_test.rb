@@ -2359,4 +2359,65 @@ module StringTests
     end
   end
 
+
+  ESCAPES = { "&" => "&amp;", "<" => "&lt;" }.freeze
+
+  # A view in roundhouse's shape: partials append to the caller's String (decision 405).
+  module Page
+    #: (String, String) -> nil
+    def self.row_into(io, name)
+      io << "<li>"
+      io << name
+      io << "</li>"
+      nil
+    end
+
+    #: (String, Array[String]) -> nil
+    def self.list_into(io, names)
+      io << "<ul>"
+      names.each { |n| Page.row_into(io, n) }
+      io << "</ul>"
+      nil
+    end
+
+    #: (Array[String]) -> String
+    def self.list(names)
+      io = String.new
+      Page.list_into(io, names)
+      io
+    end
+
+    #: (String) -> nil
+    def self.fail_into(io)
+      io << "partial"
+      raise ArgumentError, "stop"
+    end
+  end
+
+  class OutParamTest < Minitest::Test
+    def test_partials_append_to_the_callers_string
+      assert_equal "<ul><li>a</li><li>b</li></ul>", Page.list(%w[a b])
+      out = +"x"
+      Page.row_into(out, "y")
+      assert_equal "x<li>y</li>", out
+    end
+
+    def test_a_raise_keeps_the_appends
+      out = +""
+      begin
+        Page.fail_into(out)
+      rescue ArgumentError
+        nil
+      end
+      assert_equal "partial", out
+    end
+  end
+
+  class HashReplacementTest < Minitest::Test
+    def test_gsub_and_sub_with_a_hash
+      assert_equal "a&lt;b&amp;c&lt;", "a<b&c<".gsub(/[&<]/, ESCAPES)
+      assert_equal "a&lt;b<", "a<b<".sub(/</, ESCAPES)
+      assert_equal "ab", "a>b".gsub(/>/, ESCAPES)
+    end
+  end
 end

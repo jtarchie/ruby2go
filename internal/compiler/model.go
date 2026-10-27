@@ -238,6 +238,8 @@ type Param struct {
 	// Pending keys a parameter typed from use (decision 146): its
 	// arguments are recorded under it during inference rounds.
 	Pending pendingKey
+	// Out: a String parameter the method appends to, passed as *String: copied in, and back out on return (decision 405).
+	Out bool
 }
 
 // BlockSig is the block a method takes.

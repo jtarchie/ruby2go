@@ -12,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
+
+	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
 // closed returns subst(t, env) if it has no unbound method type vars.
@@ -110,6 +112,31 @@ func (f *fctx) bindTypeParams(n parser.Node, m *Method, env map[string]Type) {
 
 // callEntry calls e; in gem code, a call the static signature cannot take falls back to a run-time dispatch (genDynCall).
 func (f *fctx) callEntry(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
+	return f.instanceResult(e, recv, f.callEntryAny(n, e, recv, args, block))
+}
+
+// instanceResult types a class method's `-> instance` result as the class it was called on: `Article.find` of `Base.find` (decision 404).
+func (f *fctx) instanceResult(e *entry, recv expr, r expr) expr {
+	if e.M.sig == nil || e.M.Owner == nil || e.M.Owner.metaOf == nil {
+		return r
+	}
+	ret, opt := e.M.sig.Return, false
+	if o, ok := ret.(rbs.Optional); ok {
+		ret, opt = o.Elem, true
+	}
+	rc, ok := recv.typ.(TClass)
+	if _, inst := ret.(rbs.Instance); !inst || !ok || rc.C.metaOf == nil || rc.C.metaOf == e.M.Owner.metaOf || !rc.C.metaOf.isSubclassOf(e.M.Owner.metaOf) {
+		return r
+	}
+	want := TClass{C: rc.C.metaOf}
+	g := f.c.goType(want)
+	if opt {
+		return expr{code: "func() " + g + " { v, _ := any(" + r.code + ").(" + g + "); return v }()", typ: TOpt{Elem: want}}
+	}
+	return expr{code: "any(" + r.code + ").(" + g + ")", typ: want}
+}
+
+func (f *fctx) callEntryAny(n parser.Node, e *entry, recv expr, args []parser.Node, block parser.Node) expr {
 	if f.lenient() && block == nil && len(args) > 0 && f.unionArm == 0 && !slices.ContainsFunc(args, f.readsUnionLocal) { // a union argument: unionArgCall first
 		// gem code: arguments the static signature cannot take (a splat, a computed keyword) are matched per call at run time, as MRI does
 		if f.probing() { // output is discarded: no dry run needed
@@ -364,6 +391,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	}
 	f.nilRecv = recv.typ
 	codes, restIdx := f.genArgs(n, m, env, args, nil)
+	f.outArgs(n, m, args, codes)
 	if m.Block != nil && m.Iterator && block == nil && !m.Block.Optional {
 		if r, ok := f.iterEnum(n, e, recv, codes, env); ok {
 			return r

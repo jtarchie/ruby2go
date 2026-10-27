@@ -1,0 +1,5 @@
+module Views
+  module Articles
+    def self.article_json: (Article article) -> String
+  end
+end

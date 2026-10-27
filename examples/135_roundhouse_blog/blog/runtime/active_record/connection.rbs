@@ -1,0 +1,47 @@
+# Typing contract for the raw-SQL connection facade. Rows are
+# Hash[String, untyped] by design — raw SQL's row shape (aliased
+# aggregates, computed columns) is genuinely dynamic; see connection.rb.
+module ActiveRecord
+  class Result
+    @rows: Array[Hash[String, untyped]]
+
+    def initialize: (Array[Hash[String, untyped]] rows) -> void
+    def rows: () -> Array[Hash[String, untyped]]
+    def to_a: () -> Array[Hash[String, untyped]]
+    def first: () -> Hash[String, untyped]?
+    def each: () { (Hash[String, untyped]) -> void } -> Array[Hash[String, untyped]]
+  end
+
+  class Connection
+    def adapter_name: () -> String
+    def quote: (untyped value) -> String
+    def quote_string: (String str) -> String
+    def execute: (String sql) -> Result
+    def exec_query: (String sql) -> Result
+  end
+
+  class Base
+    def self.connection: () -> Connection
+    def self.sanitize_sql: (Array[untyped] statement) -> String
+    def self.transaction: () { () -> untyped } -> untyped
+    def self.update_counters: (untyped id, Hash[Symbol, untyped] counters) -> Integer
+    def self.upsert: (Hash[Symbol, untyped] attrs, ?unique_by: untyped, ?on_duplicate: String?, ?returning: untyped) -> Integer
+    def self.upsert_all: (Array[Hash[Symbol, untyped]] rows, ?unique_by: untyped, ?on_duplicate: String?, ?returning: untyped) -> Integer
+    def self.record_timestamps=: (untyped value) -> untyped
+    def self.record_timestamps: () -> bool
+    def update_column: (untyped name, untyped value) -> bool
+    def _as_json_only: (Array[Symbol] only) -> Hash[String, untyped]
+    # Ruby-family overrides of base.rb's Array-returning fallbacks.
+    def self.where: (Hash[Symbol, untyped] conditions) -> Relation
+    def self.all: () -> Relation
+    def _note_hydrated: () -> void
+    def attribute_previously_was: (String name) -> untyped
+    def self.first: () -> untyped
+    def self.take: () -> untyped
+    def self._hydrate_all: (String sql) -> Array[Base]
+    def update_attribute: (Symbol name, untyped value) -> bool
+    # Ruby-family overrides of base.rb's dirty-tracking stubs.
+    def __track_saved_changes: (bool was_new) -> void
+    def saved_changes: () -> Hash[String, untyped]
+  end
+end

@@ -51,7 +51,7 @@ func (c *Compiler) resolveType(t rbs.Type, sc typeScope) Type {
 			c.errorAt(sc.srcPos, "`self` type outside a class")
 		}
 		return TVar{Name: "Self"}
-	case rbs.Instance: // ponytail: the defining class, not the receiver's subclass; make it a Self-like TVar when a subclass call needs it
+	case rbs.Instance: // the defining class here; a class method's call on a subclass narrows its result to that class (instanceResult, decision 404)
 		if sc.class == nil {
 			c.errorAt(sc.srcPos, "`instance` type outside a class")
 		}
@@ -191,6 +191,11 @@ func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
 		}
 		return c.resolveType(at, typeScope{lex: k.Scope, srcPos: srcPos{k.File, k.Line}})
 	}
+	if cls == nil && len(t.Args) == 0 {
+		if at, qualified := c.sigAlias(lex, t.Name); at != nil {
+			return c.resolveSigAlias(qualified, at, sc)
+		}
+	}
 	if cls == nil && c.gemFile(sc.File) {
 		return TAny{} // a lazily-checked sig naming a class outside the closed world: nothing compiled can hold one
 	}
@@ -283,4 +288,44 @@ func (c *Compiler) resolveRecord(t rbs.Record, sc typeScope) Type {
 		}
 	}
 	return TClass{C: hash, Args: []Type{kt, vt}}
+}
+
+// sigAlias finds a `type X = T` a sig file declares, by its qualified name, in the lexical scope or beside an alias being resolved (decision 404).
+func (c *Compiler) sigAlias(lex []*Class, name string) (rbs.Type, string) {
+	owner, short := "", name
+	if i := strings.LastIndex(name, "::"); i >= 0 {
+		owner, short = name[:i], name[i+2:]
+	}
+	var scopes []string // innermost first, top level last
+	if owner == "" {
+		for i := len(c.resolvingAliases) - 1; i >= 0; i-- {
+			if j := strings.LastIndex(c.resolvingAliases[i], "::"); j >= 0 {
+				scopes = append(scopes, c.resolvingAliases[i][:j])
+			}
+		}
+		for i := len(lex) - 1; i >= 0; i-- {
+			scopes = append(scopes, lex[i].RubyName)
+		}
+	}
+	scopes = append(scopes, owner)
+	for _, o := range scopes {
+		if d := c.sigs[o]; d != nil {
+			for _, a := range d.Aliases {
+				if a.Name == short {
+					return a.Type, strings.TrimPrefix(o+"::"+short, "::")
+				}
+			}
+		}
+	}
+	return nil, ""
+}
+
+// resolveSigAlias resolves an alias's type; a reference to an alias being resolved is untyped, as rugaroo has no recursive types.
+func (c *Compiler) resolveSigAlias(qualified string, at rbs.Type, sc typeScope) Type {
+	if slices.Contains(c.resolvingAliases, qualified) {
+		return TAny{}
+	}
+	c.resolvingAliases = append(c.resolvingAliases, qualified)
+	defer func() { c.resolvingAliases = c.resolvingAliases[:len(c.resolvingAliases)-1] }()
+	return c.resolveType(at, sc)
 }

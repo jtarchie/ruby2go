@@ -49,6 +49,9 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 		if m := gemDir.FindStringSubmatch(f); m != nil && (builtinLib(m[1]) || mriLibs[m[1]]) {
 			add(m[1]) // a gem the prelude is: the vendored copy's files are its
 			continue
+		} else if lib := strings.ReplaceAll(m1(m), "-", "/"); m != nil && builtinLib(lib) {
+			add(lib) // the net-http gem is the prelude's net/http, by RubyGems' naming (decision 404)
+			continue
 		} else if m != nil && native[m[1]] {
 			continue
 		}
@@ -264,4 +267,12 @@ func onPath(name string, dirs []string) bool {
 		}
 	}
 	return false
+}
+
+// m1 is a match's first group, "" without a match.
+func m1(m []string) string {
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }

@@ -1,0 +1,130 @@
+# Typing contract for action_text.rb beside this file.
+#
+# `Content#attachments` and `#links` return concrete element types
+# (not `untyped`): the strict targets' one-element-type-per-container
+# rule is the whole reason the scanner returns a flat
+# `Hash[String, String]` per tag rather than a pair or a variant.
+module ActionText
+  module Attachable
+    # Redefined per app in the emitted tree's global_id_locator.rb —
+    # see the module's note in action_text.rb.
+    def self.locate: (String model_name, Integer id) -> untyped
+  end
+
+  module Attachables
+    class MissingAttachable
+      DEFAULT_PARTIAL_PATH: String
+      def initialize: (String sgid) -> void
+      def sgid: () -> String
+      def to_partial_path: () -> String
+    end
+  end
+
+  module SignedGlobalId
+    SALT: String
+    PURPOSE: String
+    def self.generate: (String model_name, Integer id) -> String
+    def self.model_of: (String sgid) -> String
+    def self.id_of: (String sgid) -> Integer
+    def self.verified_value: (String sgid) -> String
+  end
+
+  class Attachment
+    ATTRIBUTES: Array[String]
+    def self.tag_name: () -> String
+    def self.from_node: (ActionText::Node node) -> ActionText::Attachment
+    def initialize: (Hash[String, String] attributes) -> void
+    def attributes: () -> Hash[String, String]
+    def []: (String name) -> String
+    def attachable: () -> untyped
+    def sgid: () -> String
+    def content_type: () -> String
+    def caption: () -> String?
+    def filename: () -> ActiveStorage::Filename
+    def url: () -> String
+    def to_plain_text: () -> String
+  end
+
+  class Node
+    def initialize: (String name, Hash[String, String] attributes, String outer) -> void
+    def name: () -> String
+    def []: (String key) -> String?
+    def attributes: () -> Hash[String, String]
+    def to_s: () -> String
+    def to_html: () -> String
+  end
+
+  class Selector
+    def initialize: (String kind, String name, Array[String] excluded, Array[String] keys, Array[String] values, Array[String] ops) -> void
+    def kind: () -> String
+    def name: () -> String
+    def excluded: () -> Array[String]
+    def keys: () -> Array[String]
+    def values: () -> Array[String]
+    def ops: () -> Array[String]
+  end
+
+  class Fragment
+    def initialize: (String html) -> void
+    def self.wrap: (untyped value) -> Fragment
+    def to_s: () -> String
+    def to_html: () -> String
+    def source: () -> String
+    def find_all: (String selector) -> Array[ActionText::Node]
+    def replace: (String selector) { (ActionText::Node node) -> untyped } -> Fragment
+    def self.next_element: (String html, Integer from) -> Integer
+    def self.tag_end: (String html, Integer at) -> Integer
+    def self.element_end: (String html, Integer at, Integer tag_end, String name, String raw) -> Integer
+    def self.void_element: (String name) -> bool
+    def self.parse_selector: (String selector) -> Selector
+    def self.element_name?: (String text) -> bool
+    def self.not_names: (String text) -> Array[String]
+    def self.matches?: (String name, Hash[String, String] attrs, Selector matcher) -> bool
+  end
+
+  class Content
+    def initialize: (?String html, ?canonicalize: bool) -> void
+    def fragment: () -> ActionText::Fragment
+    def to_html: () -> String
+    def to_s: () -> String
+    def rendered_html: () -> String
+    def as_json: () -> String
+    def blank?: () -> bool
+    def empty?: () -> bool
+    def present?: () -> bool
+    def links: () -> Array[String]
+    def attachments: () -> Array[ActionText::Attachment]
+    def attachables: () -> Array[untyped]
+    def attachable_ids: (String model_name) -> Array[Integer]
+    def to_plain_text: () -> String
+    def self.scoped_element: (String name) -> bool
+    def self.close_scoped: (String name, String segment, Array[String] list_names, Array[Integer] list_counts) -> String
+    def self.quote_wrap: (String text) -> String
+    def self.first_non_space_index: (String text) -> Integer
+    def self.last_non_space_index: (String text) -> Integer
+    def self.scan_tags: (String html) -> Array[Hash[String, String]]
+    def self.tag_name_of: (String raw) -> String
+    def self.parse_attributes: (String raw) -> Hash[String, String]
+    def self.space_at: (String text, Integer index) -> bool
+    def self.entity_end: (String html, Integer start) -> Integer
+    def self.decode_entity: (String entity) -> String
+    def self.numeric_reference: (String digits, Integer base) -> Integer
+    def self.printable_ascii: (Integer code) -> String
+    def self.decode_entities: (String text) -> String
+    def self.indent: (Integer list_depth) -> String
+    def self.ends_with_newline: (String text) -> bool
+    def self.chomp_newlines: (String text) -> String
+  end
+end
+
+module ActionText
+  module ContentHelper
+    def self.allowed_attributes: () -> Array[String]
+    def self.sanitizer: () -> ActionText::SafeListSanitizer
+  end
+
+  class SafeListSanitizer
+    def self.allowed_attributes: () -> Array[String]
+    def sanitize: (String html, tags: Array[String], attributes: Array[String]) -> String
+  end
+end

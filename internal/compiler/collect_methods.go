@@ -186,6 +186,9 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		// overloads compile once, merged, and each call picks its arm (decision 12).
 		if sd := c.sigMethod(cls, n.Name); sd != nil && len(sd.Overloads) == 1 {
 			m.sig = sd.Overloads[0]
+			if sd.Advisory {
+				c.inferAdvisoryParams(m, n)
+			}
 		} else if merged := mergeArms(sd); merged != nil {
 			m.sig, m.arms = merged, sd.Overloads
 		}

@@ -65,6 +65,21 @@ rexml dependency) and [124](../examples/124_liquid/main.rb) (liquid), which
 compile unmodified and match MRI byte for byte; Homebrew's `brew info` and
 `brew install wget` (below).
 
+## Roundhouse output
+
+[Roundhouse](https://rubys.github.io/roundhouse/) transpiles a Rails app into
+plain Ruby with `.rbs` files beside each `.rb` (`roundhouse --target spinel`),
+for the Spinel compiler. rugaroo compiles that output unmodified: the `.rbs`
+files type it, and the few files that call C through Spinel's FFI (its HTTP
+server, its sqlite binding) are replaced by Ruby shims that the program loads
+first, marking the originals loaded with
+`$LOADED_FEATURES << File.expand_path("blog/runtime/db.rb", __dir__)`.
+
+Proof: [example 135](../examples/135_roundhouse_blog/README.md), roundhouse's
+Blog app (articles, nested comments, validations, partials, JSON views) served
+over HTTP, its answers equal to MRI's on the same files
+([decisions 404](decisions/404.md), [405](decisions/405.md)).
+
 ## Vendored gems
 
 A gem whose real version is a C extension can be replaced by a pure-Ruby gem

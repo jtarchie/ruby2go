@@ -1,0 +1,6 @@
+module Views
+  module Layouts
+    def self.mailer_into: (String io, untyped body, untyped notice, untyped alert) -> nil
+    def self.mailer: (String body, ?String? notice, ?String? alert) -> String
+  end
+end

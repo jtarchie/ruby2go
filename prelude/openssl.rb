@@ -2,9 +2,23 @@
 
 require_relative "openssl_ssl"
 
-# Only RSA public-key verify (Homebrew's JWS check) and SSL verify modes: no signing, keygen or TLS (decision 281).
+# Only RSA public-key verify (Homebrew's JWS check), HMAC, PBKDF2 and SSL verify modes: no signing, keygen or TLS (decisions 281, 404).
 module OpenSSL
   class OpenSSLError < StandardError; end
+
+  module HMAC
+    # A digest is named by a String ("SHA256"); OpenSSL::Digest objects are not modelled.
+    #: (String, String, String) -> String
+    def self.digest(digest, key, data) = %x{ String(rbHMAC(string(digest), string(key), string(data))) }
+
+    #: (String, String, String) -> String
+    def self.hexdigest(digest, key, data) = %x{ String(hex.EncodeToString([]byte(rbHMAC(string(digest), string(key), string(data))))) }
+  end
+
+  module PKCS5
+    #: (String, String, Integer, Integer, String) -> String
+    def self.pbkdf2_hmac(pass, salt, iter, keylen, digest) = %x{ String(rbPBKDF2(string(pass), string(salt), int(iter), int(keylen), string(digest))) }
+  end
 
   module PKey
     class PKeyError < OpenSSLError; end

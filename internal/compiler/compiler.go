@@ -90,6 +90,7 @@ type Compiler struct {
 	parser                *parser.Parser
 	loaded                map[string]bool           // prelude names, and user files' real paths
 	parsed                map[string]*File          // user files by real path, parsed by scanRequires before the prelude loads
+	resolvingAliases      []string                  // sig `type` aliases being resolved, innermost last: a recursive one is untyped
 	promote               bool                      // the flag or some file's comment is int_overflow promote: Bignum is loaded (decision 381)
 	loadPath              []string                  // -I directories (decision 131)
 	gemDirs               []string                  // installed gems' lib dirs, searched after loadPath: their files are gem code (decision 173)

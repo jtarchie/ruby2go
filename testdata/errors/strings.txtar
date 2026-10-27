@@ -58,7 +58,7 @@ t = s
 s << "d"
 puts t
 -- shovel_param.rb --
-# error: main.rb:3: undefined method << for String: Strings are immutable in rugaroo, and `s` is a parameter, so the caller's String would see the append
+# error: main.rb:3: undefined method << for String: Strings are immutable in rugaroo, and the value of `s <<` (the String itself) is stored or passed on line 3, while the caller's String it appends to is still in use (decision 405)
 # rbs_inline: enabled
 def grow(s) = s << "xyz"
 s = +"abc"
@@ -292,3 +292,28 @@ puts a
 s = +"ab"
 s[0] = "x"
 puts s
+-- out_param_not_a_local.rb --
+# error: main.rb:9: into appends to its `io` parameter, so it takes a local String variable (decision 405)
+module V
+  #: (String) -> nil
+  def self.into(io)
+    io << "x"
+    nil
+  end
+end
+V.into(+"a")
+-- out_param_stored.rb --
+# error: main.rb:5: undefined method << for String: Strings are immutable in rugaroo, and `io` is stored or passed on line 6, while the caller's String it appends to is still in use (decision 405)
+module V
+  #: (String) -> nil
+  def self.into(io)
+    io << "x"
+    @kept = io
+    nil
+  end
+end
+s = +""
+V.into(s)
+-- loaded_features_computed.rb --
+# error: main.rb:2: $LOADED_FEATURES takes File.expand_path("file.rb", __dir__) only
+$LOADED_FEATURES << "x.rb"

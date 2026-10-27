@@ -1,0 +1,607 @@
+# Gem façades — typed, loudly-raising stand-ins for native/third-party
+# gems that are REACHABLE in the require graph but never EXECUTED on
+# the read path. Spinel AOT must type-check the whole reachable graph,
+# so these classes exist to compile; every body fails loudly so an
+# unexpected runtime hit raises NotImplementedError instead of silently
+# misbehaving. Fill in real implementations (SpinelGems mirror or
+# pure-Ruby replacement) per the gem-fate taxonomy when the write paths
+# come into scope.
+#
+# Current occupants and why they're safe to stub:
+# - Markly + Nokogiri: Markdowner and Story#fetched_attributes — both
+#   write-path (markeddown_* columns are precomputed in the DB; URL
+#   fetching happens at submit time). The CRuby tree ships no such
+#   gems either and serves the full read benchmark.
+# - Mail::Address: Hat#sanitized_link display helper, off the
+#   benchmark's route set.
+#
+# Body shape: `GemFacade.fail!(...)` then an UNREACHABLE typed tail.
+# The tail is never executed (fail! raises first) but it is what makes
+# each member's return type inferable — a raise-only body infers as
+# void under AOT, and then chained calls on the result (`.css(...)
+# .each`) stop compiling. The helper call (rather than a bare `raise`)
+# keeps the tail statically live.
+module GemFacade
+  def self.fail!(member)
+    raise NotImplementedError,
+          "gem facade: #{member} is stubbed (write-path only; see runtime/gem_facades.rb)"
+  end
+end
+
+# Markly — CommonMark rendering (lobsters' Markdowner).
+module Markly
+  SMART = 0
+  DEFAULT = 0
+
+  def self.parse(_text, flags: 0, extensions: [])
+    GemFacade.fail!("Markly.parse")
+    Node.new
+  end
+
+  class Node
+    def initialize(_type = nil)
+      GemFacade.fail!("Markly::Node.new")
+      @type = _type
+    end
+
+    def type
+      GemFacade.fail!("Markly::Node#type")
+      :text
+    end
+
+    def each
+      GemFacade.fail!("Markly::Node#each")
+      yield Node.new(:text)
+      nil
+    end
+
+    def to_html(flags: 0, extensions: [])
+      GemFacade.fail!("Markly::Node#to_html")
+      ""
+    end
+
+    def string_content
+      GemFacade.fail!("Markly::Node#string_content")
+      ""
+    end
+
+    def string_content=(_value)
+      GemFacade.fail!("Markly::Node#string_content=")
+      _value
+    end
+
+    def url=(_value)
+      GemFacade.fail!("Markly::Node#url=")
+      _value
+    end
+
+    def insert_after(_node)
+      GemFacade.fail!("Markly::Node#insert_after")
+      nil
+    end
+
+    def append_child(_node)
+      GemFacade.fail!("Markly::Node#append_child")
+      nil
+    end
+  end
+end
+
+# Nokogiri — HTML parsing/DOM surgery (Markdowner post-processing,
+# Story#fetched_attributes title extraction).
+module Nokogiri
+  def self.HTML(_html)
+    GemFacade.fail!("Nokogiri.HTML")
+    Document.new
+  end
+
+  # One attribute of an element (`el.attributes["content"]`).
+  class Attr
+    def text
+      GemFacade.fail!("Nokogiri::Attr#text")
+      ""
+    end
+
+    def to_s
+      GemFacade.fail!("Nokogiri::Attr#to_s")
+      ""
+    end
+  end
+
+  class Element
+    def name=(_value)
+      GemFacade.fail!("Nokogiri::Element#name=")
+      _value
+    end
+
+    def [](_key)
+      GemFacade.fail!("Nokogiri::Element#[]")
+      ""
+    end
+
+    def []=(_key, _value)
+      GemFacade.fail!("Nokogiri::Element#[]=")
+      _value
+    end
+
+    def text
+      GemFacade.fail!("Nokogiri::Element#text")
+      ""
+    end
+
+    def inner_html
+      GemFacade.fail!("Nokogiri::Element#inner_html")
+      ""
+    end
+
+    def attributes
+      GemFacade.fail!("Nokogiri::Element#attributes")
+      { "" => Attr.new }
+    end
+
+    def content=(_value)
+      GemFacade.fail!("Nokogiri::Element#content=")
+      _value
+    end
+
+    def replace(_node)
+      GemFacade.fail!("Nokogiri::Element#replace")
+      nil
+    end
+  end
+
+  class NodeSet
+    def each
+      GemFacade.fail!("Nokogiri::NodeSet#each")
+      yield Element.new
+      nil
+    end
+  end
+
+  class Document
+    def css(_selector)
+      GemFacade.fail!("Nokogiri::Document#css")
+      NodeSet.new
+    end
+
+    # The encoding the document DECLARED (`<meta charset>` /
+    # `<meta http-equiv="Content-Type">`), not the encoding it was
+    # parsed as — nil when it declared none. The optionality is the
+    # whole point of the member: campfire's
+    # `Opengraph::Document#sanitize_content` uses it as a condition,
+    # and a String-typed answer would fold that branch to always-taken.
+    # `String?` therefore lives in gem_facades.rbs, the same split
+    # `Element#[]` already uses (a `""` tail here, optional there).
+    def meta_encoding
+      GemFacade.fail!("Nokogiri::Document#meta_encoding")
+      ""
+    end
+
+    def at_css(_selector)
+      GemFacade.fail!("Nokogiri::Document#at_css")
+      Element.new
+    end
+
+    def create_element(_name)
+      GemFacade.fail!("Nokogiri::Document#create_element")
+      Element.new
+    end
+  end
+end
+
+# mail — RFC822 address parsing (Hat#sanitized_link) and inbound message
+# parsing (extras/email_parser.rb, the mailbox path — off the read
+# benchmark).
+module Mail
+  def self.read_from_string(_text)
+    GemFacade.fail!("Mail.read_from_string")
+    Message.new
+  end
+
+  # One MIME part of a multipart message; parts nest (parts.first.parts).
+  class Part
+    def parts
+      GemFacade.fail!("Mail::Part#parts")
+      [Part.new]
+    end
+
+    def content_type
+      GemFacade.fail!("Mail::Part#content_type")
+      ""
+    end
+
+    def content_type_parameters
+      GemFacade.fail!("Mail::Part#content_type_parameters")
+      { "" => "" }
+    end
+
+    def body
+      GemFacade.fail!("Mail::Part#body")
+      ""
+    end
+  end
+
+  class Message
+    def multipart?
+      GemFacade.fail!("Mail::Message#multipart?")
+      false
+    end
+
+    def parts
+      GemFacade.fail!("Mail::Message#parts")
+      [Part.new]
+    end
+
+    def content_type
+      GemFacade.fail!("Mail::Message#content_type")
+      ""
+    end
+
+    def content_type_parameters
+      GemFacade.fail!("Mail::Message#content_type_parameters")
+      { "" => "" }
+    end
+
+    def body
+      GemFacade.fail!("Mail::Message#body")
+      ""
+    end
+  end
+
+  class Address
+    def initialize(_value)
+      GemFacade.fail!("Mail::Address.new")
+      @value = _value
+    end
+
+    def address
+      GemFacade.fail!("Mail::Address#address")
+      ""
+    end
+
+    def domain
+      GemFacade.fail!("Mail::Address#domain")
+      ""
+    end
+
+    def local
+      GemFacade.fail!("Mail::Address#local")
+      ""
+    end
+  end
+end
+
+# ROTP — TOTP two-factor auth (User#authenticate_totp, settings 2FA
+# enrollment/verify). Off the read benchmark (all uses are write-path
+# POSTs). `verify` returns Bool so the `if user.authenticate_totp(...)`
+# condition type-checks under AOT.
+module ROTP
+  class TOTP
+    def initialize(_secret, issuer: nil)
+      GemFacade.fail!("ROTP::TOTP.new")
+      @secret = _secret
+    end
+
+    def verify(_code)
+      GemFacade.fail!("ROTP::TOTP#verify")
+      false
+    end
+
+    def provisioning_uri(_account)
+      GemFacade.fail!("ROTP::TOTP#provisioning_uri")
+      ""
+    end
+
+    def secret
+      GemFacade.fail!("ROTP::TOTP#secret")
+      ""
+    end
+  end
+
+  module Base32
+    def self.random
+      GemFacade.fail!("ROTP::Base32.random")
+      ""
+    end
+  end
+end
+
+# BCrypt façade lives in its own file — the spin-shaped spinel tree
+# swaps that FILE for `require "bcrypt"` (the spin package) when the
+# app consumes BCrypt; whole-file grain, same as every other swap.
+require_relative "bcrypt_facade"
+
+# RQRCode façade lives in its own file for the same reason: the
+# spin-shaped spinel tree swaps that FILE for `require "rqrcode"` (the
+# spinel-rqrcode spin package) when the app names RQRCode.
+require_relative "rqrcode_facade"
+
+# SVG::Graph::TimeSeries — SVG statistics graphs. lib/time_series.rb
+# subclasses it and the stats controller instantiates it; off the read
+# benchmark. The app subclass calls these inherited methods, so they
+# carry concrete return types (String format strings, Integer value
+# arrays) rather than raising to void.
+module SVG
+  module Graph
+    class TimeSeries
+      def initialize(_opts)
+        GemFacade.fail!("SVG::Graph::TimeSeries.new")
+        @opts = _opts
+      end
+
+      def popup_format
+        GemFacade.fail!("SVG::Graph::TimeSeries#popup_format")
+        ""
+      end
+
+      def x_label_format
+        GemFacade.fail!("SVG::Graph::TimeSeries#x_label_format")
+        ""
+      end
+
+      def get_x_values
+        GemFacade.fail!("SVG::Graph::TimeSeries#get_x_values")
+        [0]
+      end
+
+      def get_y_values
+        GemFacade.fail!("SVG::Graph::TimeSeries#get_y_values")
+        [0]
+      end
+
+      def add_data(data: nil, template: nil)
+        GemFacade.fail!("SVG::Graph::TimeSeries#add_data")
+        self
+      end
+
+      def burn_svg_only
+        GemFacade.fail!("SVG::Graph::TimeSeries#burn_svg_only")
+        ""
+      end
+    end
+  end
+end
+
+# WebPush — the `web-push` gem, campfire's push-notification delivery.
+#
+# `payload_send` is the whole gem in one call: it derives a shared
+# secret from the subscription's P-256 key (ECDH), encrypts the JSON
+# body with AES128GCM, signs a VAPID JWT with the server's private key,
+# and POSTs the result to the endpoint the browser handed out. None of
+# those three primitives exists in this runtime, and a stand-in that
+# returned success would report notifications as delivered that no
+# browser will ever see — the failure that looks like success.
+#
+# The app REOPENS this namespace (`WebPush::Notification`,
+# `WebPush::Pool` are campfire's own classes), so this is a reopen too:
+# the module-function half is the gem's, the classes under it are the
+# app's, exactly as they sit at runtime.
+module WebPush
+  # The gem's error hierarchy (lib/web_push/errors.rb), ported whole:
+  # campfire's `WebPush::Pool#deliver` rescues `ExpiredSubscription`
+  # to drop the subscription, and its suite raises one through the
+  # `payload_send` slot to prove it does. The gem's message carries
+  # the response's body as a third line; this one stops at `inspect`,
+  # because a response here is whatever the caller handed over
+  # (campfire's test passes a `Struct.new(:body)`), and a strict target
+  # will not read `body` off an untyped value.
+  class Error < RuntimeError
+  end
+
+  class ConfigurationError < Error
+  end
+
+  class ResponseError < Error
+    attr_reader :response, :host
+
+    def initialize(response, host)
+      @response = response
+      @host = host
+      super("host: #{host}, #{response.inspect}")
+    end
+  end
+
+  class InvalidSubscription < ResponseError
+  end
+
+  class ExpiredSubscription < ResponseError
+  end
+
+  class Unauthorized < ResponseError
+  end
+
+  class PayloadTooLarge < ResponseError
+  end
+
+  class TooManyRequests < ResponseError
+  end
+
+  class PushServiceError < ResponseError
+  end
+
+  # The stub slot `lower::mocha` writes for `WebPush.stubs(:payload_send)`
+  # and `WebPush.expects(:payload_send).never / .times(n)`. Single-element
+  # Arrays as settable holders, the `Resolv` slot's idiom; `EXPECTED` is
+  # -1 for "no count filed", since 0 is a real expectation (`never`).
+  #
+  # With a stub installed the façade counts the call and answers the
+  # stubbed value; with none it fails as loudly as before. The emitted
+  # test helper clears in setup and verifies in teardown — a count that
+  # was not met raises there, which the autorun shim charges to the test
+  # that filed it, exactly where `mocha_verify` would.
+  STUB_ON = [ false ]
+  STUB_VALUE = [ "" ]
+  CALLS = [ 0 ]
+  EXPECTED = [ -1 ]
+
+  # `expects(:payload_send).with(has_entry(endpoint_ip: ip))` — the
+  # count is filed against calls carrying that option, and a call that
+  # does not is mocha's "unexpected invocation": it raises. Only the
+  # String-valued options are matchable; the entry travels as Strings.
+  EXPECT_KEY = [ "" ]
+  EXPECT_VALUE = [ "" ]
+
+  # `expects(:payload_send).times(n).raises(e)` — every counted call
+  # raises. Held as the exception's CLASS NAME (the Resolv slot's idiom)
+  # and re-raised from the hierarchy above, since the app rescues by
+  # class: campfire's `WebPush::Pool#deliver` drops the subscription on
+  # `ExpiredSubscription`, and its suite raises one to prove it.
+  EXPECT_RAISE_NAME = [ "" ]
+
+  def self.stub_payload_send
+    STUB_ON[0] = true
+    STUB_VALUE[0] = ""
+    nil
+  end
+
+  def self.stub_payload_send_any(value)
+    STUB_ON[0] = true
+    STUB_VALUE[0] = value.to_s
+    nil
+  end
+
+  # A SECOND expectation in one test closes the first. mocha files each
+  # `expects` as its own expectation and matches a call against the
+  # newest one still open, so `times(2)` … two calls … `times(3)` …
+  # three calls verifies. This slot holds one count, so filing a new
+  # one verifies the old against the calls so far and starts over —
+  # the same outcome for the shape campfire writes (`Room::PushTest`
+  # waits for the first batch's tasks before filing the second).
+  def self.expect_payload_send(count)
+    verify_payload_send_expectations
+    CALLS[0] = 0
+    STUB_ON[0] = true
+    EXPECTED[0] = count
+    nil
+  end
+
+  def self.expect_payload_send_with_entry(count, key, value)
+    STUB_ON[0] = true
+    EXPECTED[0] = count
+    EXPECT_KEY[0] = key.to_s
+    EXPECT_VALUE[0] = value.to_s
+    nil
+  end
+
+  def self.expect_payload_send_raising(count, error_name)
+    expect_payload_send(count)
+    EXPECT_RAISE_NAME[0] = error_name.to_s
+    nil
+  end
+
+  def self.clear_payload_send_stubs
+    STUB_ON[0] = false
+    STUB_VALUE[0] = ""
+    CALLS[0] = 0
+    EXPECTED[0] = -1
+    EXPECT_KEY[0] = ""
+    EXPECT_VALUE[0] = ""
+    EXPECT_RAISE_NAME[0] = ""
+    nil
+  end
+
+  # The raise a filed `raises(e)` makes, by name. The gem's response
+  # errors take `(response, host)`; the slot has neither, and nothing
+  # reads them off a raised one.
+  def self.raise_named(name)
+    raise ExpiredSubscription.new(nil, "") if name == "WebPush::ExpiredSubscription"
+    raise InvalidSubscription.new(nil, "") if name == "WebPush::InvalidSubscription"
+    raise Unauthorized.new(nil, "") if name == "WebPush::Unauthorized"
+    raise PayloadTooLarge.new(nil, "") if name == "WebPush::PayloadTooLarge"
+    raise TooManyRequests.new(nil, "") if name == "WebPush::TooManyRequests"
+    raise PushServiceError.new(nil, "") if name == "WebPush::PushServiceError"
+    raise ResponseError.new(nil, "") if name == "WebPush::ResponseError"
+    raise name
+  end
+
+  def self.verify_payload_send_expectations
+    expected = EXPECTED[0]
+    return nil if expected < 0
+    got = CALLS[0]
+    EXPECTED[0] = -1
+    raise "WebPush.payload_send was expected #{expected} time(s), got #{got}" if got != expected
+    nil
+  end
+
+  # `endpoint_ip:` is not the gem's keyword — the gem takes `**options`
+  # and campfire's `WebPush::PersistentRequest` prepend reads it off
+  # them to pin the connection. It has to be accepted here for the
+  # same reason: the app's `Notification#deliver` passes it.
+  def self.payload_send(message:, endpoint:, p256dh:, auth:, vapid:, connection: nil, urgency: nil, endpoint_ip: nil)
+    if STUB_ON[0]
+      key = EXPECT_KEY[0]
+      unless key.empty?
+        sent = { "message" => message, "endpoint" => endpoint, "p256dh" => p256dh, "auth" => auth, "urgency" => urgency.to_s, "endpoint_ip" => endpoint_ip.to_s }
+        got = sent[key].to_s
+        raise "WebPush.payload_send was called with #{key}: #{got.inspect}, expected #{EXPECT_VALUE[0].inspect}" if got != EXPECT_VALUE[0]
+      end
+      CALLS[0] = CALLS[0] + 1
+      raise_named(EXPECT_RAISE_NAME[0]) if EXPECT_RAISE_NAME[0] != ""
+      return STUB_VALUE[0]
+    end
+    GemFacade.fail!("WebPush.payload_send")
+    ""
+  end
+end
+
+# Sentry — the `sentry-ruby` error reporter.
+#
+# THE ONE FAÇADE HERE THAT DOES NOT RAISE, and the reason is what the
+# member is FOR. Every other occupant of this file stands in for a code
+# path the read side never executes, so a loud raise turns "we got here
+# unexpectedly" into a visible failure. `capture_exception` is the
+# opposite: it is only ever called from a `rescue`, so it runs on
+# exactly the paths that are already going wrong, and a raise there
+# replaces the app's error handling with a second error.
+#
+# campfire's `MessagesHelper.message_tag` is the case that named it:
+#
+#   rescue Exception => e
+#     Sentry.capture_exception(e, extra: { message: message })
+#     Rails.logger.error "Exception while rendering message …"
+#     Views::Messages.unrenderable(message)
+#
+# The app's intent is "tell someone, then render a placeholder". With
+# no `Sentry` constant in the tree the rescue itself raised
+# `NameError`, and a rendering failure became a 500 for the whole
+# request — the handler campfire wrote specifically so it would not.
+#
+# STDERR IS THE REPORT, which is also what the real gem does when no
+# DSN is configured: `Sentry.init` is inside `if ENV["SENTRY_DSN"]` in
+# campfire's own initializer, so an unconfigured deployment already
+# gets "the constant answers and nothing is transmitted". Writing the
+# exception where the operator can see it is the honest floor — a
+# silent `nil` would make a swallowed exception invisible in a runtime
+# that has no error reporting at all.
+#
+# Ledgered in docs/pipeline/runtime.md: exceptions are reported to
+# stderr, not to an error-tracking service.
+module Sentry
+  def self.capture_exception(exception, extra: nil)
+    # NO INTROSPECTION OF THE EXCEPTION, and that is a recorded gap
+    # rather than a preference. Both `exception.message` and
+    # `exception.class` 500 the emitted campfire tree with `undefined
+    # method 'message' for an instance of NoMethodError` — the same
+    # empty-dispatch-table shape as matz/spinel#4219, reached here
+    # through a parameter this file declares `untyped`. Three
+    # reductions failed to reproduce it standalone (a typed rescue
+    # local, an inferred parameter, and a declared-`untyped` parameter
+    # all work), so it is left as evidence on the tree rather than
+    # chased further.
+    #
+    # campfire's own next line — `Rails.logger.error "… #{e.class} …
+    # #{e.message}"` — DOES run, because its `e` is the rescue's own
+    # local. So the app still reports what went wrong; what is lost is
+    # this façade's independent copy of it. An app whose only reporting
+    # is `Sentry.capture_exception` gets a bare line saying an
+    # exception was captured, which is worse than the real gem and
+    # better than the 500 the missing constant caused.
+    warn "[sentry] exception captured (details unavailable — see gem_facades.rb)"
+    nil
+  end
+
+  def self.capture_message(message, extra: nil)
+    warn "[sentry] #{message}"
+    nil
+  end
+end

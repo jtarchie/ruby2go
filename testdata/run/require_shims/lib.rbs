@@ -1,0 +1,10 @@
+module Shims
+  type Value = String | Integer | Array[Value]
+end
+
+module Lib
+  def self.first_byte: (String s) -> Integer
+  def self.sum_to: (untyped n) -> Integer
+  def self.doubled: (Array[Integer] xs) -> Array[Integer]
+  def self.show: (Shims::Value x) -> String
+end

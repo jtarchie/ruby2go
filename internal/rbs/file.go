@@ -50,6 +50,7 @@ type MethodDecl struct {
 	Both      bool // `self?.`: the singleton method and the instance method
 	Overloads []*MethodType
 	Line      int
+	Advisory  bool // a sidecar's hint (roundhouse, spinel): an untyped parameter is left to inference
 }
 
 // AttrKind is which accessor an AttrDecl declares.

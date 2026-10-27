@@ -546,6 +546,13 @@ class String
   #: (Regexp, String) -> String
   def __gsub_regexp(re, to) = %x{ String(rbReSub(re, string(self), -1, rbReRepl(string(to)))) }
 
+  # Each match is replaced by its value in the Hash, "" when it has none (nil.to_s), as MRI's.
+  #: (Regexp, Hash[String, String]) -> String
+  def __sub_regexp_hash(re, to) = %x{ String(rbReSub(re, string(self), 1, rbReHash(to))) }
+
+  #: (Regexp, Hash[String, String]) -> String
+  def __gsub_regexp_hash(re, to) = %x{ String(rbReSub(re, string(self), -1, rbReHash(to))) }
+
   # The block gets each match; its value's to_s replaces it.
   #: (untyped) { (String) -> untyped } -> String
   def __sub_block(pat) = %x{ String(rbReSub(rbPattern(pat), string(self), 1, rbReBlock(blk))) }

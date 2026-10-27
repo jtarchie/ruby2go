@@ -1,0 +1,79 @@
+class Article < ApplicationRecord
+  attr_reader id: Integer
+  attr_writer id: Integer
+  def id?: () -> bool
+  attr_reader title: String?
+  attr_writer title: String?
+  def title?: () -> bool
+  def title_previously_changed?: () -> bool
+  def saved_change_to_title?: () -> bool
+  def title_previously_was: () -> untyped
+  attr_reader body: String?
+  attr_writer body: String?
+  def body?: () -> bool
+  def body_previously_changed?: () -> bool
+  def saved_change_to_body?: () -> bool
+  def body_previously_was: () -> untyped
+  attr_reader created_at: Time?
+  attr_reader created_at_raw: String
+  def created_at=: (Time value) -> nil
+  attr_writer created_at_raw: String
+  def created_at?: () -> bool
+  def created_at_previously_changed?: () -> bool
+  def saved_change_to_created_at?: () -> bool
+  def created_at_previously_was: () -> untyped
+  attr_reader updated_at: Time?
+  attr_reader updated_at_raw: String
+  def updated_at=: (Time value) -> nil
+  attr_writer updated_at_raw: String
+  def updated_at?: () -> bool
+  def updated_at_previously_changed?: () -> bool
+  def saved_change_to_updated_at?: () -> bool
+  def updated_at_previously_was: () -> untyped
+  def self.table_name: () -> String
+  def self.schema_columns: () -> Array[Symbol]
+  def self.schema_time_columns: () -> Array[Symbol]
+  def self.instantiate: (Hash[String, untyped] row) -> Article
+  def self.from_row: (ArticleRow row) -> Article
+  def self.from_stmt: (untyped stmt) -> Article
+  def initialize: (?Hash[Symbol, untyped] attrs) -> nil
+  def attributes: () -> Hash[String, untyped]
+  def []: (Symbol name) -> untyped
+  def []=: (Symbol name, (Integer | String) value) -> (Integer | String | nil)
+  def update: (Hash[Symbol, untyped] attrs) -> bool
+  def update!: (Hash[Symbol, untyped] attrs) -> Article
+  def fill_timestamps: (bool creating) -> nil
+  def self._adapter_find_by_id: (Integer id) -> Article?
+  def self._adapter_all: () -> Array[Article]
+  def self._adapter_last: () -> Article?
+  def _adapter_insert: () -> Integer
+  def _adapter_update: () -> nil
+  def _adapter_delete: () -> nil
+  def self._adapter_count: () -> Integer
+  def self._adapter_exists_by_id?: (Integer id) -> bool
+  def self._adapter_truncate: () -> nil
+  def self.delete_all: () -> nil
+  def _adapter_reload: () -> Article
+  def self._columns_sql: () -> String
+  def self._hydrate_all: (String sql) -> Array[Article]
+  def self.from_params: (ArticleParams p) -> Article
+  def update_from_article_params: (ArticleParams p) -> bool
+  def update_from_article_params!: (ArticleParams p) -> Article
+  def validate: () -> nil
+  def comments: () -> Array[Comment]
+  def _preload_comments: (Array[Comment] list) -> nil
+  def comments_loaded?: () -> bool
+  def comments_target: () -> Array[Comment]
+  def comment_ids: () -> Array[Integer]
+  def before_destroy: () -> nil
+  def dom_prefix: () -> String
+  def to_param: () -> String
+  def dom_record_key: () -> String
+  def cache_key: () -> String
+  def cache_key_with_version: () -> String
+  def after_create_commit: () -> nil
+  def after_update_commit: () -> nil
+  def after_destroy_commit: () -> nil
+  def to_gid_param: () -> untyped
+  def __comments_cache: () -> untyped
+end

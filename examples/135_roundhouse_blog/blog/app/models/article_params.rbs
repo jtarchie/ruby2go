@@ -1,0 +1,14 @@
+class ArticleParams
+  def initialize: () -> nil
+  attr_reader title: String
+  attr_writer title: String
+  attr_reader title_provided: bool
+  attr_writer title_provided: bool
+  attr_reader body: String
+  attr_writer body: String
+  attr_reader body_provided: bool
+  attr_writer body_provided: bool
+  def self.from_raw: (Hash[String, Roundhouse::ParamValue] params) -> ArticleParams
+  def []: (Symbol key) -> untyped
+  def to_h: () -> Hash[String, String]
+end

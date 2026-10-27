@@ -1,0 +1,78 @@
+module Rails
+  def self.env: () -> Env
+  def self.env_name: () -> String?
+  def self.env_name=: (String? name) -> String?
+  def self.secret_key_base: () -> String?
+  def self.secret_key_base=: (String? key) -> String?
+  def self.root: () -> AppPath
+  def self.public_path: () -> AppPath
+  def self.cache: () -> Cache
+  def self.logger: () -> Logger
+  def self.log_line: (String line) -> void
+  def self.application: () -> Application
+
+  class AppPath
+    @base: String
+
+    def initialize: (String base) -> void
+    def join: (String part) -> AppPath
+    def +: (String part) -> AppPath
+    def to_s: () -> String
+    def to_path: () -> String
+  end
+
+  class Env
+    @name: String
+
+    def initialize: (String name) -> void
+    def development?: () -> bool
+    def production?: () -> bool
+    def test?: () -> bool
+    def staging?: () -> bool
+  end
+
+  class Cache
+    @entries: Hash[String, String]
+    @expires_at: Hash[String, Integer]
+    def initialize: () -> void
+    def fetch: (untyped key, ?Hash[untyped, untyped] opts) { () -> untyped } -> untyped
+    def fetch_str: (String key, Integer ttl) { () -> String } -> String
+    # `String?` because nil is the MISS. An empty String is a HIT — a
+    # fragment can legitimately render to nothing, and reading that back
+    # as a miss would re-render it on every request forever.
+    def read_str: (String key) -> String?
+    def write_str: (String key, String value, Integer ttl) -> String
+    def increment_str: (String key, Integer ttl) -> Integer
+    def forget: (String k) -> void
+    def clear: () -> void
+    def read: (untyped key) -> untyped
+    def write: (untyped key, untyped value) -> untyped
+    def delete: (untyped key) -> untyped
+    def exist?: (untyped key) -> bool
+  end
+
+  class Logger
+    def info: (untyped message) -> void
+    def error: (untyped message) -> void
+    def warn: (untyped message) -> void
+    def debug: (untyped message) -> void
+    def fatal: (untyped message) -> void
+  end
+
+  class Application
+    def session_cookie_key: () -> String
+    def global_id_app: () -> String
+    def secret_key_base: () -> String
+    def domain: () -> String
+    def credentials: () -> Hash[Symbol, untyped]
+    def config_time_zone: () -> String
+    def active_storage_excluded_content_types: () -> Array[String]
+    def vips_block_untrusted: () -> bool
+    def vips_blocked_operations: () -> Array[String]
+  end
+end
+
+module GlobalID
+  def self.param: (String model_name, Integer id) -> String
+  def self.uri: (String model_name, Integer id) -> String
+end

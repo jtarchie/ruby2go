@@ -1,0 +1,6 @@
+class CommentsController < ApplicationController
+  def process_action: (Symbol action_name) -> nil
+  def create: () -> nil
+  def destroy: () -> nil
+  def comment_params: () -> CommentParams
+end

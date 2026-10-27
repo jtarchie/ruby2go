@@ -1,0 +1,4 @@
+class ApplicationRecord < ActiveRecord::Base
+  def self.abstract?: () -> bool
+  def to_gid_param: () -> untyped
+end

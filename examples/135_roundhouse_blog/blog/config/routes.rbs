@@ -1,0 +1,4 @@
+module RouteTable
+  def self.table: () -> Array[ActionDispatch::Router::Route]
+  def self.root: () -> ActionDispatch::Router::Route
+end

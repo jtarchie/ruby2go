@@ -1,0 +1,7 @@
+# Roundhouse emits no sidecar for main.rb; its request path's types, as its comments and the controllers' sidecars describe them.
+module Main
+  def self.deep_dup: (Hash[String, untyped]) -> Hash[String, Roundhouse::ParamValue]
+  def self.nest_params: (Hash[String, String], Hash[String, String]) -> Hash[String, Roundhouse::ParamValue]
+  def self.nest_uploads: (Hash[String, Roundhouse::ParamValue], Hash[String, untyped]) -> nil
+  def self.dispatch: (Tep::Request, Tep::Response) -> void
+end

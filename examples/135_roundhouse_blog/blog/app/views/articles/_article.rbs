@@ -1,0 +1,6 @@
+module Views
+  module Articles
+    def self.article_into: (String io, untyped article, untyped notice, untyped alert) -> nil
+    def self.article: (Article article, ?String? notice, ?String? alert) -> String
+  end
+end

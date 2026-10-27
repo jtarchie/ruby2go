@@ -1,0 +1,3 @@
+module Schema
+  def self.statements: () -> Array[String]
+end

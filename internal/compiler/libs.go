@@ -227,6 +227,12 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 		sc.require(f, call, sc.top)
 		return
 	}
+	if call, ok := n.(*parser.CallNode); ok && sc.top && f.path != "" {
+		if p := sc.c.loadedFeature(f, call); p != "" { // a shim stands in for it: never walked (decision 404)
+			sc.seen[sc.c.real(p)] = true
+			return
+		}
+	}
 	if cp, ok := n.(*parser.ConstantPathNode); ok && cp.Name != nil && (*cp.Name == "ESRCH" || *cp.Name == "EPERM") && constName(cp.Parent) == "Errno" {
 		sc.lib("__errno_process") // decision 241
 	}
@@ -282,6 +288,9 @@ func (sc *requireScan) require(f *File, call *parser.CallNode, top bool) {
 		panic(compileError{msg: err.Error()})
 	}
 	uf.path = path
+	if uf.nilCheck == "" && call.Name == "require_relative" { // the program's own files take its mode (decision 404)
+		uf.nilCheck = f.nilCheck
+	}
 	sc.parsed[path] = uf
 	sc.walk(uf)
 }

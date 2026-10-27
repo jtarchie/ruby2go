@@ -1,0 +1,31 @@
+# Typing contract for message_verifier.rb beside this file.
+#
+# `sha1` selects the digest: Rails signs cookies with HMAC-SHA1 and
+# signed ids with HMAC-SHA256, so the caller says which. `secret` is the
+# app's secret_key_base and `salt` the per-purpose derivation salt
+# ("signed cookie", "active_record/signed_id"); `derive_key` memoizes
+# the PBKDF2 result, which is 1_000 iterations of HMAC and must not run
+# per request.
+module ActionController
+  module MessageVerifier
+    def self.derived_keys: () -> Hash[String, String]
+    def self.derive_key: (String secret, String salt) -> String
+    def self.generate: (String secret, String salt, String value, String purpose, bool sha1) -> String
+    def self.envelope: (String secret, String salt, String message_json, String purpose, String exp, bool sha1) -> String
+    def self.data_envelope: (String secret, String salt, String data_json, String purpose, String exp, bool sha1) -> String
+    def self.verified_data_json: (String secret, String salt, String signed, String purpose, bool sha1) -> String
+    def self.extract_raw: (String envelope, String prefix) -> String
+    # `::Time`, not `Time` — this sig sits inside `module
+    # ActionController`, where a bare `Time` resolves to
+    # `ActionController::Time` and the body's `t.utc` finds no
+    # method on it. Same trap action_view/view_helpers_ext.rbs
+    # names beside its own `::Time` params.
+    def self.iso8601_ms: (::Time t) -> String
+    def self.verified: (String secret, String salt, String signed, String purpose, bool sha1) -> String
+    def self.verified_json: (String secret, String salt, String signed, String purpose, bool sha1) -> String
+    def self.digest_for: (String secret, String salt, String payload, bool sha1) -> String
+    def self.extract: (String envelope, String prefix) -> String
+    def self.json_string: (String value) -> String
+    def self.json_value: (String json) -> String
+  end
+end

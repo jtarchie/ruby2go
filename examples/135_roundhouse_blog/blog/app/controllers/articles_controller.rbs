@@ -1,0 +1,11 @@
+class ArticlesController < ApplicationController
+  def process_action: (Symbol action_name) -> nil
+  def index: () -> nil
+  def show: () -> nil
+  def new_action: () -> nil
+  def edit: () -> nil
+  def create: () -> nil
+  def update: () -> nil
+  def destroy: () -> nil
+  def article_params: () -> ArticleParams
+end

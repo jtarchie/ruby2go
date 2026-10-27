@@ -4,10 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/danielgatis/go-ruby-prism/parser"
 
 	"github.com/jtarchie/rugaroo/internal/rbs"
 )
@@ -25,6 +28,11 @@ func (c *Compiler) loadSigs(sources []Source) {
 		}
 		seen[dir] = true
 		c.loadSigDir(dir, false)
+	}
+	for _, path := range slices.Sorted(maps.Keys(c.parsed)) { // a foo.rbs beside foo.rb, as roundhouse and spinel write them (decision 404)
+		if side := strings.TrimSuffix(path, ".rb") + ".rbs"; side != path {
+			c.loadSigFile(side, true, true)
+		}
 	}
 	c.loadGemSigs()
 	for _, lib := range c.gemDirs { // a gem's own sig/ beside its lib/ (decision 306), after the vendored ones it may need patching by
@@ -101,6 +109,37 @@ func appendNew[T any](old, add []T, key func(T) string) []T {
 	return out
 }
 
+// loadSigFile parses one .rbs file into the sigs; a missing one is no error.
+func (c *Compiler) loadSigFile(path string, shipped, advisory bool) error {
+	data, rerr := os.ReadFile(path) //nolint:gosec // the program's own sig file
+	if errors.Is(rerr, fs.ErrNotExist) {
+		return nil
+	}
+	if rerr != nil {
+		return fmt.Errorf("read %s: %w", path, rerr)
+	}
+	f, perr := rbs.ParseFile(string(data))
+	if perr != nil && shipped {
+		if c.env.GemWarnings {
+			c.addWarning(nil, fmt.Sprintf("%s: skipped, rugaroo cannot read it: %v (decision 306)", path, perr))
+		}
+		return nil
+	}
+	if perr != nil {
+		c.errorf(nil, nil, "%s: %v", path, perr)
+	}
+	for _, decl := range f.Decls {
+		if shipped {
+			c.eraseGemGenerics(path, decl)
+		}
+		for _, md := range decl.Methods {
+			md.Advisory = advisory
+		}
+		c.addSig(decl)
+	}
+	return nil
+}
+
 // loadSigDir reads a gem's shipped sig dir leniently, as its code is (decision 306); `_` dirs are skipped as RBS does.
 func (c *Compiler) loadSigDir(dir string, shipped bool) {
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -113,27 +152,7 @@ func (c *Compiler) loadSigDir(dir string, shipped bool) {
 		if d.IsDir() || !strings.HasSuffix(path, ".rbs") {
 			return nil
 		}
-		data, rerr := os.ReadFile(path) //nolint:gosec // the program's own sig directory
-		if rerr != nil {
-			return fmt.Errorf("read %s: %w", path, rerr)
-		}
-		f, perr := rbs.ParseFile(string(data))
-		if perr != nil && shipped {
-			if c.env.GemWarnings {
-				c.addWarning(nil, fmt.Sprintf("%s: skipped, rugaroo cannot read it: %v (decision 306)", path, perr))
-			}
-			return nil
-		}
-		if perr != nil {
-			c.errorf(nil, nil, "%s: %v", path, perr)
-		}
-		for _, decl := range f.Decls {
-			if shipped {
-				c.eraseGemGenerics(path, decl)
-			}
-			c.addSig(decl)
-		}
-		return nil
+		return c.loadSigFile(path, shipped, false)
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, errors.ErrUnsupported) { // ErrUnsupported: a browser's js/wasm has no filesystem, so no sig dir
 		c.errorf(nil, nil, "%v", err)
@@ -378,4 +397,18 @@ func unionAdd(a, b rbs.Type) rbs.Type {
 		}
 	}
 	return rbs.Union{Elems: append(slices.Clone(elems), b)}
+}
+
+// inferAdvisoryParams types a sidecar's `untyped` positional parameters from use, as an unannotated def's (decisions 146, 404).
+func (c *Compiler) inferAdvisoryParams(m *Method, n *parser.DefNode) {
+	names, _, _ := c.defParams(m, n.Parameters)
+	for i, p := range m.sig.Params {
+		if _, ok := p.Type.(rbs.Untyped); !ok || p.Kind != rbs.ParamPositional || i >= len(names) {
+			continue
+		}
+		if m.pendingIdx == nil {
+			m.pendingIdx = map[int]pendingParam{}
+		}
+		m.pendingIdx[i] = pendingParam{key: paramKey(m, names[i]), name: names[i]}
+	}
 }

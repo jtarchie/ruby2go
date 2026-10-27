@@ -1,0 +1,101 @@
+module ActionController
+  # Symbolic-status to integer-code mapping (`STATUS_CODES`) is a
+  # Ruby-level frozen Hash literal — module-level constant, not a
+  # method. RBS doesn't require declaring constants for the strict
+  # test (the test exercises method bodies); it's read inside
+  # `resolve_status`, which raises when the symbol isn't in it.
+
+  # Base controller. Holds per-request state (params, session, flash)
+  # and response state (status, body, location). Subclasses define
+  # their actions and override process_action. (`cookies` is a
+  # CRuby-only overlay feature — see runtime/action_controller_cookies.rb
+  # — so it isn't declared on the shared/transpiled Base.)
+  class Base
+    # `attr_accessor` produces getter+setter pairs for each name.
+    # `params` is a String-keyed Hash whose values are recursive
+    # `Roundhouse::ParamValue` — String leaves, nested Hashes, and
+    # Arrays (Rails-shape `comment[author][name]=x`, `tags[]=a`).
+    # Each target's runtime declares its own recursive realization
+    # (`runtime/crystal/param_value.cr`, `runtime/typescript/
+    # param_value.ts`, etc.); the body-typer carries the class id
+    # uniformly. `request_method` and `request_path` are populated
+    # by the dispatcher before invoking the action.
+    def params: () -> Hash[String, Roundhouse::ParamValue]
+    def params=: (Hash[String, Roundhouse::ParamValue]) -> Hash[String, Roundhouse::ParamValue]
+    def session: () -> ActionDispatch::Session
+    def session=: (ActionDispatch::Session) -> ActionDispatch::Session
+    def reset_session: () -> ActionDispatch::Session
+    def assign_http_session: (ActionDispatch::Session value) -> ActionDispatch::Session
+    def flash: () -> ActionDispatch::Flash
+    def flash=: (ActionDispatch::Flash) -> ActionDispatch::Flash
+    def request_method: () -> String
+    def request_method=: (String) -> String
+    def request_path: () -> String
+    def request_path=: (String) -> String
+    def request_format: () -> Symbol
+    def request_format=: (Symbol) -> Symbol
+
+    # `attr_reader` — getter only. Setters are internal (assigned via
+    # `@status =`, `@body =`, `@location =` from render/redirect_to/head).
+    def status: () -> Integer
+    def body: () -> String
+    def location: () -> String?
+    def content_type: () -> String
+
+    # True once render/redirect_to/head has produced a response — the
+    # halting check the synthesized before_action preamble runs after
+    # each filter that can render or redirect (Rails: a filter that
+    # responds halts the chain and skips the action).
+    def performed?: () -> bool
+
+    def initialize: () -> void
+
+    # Subclasses override; base raises NotImplementedError. The
+    # contract is what subclasses MUST satisfy; declare the contract
+    # type even though the Base body itself never returns one — `raise`
+    # is divergent and doesn't contradict the declared return.
+    %a{abstract}
+    def process_action: (Symbol _action_name) -> void
+
+    # `render(body, status:, content_type:, location:)` — sets @body,
+    # @status, and optionally @content_type / @location. `status:` is
+    # monomorphic Symbol (was untyped Symbol|Integer; real-blog only
+    # passes Symbol forms — `:ok`, `:created`, `:unprocessable_entity`
+    # etc. — and STATUS_CODES maps them). Callers needing a literal
+    # integer code coerce upstream.
+    def render: (
+      String body,
+      ?status: Symbol,
+      ?content_type: String?,
+      ?location: String?
+    ) -> void
+
+    # `redirect_to(path, notice:, alert:, status:)` — sets @location,
+    # @status, @flash entries. `status:` typed Symbol (see render).
+    def redirect_to: (
+      String path,
+      ?notice: String?,
+      ?alert: String?,
+      ?status: Symbol
+    ) -> void
+
+    # `head(:no_content, content_type: "application/json")` — empty
+    # body, status only; content_type optional.
+    def head: (Symbol status, ?content_type: String?, ?location: String?) -> void
+    def response: () -> Base
+    def fresh_when: (untyped subject) -> void
+    def stale?: (?etag: untyped) -> bool
+    # Integer SECONDS — `lower::duration::rewrite_expires_in` grounds the
+    # corpus' `1.year` / `1.week` before the call reaches here.
+    def expires_in: (Integer seconds, ?public: bool, ?stale_while_revalidate: Integer) -> void
+    def cache_control_max_age: () -> Integer
+    def cache_control_public: () -> bool
+    def headers: () -> Hash[String, String]
+    def send_data: (String data, ?type: String, ?disposition: String) -> void
+
+    # Monomorphic on Symbol — body looks up STATUS_CODES. Integer
+    # pass-through was previously supported via `is_a?(Integer)`
+    # narrowing; that branch is removed since real-blog never uses it.
+    def resolve_status: (Symbol s) -> Integer
+  end
+end

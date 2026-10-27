@@ -621,10 +621,13 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if len(args) >= 1 && classTwins(m.Name) && !optOn(owner, m) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
-		if o, ok := a.typ.(TOpt); ok && (f.lenient() || f.nilTwin(m, o)) { // a gem's T? is its T, nil raising where used (decisions 172, 393)
+		if o, ok := a.typ.(TOpt); ok && !nilEqualOps[m.Name] && (f.lenient() || f.nilTwin(m, o)) { // a gem's T? is its T, nil raising where used (decisions 172, 393); `==` answers false (decision 404)
 			a.typ = o.Elem
 		}
 		if c, ok := a.typ.(TClass); ok {
+			if r := f.secondArgOverload(owner, name+snake(c.C.RubyName), args); r != nil {
+				return r
+			}
 			if r := owner.lookup(name + snake(c.C.RubyName)); r != nil && len(args) >= requiredArgs(r.M) && (len(args) <= len(r.M.Params) || slices.ContainsFunc(r.M.Params, func(p Param) bool { return p.Rest })) {
 				return r
 			}
@@ -635,6 +638,19 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 		return nil
 	}
 	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// secondArgOverload is `__<name>_<first>_<second>` by the second argument's class too: `gsub(/re/, hash)` (decision 404).
+func (f *fctx) secondArgOverload(owner *Class, prefix string, args []parser.Node) *entry {
+	if len(args) != 2 || !slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, prefix+"_") }) {
+		return nil
+	}
+	var b expr
+	f.probe(func() { b = f.genExpr(args[1], nil) })
+	if c, ok := b.typ.(TClass); ok {
+		return owner.lookup(prefix + "_" + snake(c.C.RubyName))
+	}
+	return nil
 }
 
 // enumClassOverload is a blockless call's `__name_enum_<class>` for its one argument's class: `(1..2).step(0.5)` is a Float sequence (decision 299).

@@ -1,0 +1,24 @@
+class Resolv
+  class ResolvError < StandardError
+  end
+
+  def self.getaddresses: (String host) -> Array[String]
+  def self.resolve: (String host) -> Array[String]
+
+  # Test stub slot — see the note in resolv.rb.
+  STUB_HOSTS: Array[String]
+  STUB_ADDRS: Array[Array[String]]
+  STUB_ANY: Array[Array[String]]
+  STUB_ANY_ON: Array[bool]
+  STUB_RAISE_NAME: Array[String]
+  STUB_WHERE: Array[^(String) -> bool]
+  STUB_WHERE_ADDRS: Array[Array[String]]
+  STUB_SEQ_HOSTS: Array[String]
+  STUB_SEQ_ADDRS: Array[Array[Array[String]]]
+  def self.stub_getaddresses: (String host, Array[String] addrs) -> nil
+  def self.stub_getaddresses_seq: (String host, Array[Array[String]] answers) -> nil
+  def self.stub_getaddresses_any: (Array[String] addrs) -> nil
+  def self.stub_getaddresses_raises: (untyped error) -> nil
+  def self.stub_getaddresses_where: (Array[String] addrs, ^(String) -> bool pred) -> nil
+  def self.clear_getaddresses_stubs: () -> nil
+end

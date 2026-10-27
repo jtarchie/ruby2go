@@ -92,6 +92,11 @@ end
 # error: main.rb:3: `||` on a non-nilable String is always the left side
 s = "a"
 t = s || "b"
+-- or_non_nilable_runtime.rb --
+# nil_check: runtime
+# warning: main.rb:4: `||` on a non-nilable String is always the left side
+s = "a"
+puts(s || "b")
 -- or_non_nilable_integer.rb --
 # error: main.rb:3: `||` on a non-nilable Integer is always the left side
 count = 0

@@ -1,0 +1,29 @@
+module ActiveSupport
+  def self.blank?: (untyped value) -> bool
+
+  def self.present?: (untyped value) -> bool
+
+  def self.presence: (untyped value) -> untyped
+  def self.presence_in: (untyped value, Array[String] list) -> untyped
+
+  # `errors[:field]` -> the messages for that field, prefix stripped.
+  def self.errors_for: (Array[String] errors, String prefix) -> Array[String]
+
+  # Rails' name for "this signed value does not verify" — see the .rb.
+  class MessageVerifier
+    class InvalidSignature < StandardError
+      def initialize: (?String message) -> void
+    end
+  end
+  def self.index_by: (untyped list) { (untyped) -> untyped } -> Hash[untyped, untyped]
+  # `untyped`, not `Array[untyped]`: the body reads `length` and
+  # nothing else, and campfire calls it on an ASSOCIATION —
+  # `many?(room.users)` hands it a Relation. A container element type
+  # on a parameter is a claim about the argument's REPRESENTATION, and
+  # spinel acts on it: the Relation was coerced to `sp_PolyArray *` at
+  # the call. Same over-claim `Relation#preloaded`'s `records` carried
+  # (5592abe8); `index_by` above already says `untyped` for the same
+  # reason.
+  def self.many?: (untyped list) -> bool
+  def self.to_sentence: (Array[untyped] list) -> String
+end

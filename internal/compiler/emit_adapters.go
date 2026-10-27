@@ -223,6 +223,10 @@ func (c *Compiler) adapts(from, to Type, arg bool) bool {
 		return true
 	case !arg && isOpt(to) && !isOpt(from) && c.adapts(from, to.(TOpt).Elem, false): // `-> T` over `-> T?`
 		return true
+	case !arg && isOpt(to) && isOpt(from) && c.adapts(from.(TOpt).Elem, to.(TOpt).Elem, false): // `-> Sub?` over `-> Parent?` (decision 404)
+		return true
+	case !arg && widerResult(from, to): // `-> Array[Sub]` over `-> Array[Parent]`: the adapter returns a converted copy (decision 404)
+		return true
 	case isVoid(from):
 		return false
 	case c.goType(from) == c.goType(to) || isAny(to) || c.goType(to) == "any": // a union is Go any: any value boxes into it
@@ -238,6 +242,12 @@ func (c *Compiler) adapts(from, to Type, arg bool) bool {
 		return false
 	}
 	return fc.C.isSubclassOf(tc.C) || arg && tc.C.isSubclassOf(fc.C)
+}
+
+// widerResult reports a converting result (Array, Hash) of a narrower instantiation than to's, as coerce converts it.
+func widerResult(from, to Type) bool {
+	tc, ok := to.(TClass)
+	return ok && converts(tc) && widerInstance(from, tc)
 }
 
 // checkAdaptable rejects an override whose class cannot answer slot s of an

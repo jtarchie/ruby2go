@@ -1,0 +1,70 @@
+# Typing contract for the typed Request value object (request.rb
+# beside this file). `attr_accessor` in the .rb surfaces here as
+# getter+setter def pairs, per the runtime .rbs convention.
+module ActionDispatch
+  class RequestBody
+    @text: String
+    @pos: Integer
+    def initialize: (String text) -> void
+    def string: () -> String
+    def rewind: () -> Integer
+    def read: () -> String
+    def size: () -> Integer
+    def length: () -> Integer
+    def eof?: () -> bool
+  end
+
+  class Request
+    @remote_ip: String
+    @path: String
+    @query_string: String
+    @script_name: String
+    @request_method: String
+    @referer: String
+    @host: String
+    @format: String
+    @body: String
+    @body_io: RequestBody?
+    @env: Hash[String, untyped]
+    @user_agent: String
+    @params: Hash[String, untyped]
+
+    def remote_ip: () -> String
+    def remote_ip=: (String) -> String
+    def path: () -> String
+    def path=: (String) -> String
+    def query_string: () -> String
+    def query_string=: (String) -> String
+    def script_name: () -> String
+    def script_name=: (String) -> String
+    def request_method: () -> String
+    def request_method=: (String) -> String
+    def referer: () -> String
+    def referer=: (String) -> String
+    def host: () -> String
+    def host=: (String) -> String
+    def format: () -> String
+    def format=: (untyped value) -> untyped
+    def body: () -> RequestBody
+    def body=: (String) -> String
+    def raw_post: () -> String
+    def env: () -> Hash[String, untyped]
+    def env=: (Hash[String, untyped]) -> Hash[String, untyped]
+    def initialize: () -> void
+    def get?: () -> bool
+    def post?: () -> bool
+    def head?: () -> bool
+    def xhr?: () -> bool
+    def fullpath: () -> String
+    def original_fullpath: () -> String
+    def base_url: () -> String
+    def original_url: () -> String
+    def url: () -> String
+    def referrer: () -> String
+    def user_agent: () -> String
+    def user_agent=: (String) -> String
+    def params: () -> Hash[String, untyped]
+    def params=: (Hash[String, untyped]) -> Hash[String, untyped]
+    def self.for: (Hash[String, untyped] env, ?Hash[String, untyped] params) -> Request
+  end
+end

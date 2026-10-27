@@ -1,0 +1,190 @@
+# View helpers — module functions invoked from Views::* render
+# methods. Surface tracks what real-blog actually uses (link_to,
+# button_to, dom_id, content_for slots, importmap tags,
+# turbo_stream_from, truncate, html_escape). form_with + FormBuilder
+# are retired (lowerer macro-inlines them — see view_helpers.rb).
+#
+# `module_function` means each `def` is callable both as
+# `ViewHelpers.foo(...)` and as `foo(...)` from inside a module that
+# has `extend ViewHelpers`. We declare them as `self.` methods —
+# the call sites in spinel-blog use the qualified form.
+module ActionView
+  module ViewHelpers
+    # ── slot store (content_for / yield) ────────────────────────────
+    # Module-level @slots holds the slot hash. Declared as a method
+    # signature for the body-typer so reads like `@slots[slot]`
+    # resolve through the instance_methods table; the actual write
+    # happens at module-eval time (`@slots = {}`) and via
+    # content_for_set.
+  
+    def self.reset_slots!: () -> void
+    def self.content_for_set: (Symbol slot, String value) -> void
+    def self.content_for_get: (Symbol slot) -> String?
+
+    # `content_for?(:slot)` — has the slot been populated?
+    def self.content_for?: (Symbol slot) -> bool
+    def self.get_slot: (Symbol slot) -> String
+    def self.get_yield: () -> String
+    def self.set_yield: (String content) -> void
+  
+    # ── escaping / formatting ───────────────────────────────────────
+
+    # Monomorphic by design: callers stringify before passing in. The
+    # body has no nil/Symbol coercion — every input is already a
+    # String. Internal callers (render_attrs, text_area) wrap their
+    # potentially-non-String values with `.to_s` at the call site
+    # rather than forcing html_escape to handle every shape. Trades
+    # caller-side discipline for a far simpler dispatch profile every
+    # backend compiler (V8, YJIT, ZJIT, Spinel, rustc) can specialize
+    # against.
+    def self.html_escape: (String s) -> String
+  def self.h: (untyped value) -> String
+    # Percent-encoding for a query-string value; ASCII-only (see the .rb).
+    def self.url_encode: (String s) -> String
+    # `Hash#to_query`: one string per value, `&`-joined. Scalar values
+    # in insertion order here; runtime/spinel/hash_to_query.rb reopens
+    # both with the nested bracket grammar and Rails' per-level sort.
+    def self.to_query: (Hash[Symbol, untyped] params) -> String
+    def self.to_query_pairs: (Hash[Symbol, untyped] params, String namespace) -> String
+    def self.to_query_value: (String name, untyped value) -> String
+    def self.url_encode_component: (String s) -> String
+    def self.url_encode_mailto_address: (String s) -> String
+
+    # Same monomorphization rationale as html_escape: callers handle
+    # nil/non-String coercion explicitly. Real-blog's only caller
+    # passes `article.body` (typed String per the model RBS) so the
+    # contraction lands without source churn.
+    def self.truncate: (String s, ?length: Integer, ?omission: String) -> String
+  
+    # ── DOM helpers ─────────────────────────────────────────────────
+    # Monomorphic record-shape: dom_id takes an ActiveRecord::Base
+    # subclass instance (was String|Base; the String case is contracted
+    # away — callers wanting "article_42" spell it directly). Two call
+    # shapes:
+    #   dom_id(record)                  -> "article_42"
+    #   dom_id(record, :comments_count) -> "comments_count_article_42"
+    #
+    # The per-model class name reaches dom_id through `record.dom_prefix`
+    # — a synthesized per-model instance method (lowerer-emitted, see
+    # `push_dom_prefix_method` in model_to_library). This replaces the
+    # previous `record_dom_prefix(record)` helper that called
+    # `record.class.name.downcase` (runtime introspection).
+    def self.dom_id: (ActiveRecord::Base record, ?Symbol? suffix) -> String
+  
+    # ── HTML element helpers ────────────────────────────────────────
+    # `text` is the link/button label — typed String (was untyped).
+    # Callers passing a record or other value handle the stringify at
+    # the call site. `href` is the URL path. `opts` is the attribute
+    # hash (Symbol or String keys; values flatten through render_attrs).
+    def self.link_to: (String text, String href, ?Hash[Symbol, untyped] opts) -> String
+    def self.button_to: (String text, String href, ?Hash[Symbol, untyped] opts) -> String
+
+    # `name` defaults to the address itself; the mail-header options
+    # (cc/bcc/body/subject/reply_to) ride in `opts` and are lifted into
+    # the href's query string.
+    def self.mail_to: (String email, ?String name, ?Hash[Symbol, untyped] opts) -> String
+    def self.mail_query_append: (String query, String header, String value) -> String
+
+    # html_safe-text variant of link_to (label already escaped/marked
+    # safe by the caller — see the `link_to(raw(x), ...)` rewrite).
+    def self.link_to_raw: (String text, String href, ?Hash[Symbol, untyped] opts) -> String
+
+    # Rails' html_safe marker; identity here (no safe-buffer type).
+    def self.raw: (untyped value) -> String
+
+    def self.safe_join: (Array[String] parts, ?String separator) -> String
+  
+    def self.csrf_meta_tags: () -> String
+    def self.form_authenticity_token: () -> String
+    def self.csp_meta_tag: () -> String
+  
+    # `name` is the asset stem (e.g., "application" → /assets/application.css).
+    def self.stylesheet_link_tag: (String name, ?Hash[Symbol, untyped] opts) -> String
+    def self.javascript_include_tag: (String source, ?Hash[Symbol, untyped] opts) -> String
+
+    # Asset helpers. `source` is the image path/name; `skip_pipeline`
+    # (and absolute/protocol-relative sources) returns it verbatim.
+    def self.image_path: (String source, ?skip_pipeline: bool) -> String
+    def self.asset_path: (String source, ?skip_pipeline: bool) -> String
+    def self.url_for: (String target) -> String
+    def self.image_url: (String source, ?skip_pipeline: bool) -> String
+    def self.image_tag: (String source, ?Hash[Symbol, untyped] opts) -> String
+    def self.path_to_javascript: (String source, ?skip_pipeline: bool) -> String
+    def self.javascript_path: (String source, ?skip_pipeline: bool) -> String
+
+    # Generic element helper: `content_tag :span, text, title: "..."`.
+    # `content` is untyped — call sites pass strings, but Rails accepts
+    # anything stringifiable and the body goes through `.to_s` (nil
+    # default renders "").
+    def self.content_tag: (Symbol name, ?untyped? content, ?Hash[Symbol, untyped] opts) -> String
+  
+    # `pins` is the importmap pin array — each entry a record with
+    # fixed `:name` and `:path` fields. Record (not `Hash[Symbol,
+    # String]`) so strict-typed targets see the literal shape: the
+    # lowerer emits `{name: ..., path: ...}` which Crystal parses
+    # as `NamedTuple(name: String, path: String)`. When nil/empty,
+    # falls back to a Turbo-only shape. `entry` is the JS module
+    # entrypoint name.
+    def self.javascript_importmap_tags: (
+      ?Array[{ name: String, path: String }]? pins,
+      ?String entry
+    ) -> String
+  
+    # `stream` is genuinely polymorphic — Rails' turbo_stream_from
+    # accepts a String channel name OR an Array (composed channel).
+    # JSON.generate handles either, so untyped here.
+    def self.turbo_stream_from: (untyped stream, String channel) -> String
+  
+    # ── form_with primitives ───────────────────────────────────────
+    # Small typed-scalar helpers callable from macro-inlined form_with
+    # expansions. See view_helpers.rb for the runtime/macro split
+    # rationale.
+    def self.csrf_token_hidden_input: () -> String
+    def self.cache_scope: () -> String
+    def self.begin_broadcast_render: () -> String
+    def self.broadcast_render: (String _armed, String html) -> String
+    # `untyped`, not `Symbol`: the body's whole use of it is `to_s` and
+    # two string comparisons, and `form_with` below reads the method out
+    # of an untyped options hash. Declaring `Symbol` made the honest
+    # caller the illegal one.
+    def self.method_override_input: (untyped method) -> String
+    # Blockless `form_with` — the runtime fallback for a `form_with`
+    # written in a HELPER body, where the options are a runtime value.
+    # See the .rb for what it deliberately does not do.
+    def self.form_with: (?Hash[Symbol, untyped] opts) -> String
+    # `value` accepts the abstract Base#[] return type (the union of
+    # all schema column types — Int64/String/Float/Bool plus Nil).
+    # Both helper bodies already nil-check and stringify uniformly,
+    # so widening to `untyped` keeps the call-site shape simple
+    # (`optional_value_attr(record[:field])`) without per-column
+    # casts.
+    def self.optional_value_attr: (untyped value) -> String
+    def self.escape_or_empty: (untyped value) -> String
+
+    # ── attribute rendering ────────────────────────────────────────
+    # `attrs` is a Symbol-keyed Hash — the shape every caller already
+    # builds (`{ rel: ..., href: ... }.merge(opts.to_h)`, where `opts`
+    # is the Symbol-keyed html-options hash above). Values are
+    # String/Integer/nil/Hash (nested for data:/aria:) and stay
+    # `untyped` because the body branches on `is_a?(Hash)` for nested
+    # maps and stringifies through `k.to_s` at render time.
+    #
+    # Key is `Symbol`, not `String`, on purpose: it matches the callers'
+    # dataflow, which keeps spinel's `SymPolyHash` param/arg consistent
+    # (a `String` hint here is what made spinel's `--rbs` build a
+    # `StrPolyHash *` param against `SymPolyHash *` args and segfault).
+    # Symbol is also the faster monomorphization on the Ruby family —
+    # interned-symbol keys hash by identity with no per-key `to_s`
+    # allocation, where String keys pay content hashing plus a
+    # frozen-key dup on insert. Strict targets are unaffected: they
+    # render `Ty::Sym` as their String/string key type regardless
+    # (rust2 `HashMap<String, Value>`, TS `Record<string, …>`), and
+    # Crystal's already-Symbol-keyed callers finally match the param.
+    def self.render_attrs: (Hash[Symbol, untyped] attrs) -> String
+
+    # Rails' BOOLEAN_ATTRIBUTES membership — presence-is-the-value
+    # attributes render `name="name"` when truthy and vanish when
+    # false; `render_attrs` consults this per attribute name.
+    def self.boolean_attr?: (String name) -> bool
+  end
+end

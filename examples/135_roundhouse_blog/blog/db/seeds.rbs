@@ -1,0 +1,3 @@
+module Seeds
+  def self.run: () -> nil
+end

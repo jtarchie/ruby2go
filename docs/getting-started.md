@@ -204,6 +204,8 @@ Every message below is what rugaroo prints today, prefixed by `file:line`.
 
 Programs whose shape is decided while they run: building classes from data,
 `eval`ing configuration, `define_method` loops, mutating strings in place
-throughout. A framework built on that (Rails, for one) is out of reach for now.
+throughout. A framework built on that (Rails, for one) is out of reach for now,
+though a Rails app that [roundhouse](https://rubys.github.io/roundhouse/) has
+transpiled to plain Ruby compiles ([example 135](../examples/135_roundhouse_blog/README.md)).
 Scripts, command-line tools, data processing, servers on `net/http`/`webrick`,
 and libraries with clear types are the sweet spot.

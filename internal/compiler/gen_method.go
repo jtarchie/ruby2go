@@ -157,8 +157,8 @@ func (c *Compiler) paramLocals(m *Method) []*local {
 			t = TClass{C: c.classes["Array"], Args: []Type{p.Type}}
 		}
 		goName := goParamName(p.Name, i)
-		if p.Rest {
-			goName = goLocalName(p.Name) // bound from rest_ in the prologue
+		if p.Rest || p.Out {
+			goName = goLocalName(p.Name) // bound from rest_ or the out pointer in the prologue
 		}
 		ps = append(ps, &local{name: p.Name, goName: goName, typ: t, declared: true})
 	}
@@ -331,6 +331,12 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 	}
 	params := c.paramLocals(m)
 	prologue := func() {
+		for i, p := range m.Params {
+			if p.Out { // copied in, and back out however the method returns, so a raise keeps the appends as in MRI
+				f.emit("%s := *%s", goLocalName(p.Name), outParamName(p, i))
+				f.emit("defer func() { *%s = %s }()", outParamName(p, i), goLocalName(p.Name))
+			}
+		}
 		for _, p := range m.Params {
 			if p.Rest && p.Name != "_" { // `*_` binds nothing
 				f.emit("%s := &Array[%s]{s: rest_}", goLocalName(p.Name), c.goType(p.Type))
@@ -379,7 +385,11 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 		f.indent--
 		f.emit("}")
 	}
-	c.out.WriteString(f.buf.String())
+	body := f.buf.String()
+	if i := strings.LastIndexByte(strings.TrimSuffix(body, "\n"), '\n') + 1; strings.HasPrefix(body[i:], "//line ") {
+		body = body[:i] // a last statement that emitted no Go (a trailing nil): its directive alone reads as a blank line to the whitespace linter
+	}
+	c.out.WriteString(body)
 }
 
 // fillDefault runs a left-out param's default where Ruby does: in the callee, after the params before it.

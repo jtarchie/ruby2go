@@ -3,6 +3,7 @@ package compiler
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -72,6 +73,7 @@ type appendProof struct {
 	frozen bool             // the file freezes its literals
 	ivar   bool             // name is an ivar of initialize's self (decision 395)
 	strict bool             // the String is setbyte'd: no read may share its bytes before the seal (decision 395)
+	out    bool             // an out parameter: its caller appends after the method returns, so nothing may keep it (decision 405)
 	depth  int              // blocks entered below root
 	loops  []int            // end offsets of the loops and blocks enclosing the position, outermost first
 	later  int              // > 0 inside a block that may run after its call
@@ -100,10 +102,11 @@ func (f *fctx) appendWhy(name string) string {
 }
 
 func (f *fctx) proveAppend(key localKey) string {
-	if li := f.locals[key]; li != nil && (li.param || li.noHoist) {
+	out := key.scope == methodScope && f.m != nil && slices.ContainsFunc(f.m.Params, func(p Param) bool { return p.Out && p.Name == key.name })
+	if li := f.locals[key]; li != nil && (li.param || li.noHoist) && !out {
 		return fmt.Sprintf("`%s` is a parameter, so the caller's String would see the append", key.name)
 	}
-	p := &appendProof{f: f, name: key.name, root: f.scopeRoot, frozen: frozenLiteralComment.Match(f.f.Src)}
+	p := &appendProof{f: f, name: key.name, root: f.scopeRoot, frozen: frozenLiteralComment.Match(f.f.Src), out: out}
 	if p.root == nil {
 		return "rugaroo cannot see the scope of `" + key.name + "`"
 	}
@@ -139,6 +142,9 @@ func (p *appendProof) verdict() string {
 		last = " before its last change"
 	}
 	for _, l := range p.leaks {
+		if p.out {
+			return l.why + ", while the caller's String it appends to is still in use (decision 405)"
+		}
 		if l.off < p.seal {
 			return l.why + last
 		}
@@ -470,7 +476,7 @@ func (p *appendProof) sealAt(c parser.Node) {
 // use is why n's value (the local's String) may end up held elsewhere, or "" (stack ends at n's parent).
 func (p *appendProof) use(n parser.Node, stack []parser.Node) string {
 	held := "`" + p.name + "` is stored or passed"
-	if n == p.root {
+	if n == p.root && !p.out {
 		return "" // the method's value: returned when nothing can append any more
 	}
 	if len(stack) == 0 {
@@ -522,7 +528,7 @@ func (p *appendProof) use(n parser.Node, stack []parser.Node) string {
 		}
 		switch g := up[len(up)-1].(type) {
 		case *parser.ReturnNode:
-			if p.depth == 0 {
+			if p.depth == 0 && !p.out {
 				return ""
 			}
 		case *parser.NextNode:
@@ -533,6 +539,13 @@ func (p *appendProof) use(n parser.Node, stack []parser.Node) string {
 			}
 		case *parser.CallNode:
 			if p.argSafe(g) {
+				return ""
+			}
+			if p.f.outCallArg(g, n) { // the callee appends through it: an append here (decision 405)
+				if p.later > 0 {
+					return fmt.Sprintf("`%s` is passed to %s inside a block that may run after its call returns", p.name, g.Name)
+				}
+				p.sealAt(g)
 				return ""
 			}
 			return fmt.Sprintf("`%s` is passed to %s", p.name, g.Name)

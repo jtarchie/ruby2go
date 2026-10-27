@@ -4,9 +4,16 @@ package prelude
 
 import (
 	"crypto"
+	"crypto/hmac"
+	"crypto/md5" //nolint:gosec // OpenSSL::HMAC with "MD5" is what the program asked for
+	"crypto/pbkdf2"
 	"crypto/rsa"
+	"crypto/sha1" //nolint:gosec // OpenSSL::HMAC with "SHA1" is what the program asked for
+	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/x509"
 	"encoding/pem"
+	"hash"
 	"strings"
 )
 
@@ -83,4 +90,39 @@ func rbRSASaltLength(v any, h crypto.Hash) int {
 		return int(x)
 	}
 	return rsa.PSSSaltLengthAuto
+}
+
+// rbOpenSSLDigest is the hash an OpenSSL digest name ("SHA256", "sha-1") names, as HMAC and PBKDF2 take it.
+func rbOpenSSLDigest(name string) func() hash.Hash {
+	switch rbRSAHashName(name) {
+	case "MD5":
+		return md5.New
+	case "SHA1":
+		return sha1.New
+	case "SHA224":
+		return sha256.New224
+	case "SHA256":
+		return sha256.New
+	case "SHA384":
+		return sha512.New384
+	case "SHA512":
+		return sha512.New
+	}
+	panic(NewRuntimeError(Ref(String("Unsupported digest algorithm (" + name + ").: unknown object name"))))
+}
+
+// rbHMAC is OpenSSL::HMAC.digest: the raw MAC of data under key.
+func rbHMAC(digest, key, data string) string {
+	m := hmac.New(rbOpenSSLDigest(digest), []byte(key))
+	m.Write([]byte(data))
+	return string(m.Sum(nil))
+}
+
+// rbPBKDF2 is OpenSSL::PKCS5.pbkdf2_hmac.
+func rbPBKDF2(pass, salt string, iter, keylen int, digest string) string {
+	k, err := pbkdf2.Key(rbOpenSSLDigest(digest), pass, []byte(salt), iter, keylen)
+	if err != nil {
+		panic(NewOpenSSL_OpenSSLError(Ref(String(err.Error()))))
+	}
+	return string(k)
 }

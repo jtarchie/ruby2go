@@ -1,0 +1,8 @@
+module Inflector
+  PARAMETERIZE_SQUASH: Regexp
+  PARAMETERIZE_RUNS: Regexp
+  PARAMETERIZE_EDGES: Regexp
+
+  def self.parameterize: (String) -> String
+  def self.pluralize_word: (String word, untyped count) -> String
+end

@@ -1,0 +1,1208 @@
+module ActiveRecord
+  # A lazy, chainable query builder — the metaprogramming-free analog of
+  # ActiveRecord::Relation. Lowered model code drives it: `scope`s become
+  # class methods that take/return a Relation, associations return one,
+  # and a query chain (`Model.where(...).order(...).limit(...)`) is a
+  # sequence of Relation method calls that only touches the database at a
+  # terminal (`to_a`/`each`/`first`/`count`/…).
+  #
+  # No `method_missing`, no `define_method`: every method is written out.
+  # The model is held as a plain class-object value (`@model`) whose
+  # `table_name` / `instantiate` class methods supply the per-model facts;
+  # calling them is ordinary dispatch.
+  #
+  # Database access and value escaping go through `ActiveRecord.adapter`
+  # (the `AdapterInterface`) rather than the raw `Db` primitive, so the
+  # whole class types against the same adapter contract `Base` uses — no
+  # target-specific surface leaks in here. Chain methods mutate and return
+  # `self`; lowered chains are linear (build then terminate), so a fresh
+  # Relation per chain start is enough isolation.
+  #
+  # Terminals memoize: the first `to_a` loads and caches the records
+  # (Rails' loaded-relation contract), so `map` + `each` + `empty?` on
+  # the same relation hit the database once, not once per call — and
+  # record mutations made between terminals (lobsters' current_vote
+  # stamping) survive to the render. Every chain method drops the cache:
+  # app code does re-chain after a terminal (`rel = rel.where(...)`
+  # returns this same object, mutated), and a stale cache there would
+  # serve the pre-refinement rows.
+  class Relation
+    def initialize(model)
+      @model = model
+      @table = model.table_name
+      @wheres = []
+      @joins = []
+      @orders = []
+      @groups = []
+      @havings = []
+      @select_sql = nil
+      @distinct = false
+      @limit = nil
+      @offset = nil
+      @includes = []
+      @records = nil
+      @scope_attributes = {}
+    end
+
+    # ---- chain methods (return self) --------------------------------
+
+    # `where(hash)` / `where("raw sql")` / `where("a = ? AND b = ?", x, y)`.
+    def where(condition = nil, *args)
+      add_condition(condition, args, false)
+      self
+    end
+
+    # An association's scope: `where(fk => owner.id)` that ALSO presets
+    # what a `create` through this relation writes.
+    #
+    # Rails derives both from the same place — a relation's equality
+    # conditions filter reads (`where_values_hash`) and seed writes
+    # (`scope_for_create`), which is why `user.sessions.create!(…)`
+    # comes back with `user_id` set without anybody naming it. Only the
+    # compiler's association seed calls this, so the ordinary `where`
+    # stays a pure filter and pays nothing for the extra bookkeeping.
+    def where_scope(condition)
+      @scope_attributes = condition
+      add_condition(condition, [], false)
+      self
+    end
+
+    # Rails' `scope_for_create`: the attributes a record built through
+    # this relation starts with. Empty for a relation nobody scoped.
+    def scope_attributes
+      @scope_attributes
+    end
+
+    # `where.not(...)` is lowered to `not(...)` on the relation: negate the
+    # condition back onto this relation.
+    def not(condition = nil, *args)
+      add_condition(condition, args, true)
+      self
+    end
+
+    # Rails' `excluding(…)` — everything in this relation except what is
+    # named. Rails accepts records, arrays of records, and relations, and
+    # all three already have a spelling here: `column_predicate` reads a
+    # `Base` as its id, an `Array` as an IN list, and a `Relation` as an
+    # IN subquery. So this is a negated primary-key condition and nothing
+    # more — the polymorphism it looks like it needs is the polymorphism
+    # `where` already carries.
+    #
+    # The one-argument case unwraps rather than passing the splat array
+    # through: `excluding(some_relation)` has to reach the SUBQUERY
+    # branch, and wrapped in an array it would reach the IN-list branch
+    # and escape a Relation object into the SQL text.
+    def excluding(*records)
+      if records.length == 1
+        self.not(@model.primary_key => records[0])
+      else
+        self.not(@model.primary_key => records)
+      end
+    end
+
+    # `without` — Rails' own alias for `excluding`, on both Relation and
+    # Enumerable. campfire's sidebar splits its memberships in two and
+    # writes `all_memberships.without(@direct_memberships)` for the
+    # remainder.
+    def without(*records)
+      excluding(*records)
+    end
+
+    # `rel.or(other)` — Rails' Relation#or: this relation's accumulated
+    # WHERE conjunction OR'd with the other's, grouped as one condition.
+    # Rails requires matching structure (joins/limit) on both sides;
+    # the receiver's structural clauses are kept here. An empty side is
+    # an always-true condition (matches Rails: no filter to OR against).
+    def or(other)
+      @records = nil
+      mine = @wheres.length > 0 ? @wheres.join(" AND ") : "1=1"
+      other_wheres = other.where_clauses
+      theirs = other_wheres.length > 0 ? other_wheres.join(" AND ") : "1=1"
+      @wheres = ["((#{mine}) OR (#{theirs}))"]
+      self
+    end
+
+    # Answers whether it actually PUSHED a clause — a nil or empty
+    # condition pushes none. `find_by` is the caller that needs the
+    # answer: it borrows a predicate and gives it back, so it has to
+    # know whether there is one to pop. The chain methods ignore it.
+    def add_condition(condition, args, negate)
+      @records = nil
+      return false if condition.nil?
+      sql = if condition.is_a?(Hash)
+        hash_conditions(condition)
+      else
+        substitute_binds(condition.to_s, args)
+      end
+      return false if sql == ""
+      @wheres << (negate ? "NOT (#{sql})" : "(#{sql})")
+      true
+    end
+
+    # `order` on a LOADED relation sorts the loaded records in memory
+    # rather than dropping them and re-querying. This is the shape a
+    # preloaded association takes through a scope: campfire's message
+    # partial renders `message.boosts.ordered` for every message on the
+    # page, and with `includes(boosts: :booster)` already loaded those
+    # boosts, re-querying them was one round trip per message -- the room
+    # page's last N+1. (Rails re-queries here too, and hides it behind
+    # its fragment cache; a per-request renderer cannot.)
+    #
+    # Only a term that names a bare column, optionally with a table
+    # prefix and ASC/DESC, sorts in memory; anything else (an expression,
+    # a function, RANDOM()) drops the memo and the SQL path answers. The
+    # sort is STABLE and applies the terms last-to-first, so ties under
+    # the first term keep the loaded order -- which is the table's row
+    # order, the same order SQLite hands back for tied keys -- and a
+    # page sorted here matches one sorted by the database byte for byte.
+    def order(*parts)
+      terms = parts.map { |p| order_term(p) }
+      terms.each { |t| @orders << t }
+      loaded = @records
+      return self if loaded.nil?
+      # An explicit copy rather than `dup`: built by pushes, the copy has
+      # the records array's own type where a `dup` of a nilable read does
+      # not, and it is assigned back into `@records` below. An index loop
+      # rather than `each`, whose block parameter the typer cannot derive
+      # from a receiver it only knows as nilable.
+      sorted = []
+      i = 0
+      while i < loaded.length
+        sorted << loaded[i]
+        i += 1
+      end
+      if sort_in_place!(sorted, terms)
+        @records = sorted
+      else
+        @records = nil
+      end
+      self
+    end
+
+    # Sort `sorted` (a copy of the loaded records) by `terms` in place;
+    # true when every term was a bare column, false when one was not --
+    # the caller then drops the memo and the database orders instead.
+    # Stable insertion sort: the memo is a page, not a table, and
+    # stability is the property that keeps tied rows in database order.
+    def sort_in_place!(sorted, terms)
+      i = terms.length - 1
+      while i >= 0
+        col = order_column(terms[i])
+        return false if col.nil?
+        desc = order_descending?(terms[i])
+        # Keys once per row, not once per comparison: `attributes` builds
+        # a Hash on every call.
+        keys = sorted.map { |r| order_key_of(r, col) }
+        n = sorted.length
+        j = 1
+        while j < n
+          moving = sorted[j]
+          key = keys[j]
+          k = j - 1
+          while k >= 0
+            cmp = compare_order_keys(keys[k], key)
+            return false if cmp.nil?
+            cmp = -cmp if desc
+            break if cmp <= 0
+            sorted[k + 1] = sorted[k]
+            keys[k + 1] = keys[k]
+            k -= 1
+          end
+          sorted[k + 1] = moving
+          keys[k + 1] = key
+          j += 1
+        end
+        i -= 1
+      end
+      true
+    end
+
+    # One row's value under `col`, as the database would order it. The
+    # synthesized `attributes` hash carries every column BUT the primary
+    # key, and datetimes as their raw stored text (which orders as the
+    # database orders them); `id` is read off the record itself.
+    def order_key_of(record, col)
+      return record.id if col == "id"
+      record.attributes[col]
+    end
+
+    # The bare column an order term names -- `"created_at"` and
+    # `"boosts.created_at DESC"` both answer `"created_at"` -- or nil for
+    # anything that is not one column with an optional ASC/DESC.
+    def order_column(term)
+      words = term.strip.split(/\s+/)
+      return nil if words.length == 0 || words.length > 2
+      col = words[0]
+      dot = col.rindex(".")
+      col = col[(dot + 1)..] unless dot.nil?
+      return nil unless col.match?(/\A[A-Za-z_][A-Za-z0-9_]*\z/)
+      if words.length == 2
+        dir = words[1].upcase
+        return nil unless dir == "ASC" || dir == "DESC"
+      end
+      col
+    end
+
+    # Whether an order term (already accepted by `order_column`) says DESC.
+    def order_descending?(term)
+      words = term.strip.split(/\s+/)
+      words.length == 2 && words[1].upcase == "DESC"
+    end
+
+    # SQLite's ordering of two attribute values: NULL sorts first, then
+    # like compares with like. nil for a pair this cannot order, which
+    # sends the caller back to the database.
+    def compare_order_keys(a, b)
+      return 0 if a.nil? && b.nil?
+      return -1 if a.nil?
+      return 1 if b.nil?
+      a <=> b
+    end
+
+    def limit(n)
+      @records = nil
+      @limit = n
+      self
+    end
+
+    def offset(n)
+      @records = nil
+      @offset = n
+      self
+    end
+
+    def group(*parts)
+      @records = nil
+      # Symbols qualify against this relation's table (Rails renders
+      # `GROUP BY "tags"."id"`), so a grouped column stays unambiguous
+      # once a join brings in a second table carrying the same column
+      # name. Raw strings (expressions, pre-qualified columns) ride
+      # verbatim.
+      parts.each do |p|
+        @groups << (p.is_a?(Symbol) ? "#{@table}.#{p}" : p.to_s)
+      end
+      self
+    end
+
+    def having(condition, *args)
+      @records = nil
+      @havings << substitute_binds(condition.to_s, args)
+      self
+    end
+
+    # `joins("INNER JOIN memberships ON …")` — a raw SQL fragment, which
+    # is what reaches this runtime. The ASSOCIATION form
+    # (`joins(:users)`) is resolved at transpile time by
+    # `lower::scope_chain`, which owns the only table that knows a
+    # join's ON clause; a Symbol arriving here means that lowering
+    # DECLINED, and appending the bare name produces `FROM rooms users`
+    # — which SQLite reads as an alias, so the query runs and answers
+    # the wrong rows.
+    #
+    # `AssocRegistry`'s own doc says an unresolvable shape is "left
+    # untouched (visible at runtime rather than silently mis-joined)".
+    # It was not visible: this method made it silent. Raising is what
+    # that sentence always meant, and it names the association so the
+    # ledger line and the failure agree.
+    #
+    # Found via `Rooms::Direct.all.joins(:users)` — an STI subclass is
+    # not in the registry, so nothing could resolve it.
+    def joins(spec)
+      @records = nil
+      @joins << join_fragment(spec)
+      self
+    end
+
+    def left_outer_joins(spec)
+      @records = nil
+      @joins << join_fragment(spec)
+      self
+    end
+
+    def join_fragment(spec)
+      return spec if spec.is_a?(String)
+      raise("joins(#{spec}): an association join is resolved at transpile " \
+            "time and this one was not — the receiver's class has no entry " \
+            "in the association registry (an STI subclass, a habtm, or an " \
+            "unresolvable `through`). Appending the name raw would answer " \
+            "the wrong rows rather than fail.")
+    end
+
+    # `left_joins` — Rails alias for `left_outer_joins`.
+    def left_joins(spec)
+      left_outer_joins(spec)
+    end
+
+    # `select(:id, :username, "raw AS x")` — the PROJECTION, and the
+    # only thing this name means here. Symbols qualify against this
+    # relation's table (as Rails renders them); raw strings ride
+    # verbatim.
+    #
+    # WITH A BLOCK Rails means a different method sharing the name:
+    # Enumerable's filter over the loaded records, answering an Array.
+    # That form lives on `filter` below, and `relation_select_block`
+    # lowers every relation-typed `select { … }` call site onto it — so
+    # this method answers a Relation and nothing else.
+    #
+    # It is worth saying why the fork is a lowering rather than a
+    # `specs.empty?` branch here, which is what it used to be. A method
+    # answering `Relation | Array` types its whole receiver chain POLY,
+    # and on the strict targets poly is not merely the slow path: it is
+    # a DIFFERENT dispatch path. spinel's does not apply the
+    # braceless-keyword-args → trailing-positional-Hash conversion, so
+    # `Story.select(:id).where(merged_story_id: id)` bound `where`'s
+    # optional `condition` to its `nil` default and dropped the filter
+    # on the floor — lobsters' `/s/:story_id` rendered the comments of
+    # every merged story instead of its own, with no warning anywhere.
+    #
+    # Zero specs therefore means the lowering did not fire, which is a
+    # compiler bug and not a shape to guess at: the old branch's failure
+    # mode (`@select_sql` an EMPTY string, so the next hop emitted
+    # `SELECT  FROM memberships …`) was silent until something forced
+    # the query. Raise instead.
+    def select(*specs)
+      raise ArgumentError, "select: no columns (a block form reached the projection)" if specs.empty?
+      @records = nil
+      cols = []
+      specs.each do |spec|
+        cols << (spec.is_a?(Symbol) ? "#{@table}.#{spec}" : spec.to_s)
+      end
+      @select_sql = cols.join(", ")
+      self
+    end
+
+    def distinct
+      @records = nil
+      @distinct = true
+      self
+    end
+
+    # `includes`/`preload`/`eager_load` — eager-load hints. The specs
+    # (Symbols, or Hashes for nested includes like `story: :user`) are
+    # recorded here and executed by `to_a`, which hands them to the
+    # model's synthesized `preload_associations` (batched `IN` loads
+    # into the `_preload_<assoc>` caches). Models without a synthesized
+    # override inherit Base's no-op and stay lazy (correct, just N+1).
+    def includes(*names)
+      @records = nil
+      names.each { |n| @includes << n }
+      self
+    end
+
+    def preload(*names)
+      @records = nil
+      names.each { |n| @includes << n }
+      self
+    end
+
+    def eager_load(*names)
+      @records = nil
+      names.each { |n| @includes << n }
+      self
+    end
+
+    # `references(:assoc)` — Rails' marker that a string condition
+    # mentions an eager-loaded table. The preload machinery here decides
+    # what to load from `eager_load`/`includes` alone, so the marker
+    # carries no state; accept and ignore it so marker-bearing chains
+    # stay chainable (lobsters' filters page).
+    def references(*names)
+      names
+      self
+    end
+
+    # `merge(other)` — fold another relation's WHEREs in. v1 handles the
+    # common case (merging a same-table scope's conditions).
+    def merge(other)
+      @records = nil
+      other.where_clauses.each { |w| @wheres << w }
+      self
+    end
+
+    def where_clauses
+      @wheres
+    end
+
+    # `rel.arel` — the relation reified as its SELECT text, for the
+    # `.arel.exists` correlated-subquery idiom
+    # (`where.not(HiddenStory.….arel.exists)`). Captures the SQL at the
+    # call: later chain mutations don't flow into it (matches lowered
+    # usage, where `.arel` ends its chain).
+    def arel
+      Arel::SelectManager.new(to_sql)
+    end
+
+    def none
+      @records = nil
+      @wheres << "(1 = 0)"
+      self
+    end
+
+    # `reload` — drop the loaded records; the next terminal re-queries and
+    # reflects committed changes.
+    def reload
+      @records = nil
+      self
+    end
+
+    # Rails' `load` — force the query now and memoize the records.
+    def load
+      to_a
+      self
+    end
+
+    # An eager load's records, handed to the relation that would have
+    # gone and fetched them. A `has_many :through` reader answers a
+    # Relation (the join lives on the intermediate table, so there is no
+    # direct-fk query to materialize), while `includes(:tags)` preloads
+    # through `_preload_tags` into the owner's cache ivar — this is the
+    # seam between the two: the reader builds its joined relation and
+    # seeds the loaded-records memo with what the preload already
+    # fetched, so no query runs and the declared return type stays
+    # Relation on every path through the reader.
+    #
+    # `loaded` is a separate argument because the cache cannot answer
+    # the question: every association ivar starts `[]` in `initialize`,
+    # which is indistinguishable from an association that loaded and
+    # found nothing. False is a plain no-op.
+    #
+    # Chaining on afterwards drops the seed like any other chain method
+    # (`where`/`order`/… all clear `@records`), so a caller that
+    # narrows a preloaded relation re-queries rather than filtering a
+    # stale set — Rails' behavior for a loaded relation, and the reason
+    # the join conditions stay on the relation instead of this method
+    # answering the bare Array.
+    def preloaded(records, loaded)
+      @records = records if loaded
+      self
+    end
+
+    # The model class this relation queries — Rails' Relation#klass
+    # (lobsters' Search switches on it to pick per-model joins).
+    def klass
+      @model
+    end
+
+    # ---- terminals --------------------------------------------------
+
+    # Loads once, then serves the memoized records (see the class
+    # comment). Hands back a shallow copy each call — Rails' `to_a`
+    # contract — so a caller sorting or appending to the result can't
+    # corrupt the cache; the record objects themselves stay shared.
+    def to_a
+      cached = @records
+      return cached.dup unless cached.nil?
+      records = load_records
+      @model.preload_associations(records, @includes) if @includes.length > 0
+      @records = records
+      records.dup
+    end
+
+    # The rows, hydrated. With no explicit `select`, the projection is
+    # the model's own column list and the model hydrates typed records
+    # straight from the statement (`_hydrate_all`) — the positions are
+    # fixed at compile time, so no String-keyed Hash per row. An
+    # explicit `select` can project anything, and keeps the Hash path.
+    def load_records
+      if @select_sql.nil?
+        @model._hydrate_all(select_sql_with(@model._columns_sql))
+      else
+        rows = ActiveRecord.adapter.select_rows(to_sql)
+        rows.map { |row| @model.instantiate(row) }
+      end
+    end
+
+    # Implicit array conversion — Rails delegates `to_ary` to the
+    # loaded records, which is what lets `[story, relation].flatten`
+    # splice the relation's records into the surrounding Array
+    # (Array#flatten recurses into elements that respond to to_ary).
+    def to_ary
+      to_a
+    end
+
+    # `relation == array` — Rails compares the LOADED RECORDS, and this
+    # covers BOTH orders. Ruby's `Array#==` hands the comparison over to
+    # the other operand whenever that operand answers `to_ary` (which
+    # the method above does), so `[ message ] == Message.search("eel")`
+    # arrives here as `relation == [ message ]`. Without it that
+    # expression fell through to `Object#==` — reference identity
+    # between an Array and a Relation, which is false for every input,
+    # so `assert_equal <array>, <relation>` was an assertion no emitted
+    # tree could pass. campfire's `message_searchable_test` is three
+    # tests written entirely in that shape.
+    #
+    # Relation-to-relation compares records too, rather than Rails'
+    # `to_sql` equality: two relations that differ only in how they were
+    # BUILT are the same result set here, and the result set is what a
+    # caller is asking about.
+    #
+    # PRIMARY KEYS, not `==` on the elements, and that is the whole
+    # point rather than a shortcut. Rails answers this through
+    # `ActiveRecord::Core#==`, where two objects are the same record
+    # when they share a class and a saved id — a row read twice is two
+    # objects. This runtime has no such `Base#==`: an operator
+    # DEFINITION in `base.rb` reaches every strict target, and no
+    # emitter renames one to its host's spelling (measured — python
+    # wrote `def ==(self, other)` verbatim and every emitted tree
+    # stopped at a SyntaxError). A relation's records are all one model
+    # by construction, so comparing ids here is that rule with the class
+    # half already decided. Record-to-record `==` remains identity, and
+    # closing it means teaching each emitter the rename.
+    def ==(other)
+      mine = to_a
+      theirs = other.is_a?(ActiveRecord::Relation) ? other.to_a : other
+      return false if !theirs.is_a?(Array)
+      return false if mine.length != theirs.length
+      i = 0
+      same = true
+      while i < mine.length
+        same = false if mine[i].id != theirs[i].id
+        i += 1
+      end
+      same
+    end
+
+    # `filter { |r| … }` — Enumerable's filter over the loaded records.
+    # `select { |r| … }` is Rails' other spelling of this method and
+    # arrives here renamed (`relation_select_block`), which leaves the
+    # projection `select(*specs)` above monomorphic.
+    def filter
+      out = []
+      to_a.each { |x| out << x if yield x }
+      out
+    end
+
+    # `relation + array` — Rails materializes and concatenates
+    # (`to_a + other`), yielding a plain Array. The set operations
+    # (`&`, `|`, `-`) are delegated to the loaded records the same
+    # way (ActiveRecord::Delegation's array-method delegation);
+    # lobsters intersects `story.tags & filtered_tags`.
+    def +(other)
+      to_a + other
+    end
+
+    def &(other)
+      to_a & other
+    end
+
+    def |(other)
+      to_a | other
+    end
+
+    def -(other)
+      to_a - other
+    end
+
+    # `include?(record)` — Rails checks membership against the loaded
+    # records (`load` then id-compare); materializing matches that
+    # contract at our result-set sizes.
+    # Rails' `Relation#include?(record)`: a loaded relation asks its
+    # records, an unloaded one asks the database (`exists?(record.id)`).
+    # Either way the question is the RECORD's identity — class and id —
+    # never object identity, so two hydrations of one row agree.
+    # Compared by id here rather than through `==` because record
+    # equality is defined only on the CRuby overlay
+    # (`active_record_bang.rb`); a compiled target compares boxed objects
+    # by pointer, and campfire's `room.users.include?(users(:david))`
+    # read false for a user the room had just been granted.
+    #
+    # Through `ids` rather than `exists?(record.id)` the way Rails asks
+    # it: the caller's record is untyped, and handing its `id` to the
+    # nullable `Integer?` parameter is a shape spinel refuses at the C
+    # level (`passing 'int' to parameter of incompatible type
+    # 'sp_RbVal'`). `ids` is one projected query and a typed
+    # `Array[Integer]`, so the comparison stays typed end to end.
+    def include?(record)
+      return false if record.nil?
+      ids.include?(record.id)
+    end
+
+    def each
+      to_a.each { |x| yield x }
+    end
+
+    # `index_by { |r| key }` — the records as a Hash keyed by the
+    # block's value, last write winning on duplicates (Rails'
+    # contract; lobsters keys tag filters by id).
+    def index_by
+      h = {}
+      to_a.each { |x| h[yield x] = x }
+      h
+    end
+
+    # `find_each` — Rails batches in groups of 1000; the result set sizes
+    # this runtime serves make plain iteration the same observable
+    # behavior (ordering aside, which our callers don't rely on).
+    def find_each
+      to_a.each { |x| yield x }
+    end
+
+    def map
+      to_a.map { |x| yield x }
+    end
+
+    # `collect` is Enumerable's second name for `map`, and Rails
+    # relations answer it because they delegate the whole of Enumerable
+    # to `to_a`. campfire's membership extension reaches it
+    # (`Array(users).collect { … }` where `users` is a relation).
+    # Duplicated rather than aliased: strict targets want a real
+    # definition, not an alias, and a body forwarding to `map` would
+    # have to forward the block too.
+    def collect
+      to_a.map { |x| yield x }
+    end
+
+    # `group_by { |rec| key }` — Enumerable's grouping over the
+    # materialized rows (lobsters threads comments with
+    # `@comments.group_by(&:parent_comment_id)`). fetch-then-insert
+    # rather than `Hash.new { [] }` (no default-proc portability) or
+    # `[]=`-chaining on a maybe-missing key.
+    def group_by
+      out = {}
+      to_a.each do |rec|
+        k = yield rec
+        arr = out.fetch(k, nil)
+        if arr.nil?
+          arr = []
+          out[k] = arr
+        end
+        arr << rec
+      end
+      out
+    end
+
+    # `partition { |r| … }` — Enumerable's two-way split over the
+    # materialized rows, `[matching, rest]`. campfire's account page
+    # writes `@administrators, @members = users.partition(&:administrator?)`
+    # straight off a `User.where(...)`.
+    def partition
+      to_a.partition { |x| yield x }
+    end
+
+    # `detect { |r| … }` — Enumerable's first match, nil when none.
+    # (`find` is NOT this: on a Relation that is Rails' find-by-id.)
+    def detect
+      to_a.detect { |x| yield x }
+    end
+
+    # `sort_by { |r| key }` — Enumerable's sort over the materialized
+    # rows. Distinct from `order`, which is SQL: this one sorts by a
+    # value the block computes in Ruby, which is why campfire reaches
+    # for it to sort direct rooms by their room's `updated_at`.
+    def sort_by
+      to_a.sort_by { |x| yield x }
+    end
+
+    # `inject(initial) { |acc, x| ... }` — the accumulator form the
+    # corpus uses (vote-hash batchers). The no-initial and Symbol forms
+    # aren't modeled; callers pass an explicit seed.
+    def inject(initial)
+      acc = initial
+      to_a.each { |x| acc = yield(acc, x) }
+      acc
+    end
+
+    def first
+      prior = @limit
+      @limit = 1
+      rows = to_a
+      @limit = prior
+      # The one-row load must NOT stay memoized: `@records` is the
+      # loaded-relation cache a later `each`/`map` reads, and a cache
+      # holding the single row `first` asked for would answer those with
+      # one row out of many. Same terminal rule as `pluck`.
+      @records = nil
+      rows.length == 0 ? nil : rows[0]
+    end
+
+    # `take` — a row with no ordering imposed. Rails leaves the order
+    # to the database; SQLite hands back the lowest rowid, which is the
+    # row `first` orders to, so one query shape serves both.
+    def take
+      first
+    end
+
+    # `first!` — like `first`, but raises `RecordNotFound` (→ 404 in the
+    # dispatch layer) instead of returning nil when the relation is empty.
+    def first!
+      record = first
+      raise RecordNotFound, "Couldn't find record in #{@table}" if record.nil?
+      record
+    end
+
+    def last
+      rows = to_a
+      rows.length == 0 ? nil : rows[rows.length - 1]
+    end
+
+    def count
+      rows = ActiveRecord.adapter.select_rows(count_sql)
+      rows.length == 0 ? 0 : rows[0]["n"].to_i
+    end
+
+    # `sum(:col)` / `sum("<sql expr>")` — SQL SUM over the relation.
+    # Returns Float: both corpus consumers are float arithmetic
+    # (lobsters' hotness math); an Integer-column caller would want
+    # column typing here, ledgered when one appears.
+    def sum(expr)
+      term = expr.is_a?(Symbol) ? "#{@table}.#{expr}" : expr.to_s
+      sql = "SELECT COALESCE(SUM(#{term}), 0) AS n FROM #{@table}"
+      sql = "#{sql} #{@joins.join(" ")}" if @joins.length > 0
+      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      rows = ActiveRecord.adapter.select_rows(sql)
+      rows.length == 0 ? 0.0 : rows[0]["n"].to_f
+    end
+
+    # `group(:col).count` — Rails hands back a Hash of group-key =>
+    # COUNT. The group_count lowering renames the grouped chain's
+    # terminal to this method, so the scalar `count` keeps its
+    # Integer return (no polymorphic count). Single group expression
+    # (the corpus shape); Rails' multi-group array keys would need a
+    # composite key here first.
+    def group_count
+      key = @groups.join(", ")
+      sql = "SELECT #{key} AS k, COUNT(*) AS n FROM #{@table}"
+      sql = "#{sql} #{@joins.join(" ")}" if @joins.length > 0
+      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      sql = "#{sql} GROUP BY #{key}"
+      h = {}
+      rows = ActiveRecord.adapter.select_rows(sql)
+      rows.each { |row| h[row["k"]] = row["n"].to_i }
+      h
+    end
+
+    # Loaded relations answer from the cache; unloaded ones keep the
+    # COUNT round-trip (Rails asks EXISTS here — one row either way).
+    def empty?
+      r = @records
+      r.nil? ? count == 0 : r.length == 0
+    end
+
+    # Like `empty?`: a loaded relation answers from its records, an
+    # unloaded one asks the database for a count.
+    def any?
+      r = @records
+      r.nil? ? count > 0 : r.length > 0
+    end
+
+    # ActiveSupport's blank family on a relation. Rails answers `blank?`
+    # through `records.blank?`, which LOADS; spelled against `empty?`
+    # here so an unloaded relation pays the COUNT round-trip `empty?`
+    # already pays rather than materialising every row.
+    #
+    # `lower::blank` folds these away where the receiver's static type
+    # is known (a typed relation grounds to `!empty?`). These are the
+    # runtime answers for the sites it declines: campfire's has_many
+    # extension `revise(granted: [], revoked: [])` takes a relation
+    # through an untyped kwarg, and `granted.present?` reaches the
+    # object by dispatch.
+    def blank?
+      empty?
+    end
+
+    def present?
+      !empty?
+    end
+
+    def presence
+      empty? ? nil : self
+    end
+
+    # Rails reaches Enumerable#none? through the relation, and without a
+    # block it is `any?` inverted. Spelled against `empty?` rather than
+    # `!any?` so the loaded case answers from the cache the way `empty?`
+    # does instead of paying a COUNT round-trip.
+    def none?
+      empty?
+    end
+
+    # `one?` — EXACTLY one row, the third of the Enumerable predicates
+    # Rails reaches through a relation. Its siblings have been here
+    # since `any?`; this one had no caller until a `has_many :through`
+    # reader started answering a real Relation, at which point
+    # campfire's `user.rooms.one?` stopped being an Array question.
+    #
+    # Block form is absent for the same reason `any?`'s is: it would
+    # have to materialize and iterate, and no call site asks.
+    def one?
+      count == 1
+    end
+
+    # Block form of Enumerable#all? over the materialized rows (the
+    # runtime `Base.where` fallback returns a Relation, and dynamic
+    # call-sites treat it as the array Rails hands back).
+    def all?
+      ok = true
+      to_a.each { |x| ok = false unless yield x }
+      ok
+    end
+
+    # `exists?` / `exists?(id)` — Rails also takes a conditions Hash or
+    # a String; the id form is what the corpus spells
+    # (`Membership.connected.exists?(@membership.id)`), and a Hash
+    # would be the untyped-Hash-surface problem `has_json` mapped out.
+    # An `Integer?` param narrows by early return, not by a guard —
+    # rust2 does not narrow an `Option` across `unless x.nil?`.
+    def exists?(id = nil)
+      return count > 0 if id.nil?
+      # Popped for the same reason `find` and `find_by` pop: a terminal
+      # that answered a question must not narrow the relation it was
+      # asked on.
+      @wheres << "#{@table}.id = #{ActiveRecord.adapter.escape_value(id)}"
+      found = count > 0
+      @wheres.pop
+      found
+    end
+
+    def length
+      to_a.length
+    end
+
+    def size
+      to_a.length
+    end
+
+    # `delete_all` — bulk DELETE scoped by the accumulated WHEREs.
+    # Rails contract: no callbacks, no per-row loads, returns the
+    # affected-row count. ORDER/LIMIT don't apply to bulk ops.
+    def delete_all
+      sql = "DELETE FROM #{@table}#{scoped_write_where}"
+      ActiveRecord.adapter.execute_ddl(sql)
+      ActiveRecord.adapter.changes
+    end
+
+    # `destroy_all` — load the scoped records and destroy each one, so
+    # `before_destroy` / `after_destroy` and any dependent-association
+    # cleanup RUN. Deliberately not `delete_all` with a different name:
+    # Rails draws exactly this line, and campfire depends on the
+    # callback half (`Search#trim_recent_searches` prunes a user's
+    # search history through it). The Array of destroyed records is
+    # Rails' return value too.
+    def destroy_all
+      records = to_a
+      records.each { |r| r.destroy }
+      records
+    end
+
+    # `destroy_by(conditions)` — Rails' `where(conditions).destroy_all`,
+    # and spelled as exactly that so the callback contract `destroy_all`
+    # documents above carries over unchanged. campfire's
+    # `Room#memberships.revoke_from` is the caller.
+    def destroy_by(conditions)
+      where(conditions).destroy_all
+    end
+
+    # `delete_by(conditions)` — `destroy_by`'s callback-skipping twin,
+    # the same line Rails draws between `destroy_all` and `delete_all`.
+    def delete_by(conditions)
+      where(conditions).delete_all
+    end
+
+    # `update_all(...)` — bulk UPDATE scoped by the accumulated WHEREs.
+    # Hash form (`update_all(user_id: 3)`) escapes values; String form
+    # (`update_all("hits = hits + 1")`) is trusted verbatim, same as
+    # Rails. Returns the affected-row count.
+    def update_all(updates)
+      set_sql = if updates.is_a?(Hash)
+        parts = []
+        updates.each do |key, val|
+          parts.push("#{key} = #{ActiveRecord.adapter.escape_value(val)}")
+        end
+        parts.join(", ")
+      else
+        updates.to_s
+      end
+      sql = "UPDATE #{@table} SET #{set_sql}#{scoped_write_where}"
+      ActiveRecord.adapter.execute_ddl(sql)
+      ActiveRecord.adapter.changes
+    end
+
+    # The WHERE clause a bulk WRITE takes — the one place `delete_all`
+    # and `update_all` differ from every read on this class.
+    #
+    # A read appends `@joins` to its FROM; SQL has no such place in a
+    # DELETE or an UPDATE, and dropping the join while KEEPING the
+    # conditions that name it emits a statement about a table that is
+    # not in the query. campfire's `User#deactivate` runs
+    # `memberships.without_direct_rooms.delete_all`, whose scope is
+    # `joins(:room).where.not(room: { type: "Rooms::Direct" })`, and it
+    # produced `DELETE FROM memberships WHERE … AND NOT (room.type =
+    # 'Rooms::Direct')` — "no such column: room.type".
+    #
+    # Rails answers the same way: scope the write by a subquery on the
+    # primary key, which is where the join CAN live. The `IN (SELECT …)`
+    # form is what SQLite supports (it has no `DELETE … USING`), and it
+    # is portable to every adapter this runtime might grow.
+    #
+    # Returns "" for the unscoped case so an unconditional `delete_all`
+    # still emits a bare `DELETE FROM <table>` — Rails' truncate-shaped
+    # statement, not a subquery over every row.
+    def scoped_write_where
+      return "" if @wheres.length == 0 && @joins.length == 0
+      if @joins.length == 0
+        return " WHERE #{@wheres.join(" AND ")}"
+      end
+      key = "#{@table}.#{@model.primary_key}"
+      inner = "SELECT #{key} FROM #{@table} #{@joins.join(" ")}"
+      inner = "#{inner} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      " WHERE #{@model.primary_key} IN (#{inner})"
+    end
+
+    # `pluck(:col)` — a single column projected to an Array of its raw
+    # values (strings as stored; callers coerce).
+    #
+    # THE PROJECTION IS RESTORED, and that is not housekeeping. `pluck`
+    # is a TERMINAL: Rails builds it a query of its own and leaves the
+    # receiver alone, so the same relation can be plucked and then
+    # loaded. Leaving `users.id AS v` behind meant the NEXT `to_a` on
+    # that object hydrated whole records out of a one-column row —
+    # every field blank, every id 0, no error anywhere. campfire's
+    # `Rooms::Direct.find_or_create_for` does exactly that: `find_for`
+    # plucks the user ids, then hands the SAME relation to `grant_to`,
+    # which built memberships for user 0.
+    def pluck(col)
+      prior = @select_sql
+      @select_sql = "#{@table}.#{col} AS v"
+      rows = ActiveRecord.adapter.select_rows(to_sql)
+      @select_sql = prior
+      rows.map { |row| row["v"] }
+    end
+
+    # `pick(col)` — Rails' `limit(1).pluck(col).first`: the single value
+    # from the first row, or nil when the relation matches nothing.
+    # Lobsters reads every Keystore counter through it.
+    def pick(col)
+      prior = @limit
+      @limit = 1
+      rows = pluck(col)
+      @limit = prior
+      rows.length == 0 ? nil : rows[0]
+    end
+
+    # `ids` — primary keys, as integers.
+    def ids
+      prior = @select_sql
+      @select_sql = "#{@table}.id AS v"
+      rows = ActiveRecord.adapter.select_rows(to_sql)
+      @select_sql = prior
+      rows.map { |row| row["v"].to_i }
+    end
+
+    # `find(id)` — the row with that primary key, RAISING
+    # `RecordNotFound` when there is none. That raise is Rails' whole
+    # distinction between `find` and the `find_by` below it, and it is
+    # what turns a missing record into a 404 instead of a nil that
+    # NoMethodErrors somewhere later. This answered nil until now, and
+    # campfire's autocomplete is where that showed: `Current.user.rooms
+    # .find(params[:room_id]).users` on a room the user is not a member
+    # of read "undefined method 'users' for nil" — the test asserting
+    # `assert_raises ActiveRecord::RecordNotFound` on exactly that
+    # request.
+    #
+    # The id predicate is POPPED afterwards: like `pluck`, this is a
+    # terminal, and a `WHERE id = 3` left on the relation would silently
+    # narrow every later use of it to that one row. Popped BEFORE the
+    # raise for the same reason — an exception a caller rescues must not
+    # leave the relation altered.
+    def find(id)
+      @wheres << "#{@table}.id = #{ActiveRecord.adapter.escape_value(id)}"
+      record = first
+      @wheres.pop
+      if record.nil?
+        raise RecordNotFound, "Couldn't find record in #{@table} with id=#{id}"
+      end
+      record
+    end
+
+    # A TERMINAL, so its predicate is POPPED — the same rule `find`
+    # above spells out, and omitting it here cost campfire its entire
+    # room page. `find_messages` asks `messages.find_by(id:
+    # params[:message_id])` to decide between two pagings and then
+    # pages THE SAME relation; on a plain `/rooms/1` the id is nil, so
+    # the probe left `WHERE id IS NULL` behind and `last_page` answered
+    # zero rows against a room holding a hundred. The page still came
+    # back 200, complete and well-formed, with an empty message list —
+    # which is exactly the failure the app's own tests cannot see.
+    #
+    # `add_condition` answers whether it pushed — a nil or empty
+    # condition pushes nothing — so the pop is guarded by that rather
+    # than issued unconditionally.
+    def find_by(conditions)
+      pushed = add_condition(conditions, [], false)
+      record = first
+      @wheres.pop if pushed
+      record
+    end
+
+    # `find_by!` — `find_by` that raises `RecordNotFound` on no match.
+    def find_by!(conditions)
+      record = find_by(conditions)
+      raise RecordNotFound, "Couldn't find record in #{@table}" if record.nil?
+      record
+    end
+
+    # NO `new` HERE, AND NOT BY OVERSIGHT. Rails builds records through
+    # a relation (`User.active_bots.new`), but under spinel this class's
+    # constructor is already `sp_Relation_new`, so an instance method of
+    # that name emits a second definition of the same C symbol and the
+    # program does not compile (`conflicting types for
+    # 'sp_Relation_new'`). One landed briefly and turned every spinel
+    # job red. Both forms are served by a call-site rewrite in
+    # lower::scope_chain instead — the association one inside a threaded
+    # class-method body, the scope one on the relation receiver itself
+    # (`User.active_bots.new` -> `User.new(User.active_bots
+    # .scope_attributes)`). Ledgered in docs/pipeline/runtime.md.
+
+    # `first_or_initialize` — the first matching row, or a new unsaved
+    # record when there is none. The caller assigns the remaining
+    # attributes before `save` (the write path this serves), so the built
+    # record starts blank rather than pre-filled from the where-conditions.
+    def first_or_initialize
+      record = first
+      record.nil? ? @model.new : record
+    end
+
+    # Rails' `find_or_create_by` — the first row matching `conditions`,
+    # or a saved new record carrying them. campfire's `Search.record` is
+    # `find_or_create_by(query: query).touch`, reached through
+    # `user.searches`, and the SCOPE is the point: the created row must
+    # belong to that user, which is what `scope_attributes` carries.
+    #
+    # The caller's own conditions go on the OUTSIDE of the merge, which
+    # is Rails' order — an explicit value wins over the scope's. Same
+    # rule `scope_chain::merge_scope_attributes` applies at lower time
+    # for the plain constructors; here the merge is the runtime's,
+    # because the query half needs the same conditions anyway.
+    #
+    # Reading `scope_attributes` AFTER the find is safe: `find_by`
+    # appends to `@wheres`, and only `where_scope` ever writes the
+    # create-seed slot.
+    def find_or_create_by(conditions)
+      record = find_by(conditions)
+      return record if !record.nil?
+      created = @model.new(scope_attributes.merge(conditions))
+      created.save
+      created
+    end
+
+    # ---- SQL composition --------------------------------------------
+
+    def to_sql
+      select_sql_with("#{@table}.*")
+    end
+
+    # This relation rendered as a CONDITION value — `where(id: other)`
+    # and `excluding(other)` both put one relation inside another, and a
+    # subquery must project exactly ONE column. Rails projects the
+    # primary key when no explicit `select` was given; `to_sql`'s
+    # `<table>.*` is right at top level and wrong here, and sqlite says
+    # so out loud: "sub-select returns 5 columns - expected 1".
+    def to_subquery_sql
+      select_sql_with("#{@table}.#{@model.primary_key}")
+    end
+
+    # Shared body. `default_cols` is the projection when the caller
+    # never said `select(...)`; an explicit one always wins.
+    def select_sql_with(default_cols)
+      cols = @select_sql.nil? ? default_cols : @select_sql
+      distinct = @distinct ? "DISTINCT " : ""
+      sql = "SELECT #{distinct}#{cols} FROM #{@table}"
+      sql = "#{sql} #{@joins.join(" ")}" if @joins.length > 0
+      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      sql = "#{sql} GROUP BY #{@groups.join(", ")}" if @groups.length > 0
+      sql = "#{sql} HAVING #{@havings.join(" AND ")}" if @havings.length > 0
+      sql = "#{sql} ORDER BY #{@orders.join(", ")}" if @orders.length > 0
+      sql = "#{sql} LIMIT #{@limit}" unless @limit.nil?
+      sql = "#{sql} OFFSET #{@offset}" unless @offset.nil?
+      sql
+    end
+
+    def count_sql
+      sql = "SELECT COUNT(*) AS n FROM #{@table}"
+      sql = "#{sql} #{@joins.join(" ")}" if @joins.length > 0
+      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      sql
+    end
+
+    # ---- helpers ----------------------------------------------------
+
+    # A hash of conditions ANDed: `{is_deleted: false, user_id: 3}` ->
+    # `is_deleted = 0 AND user_id = 3`. Array value -> `IN`, nil ->
+    # `IS NULL`, nested Hash -> qualified `table.col = ...`.
+    def hash_conditions(hash)
+      parts = []
+      hash.each do |key, val|
+        if val.is_a?(Hash)
+          val.each do |col, v|
+            parts << column_predicate("#{key}.#{col}", v)
+          end
+        else
+          parts << column_predicate(key.to_s, val)
+        end
+      end
+      parts.join(" AND ")
+    end
+
+    # Unqualified columns are qualified with this relation's own table
+    # (as Rails does for hash conditions) so a condition survives `merge`
+    # into a JOINed query where the bare name would be ambiguous —
+    # `hidden_stories.user_id`, not `user_id`, after `joins(:hidings)`.
+    def column_predicate(col, val)
+      qcol = col.include?(".") ? col : "#{@table}.#{col}"
+      if val.is_a?(Relation)
+        # A relation value is Rails' subquery form —
+        # `where(story_id: Tagging.where(...).select(:story_id))` →
+        # `story_id IN (SELECT taggings.story_id FROM taggings …)`.
+        # The inner relation renders inline; its values were escaped
+        # as its own conditions were added. `to_subquery_sql`, not
+        # `to_sql`: a relation with no explicit `select` must project
+        # its primary key here, not every column.
+        "#{qcol} IN (#{val.to_subquery_sql})"
+      elsif val.is_a?(Array)
+        # Record elements read their id — Rails' IN-of-records form
+        # (`where(comment: comments)`, lobsters Vote.comments_flags);
+        # scalar elements escape as-is.
+        ids = val.map { |x| x.is_a?(Base) ? x.id : x }
+        "#{qcol} IN (#{escape_list(ids)})"
+      elsif val.nil?
+        "#{qcol} IS NULL"
+      elsif val.is_a?(Base)
+        # A whole record under a (fk-renamed) key reads its id —
+        # `where(user: user)` after the key lowered to `user_id`. The
+        # static `v && v.id` narrowing was dropped in favor of this
+        # runtime dispatch: hash values from untyped scope params can
+        # be a record OR a collection, and only the runtime knows.
+        "#{qcol} = #{ActiveRecord.adapter.escape_value(val.id)}"
+      else
+        "#{qcol} = #{ActiveRecord.adapter.escape_value(val)}"
+      end
+    end
+
+    # Replace `?` placeholders in a raw fragment with escaped args, in
+    # order. A fragment with no `?` returns unchanged. Each `sub` rewrites
+    # the leftmost remaining `?`, so iterating the args consumes them in
+    # order.
+    def substitute_binds(sql, args)
+      result = sql
+      args.each { |a| result = result.sub("?", ActiveRecord.adapter.escape_value(a)) }
+      result
+    end
+
+    def escape_list(vals)
+      out = []
+      vals.each { |v| out << ActiveRecord.adapter.escape_value(v) }
+      out.join(", ")
+    end
+
+    # `order(:col)` / `order("col DESC")` / `order(col: :desc)`.
+    def order_term(p)
+      if p.is_a?(Hash)
+        parts = []
+        p.each { |col, dir| parts << "#{col} #{dir.to_s.upcase}" }
+        parts.join(", ")
+      else
+        p.to_s
+      end
+    end
+  end
+end

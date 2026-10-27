@@ -1,0 +1,175 @@
+module ActiveRecord
+  # Lazy chainable query builder. Chain methods return `self` (typed as
+  # Relation); terminals execute and return rows / scalars. The element
+  # type is `untyped` in v1 — the lowered model methods carry the model
+  # identity; per-element typing is a later (generic-Relation) refinement.
+  class Relation
+    def initialize: (untyped model) -> void
+
+    def where: (?untyped condition, *untyped args) -> Relation
+
+    # The association scope (`where_scope`) and what it presets on a
+    # create (`scope_attributes`). The ivar is declared as well as the
+    # reader: a consumer that only reads signatures would otherwise seed
+    # it from the bare `{}` in `initialize`, which carries no element
+    # type — the same trap `Base`'s `@errors` documents.
+    @scope_attributes: Hash[Symbol, untyped]
+    def where_scope: (Hash[Symbol, untyped] condition) -> Relation
+    def scope_attributes: () -> Hash[Symbol, untyped]
+    def not: (?untyped condition, *untyped args) -> Relation
+    def excluding: (*untyped records) -> Relation
+    def without: (*untyped records) -> Relation
+    def or: (Relation other) -> Relation
+    def add_condition: (untyped condition, Array[untyped] args, bool negate) -> bool
+    def order: (*untyped parts) -> Relation
+    # The in-memory sort `order` applies to a LOADED relation (see the
+    # .rb). `sorted` is `untyped` for the same reason `preloaded`'s
+    # `records` is: the body only indexes and assigns into it.
+    def sort_in_place!: (untyped sorted, Array[String] terms) -> bool
+    def order_column: (String term) -> String?
+    def order_descending?: (String term) -> bool
+    # The keys are whatever the ordered column holds, and `<=>` on two
+    # of them is an Integer or nil -- the only honest spellings.
+    def compare_order_keys: (untyped a, untyped b) -> Integer?
+    def order_key_of: (untyped record, String col) -> untyped
+    def where!: (?untyped condition, *untyped args) -> Relation
+    def order!: (*untyped parts) -> Relation
+    def limit: (Integer n) -> Relation
+    def offset: (Integer n) -> Relation
+    def group: (*untyped parts) -> Relation
+    def having: (untyped condition, *untyped args) -> Relation
+    def joins: (untyped spec) -> Relation
+    def join_fragment: (untyped spec) -> String
+    def left_outer_joins: (untyped spec) -> Relation
+    def left_joins: (untyped spec) -> Relation
+    # Two methods sharing a name: field args PROJECT columns and keep
+    # the Relation; a block is Enumerable's filter over the loaded
+    # records and answers an Array (zero args means the block form —
+    # see the body). Declared as the PROJECTION form only: the sidecar
+    # parser takes one signature per method, and every strict-target
+    # call site in the corpus is the projection. `filter` below is the
+    # same method under Ruby's other name and DOES declare the block
+    # shape, so a strict target that needs it has a spelling.
+    def select: (*untyped specs) -> Relation
+    def distinct: () -> Relation
+    def includes: (*untyped names) -> Relation
+    def preload: (*untyped names) -> Relation
+    def eager_load: (*untyped names) -> Relation
+    def references: (*untyped names) -> Relation
+    def merge: (Relation other) -> Relation
+    def where_clauses: () -> Array[String]
+    def arel: () -> Arel::SelectManager
+    def none: () -> Relation
+    def reload: () -> Relation
+    def load: () -> Relation
+    # `records` is `untyped`, NOT `Array[untyped]`: the body only stores
+    # the argument (`@records = records if loaded`), so it does not care
+    # about the array's REPRESENTATION — and that is all
+    # `Array[untyped]` claims. A seed spinel trusts, so a caller holding
+    # an `Array[Integer]` contradicts it: campfire's
+    # `User#reachable_messages` passes `@reachable_messages_cache`,
+    # seeded `[]` in the constructor and therefore inferred as an int
+    # array. Same over-claim as `map`/`collect` below.
+    def preloaded: (untyped records, bool loaded) -> Relation
+    def klass: () -> Class
+
+    def to_a: () -> Array[untyped]
+    def load_records: () -> Array[untyped]
+    def to_ary: () -> Array[untyped]
+    def ==: (untyped other) -> bool
+    def filter: () { (untyped) -> bool } -> Array[untyped]
+    def map: () { (untyped) -> untyped } -> untyped
+    def collect: () { (untyped) -> untyped } -> untyped
+    # `other` is `untyped`, NOT `Array[untyped]`, on all four set
+    # operators: each body only hands the argument on to Array's own
+    # operator (`to_a + other`), so it does not care about the array's
+    # REPRESENTATION — and that is all `Array[untyped]` claims. spinel
+    # trusts the seed, and lobsters' `Story#merged_comments` passes
+    # `[self.id]`, an `Array[Integer]`, which contradicted it and held
+    # the AOT lane at the seed check from 2026-08-30. Same over-claim as
+    # `preloaded` above and `map`/`collect` below.
+    def +: (untyped other) -> Array[untyped]
+    def &: (untyped other) -> Array[untyped]
+    def |: (untyped other) -> Array[untyped]
+    def -: (untyped other) -> Array[untyped]
+    def include?: (untyped record) -> bool
+    def each: () { (untyped) -> void } -> Array[untyped]
+    def index_by: () { (untyped) -> untyped } -> Hash[untyped, untyped]
+    def find_each: () { (untyped) -> void } -> Array[untyped]
+    # `map`/`collect` return `untyped`, NOT `Array[untyped]`: the result's
+    # element type is whatever the BLOCK returns, which this RBS has no
+    # type variable to say. `Array[untyped]` is a seed spinel TRUSTS, so
+    # it declared the receiving local `sp_PolyArray *` while the inlined
+    # body built an `sp_IntArray *` for `{ |a| a.id }` — and the C build
+    # stopped with no diagnostic naming the seed. The two agreed only for
+    # as long as every id was boxed. Widen to `untyped` so the body
+    # decides the shape; `Array[U]` waits on Relation[T].
+    def group_by: () { (untyped) -> untyped } -> Hash[untyped, Array[untyped]]
+    def partition: () { (untyped) -> bool } -> Array[Array[untyped]]
+    def detect: () { (untyped) -> bool } -> untyped
+    def sort_by: () { (untyped) -> untyped } -> Array[untyped]
+    def inject: (untyped initial) { (untyped, untyped) -> untyped } -> untyped
+    def first: () -> untyped
+    def take: () -> untyped
+    def first!: () -> untyped
+    def last: () -> untyped
+    def first_n: (Integer n) -> Array[untyped]
+    def last_n: (Integer n) -> Array[untyped]
+    def count: () -> Integer
+    def sum: (untyped expr) -> Float
+    def group_count: () -> Hash[untyped, Integer]
+    def empty?: () -> bool
+    def any?: () -> bool
+    def blank?: () -> bool
+    def present?: () -> bool
+    def presence: () -> Relation?
+    def none?: () -> bool
+    def one?: () -> bool
+    def all?: () { (untyped) -> bool } -> bool
+    def exists?: (?Integer? id) -> bool
+    def length: () -> Integer
+    def size: () -> Integer
+    def delete_all: () -> Integer
+    def destroy_all: () -> Array[untyped]
+    def destroy_by: (untyped conditions) -> Array[untyped]
+    def delete_by: (untyped conditions) -> Integer
+    def update_all: (untyped updates) -> Integer
+    # The WHERE a bulk write takes — a plain clause, or an
+    # `IN (SELECT …)` subquery when the scope carries a join.
+    def scoped_write_where: () -> String
+    # `pluck`/`pick` hand back whatever the COLUMN holds — Integer for an
+    # INTEGER column, Float for REAL, String for TEXT, nil for NULL —
+    # because they read straight through `select_rows` without a cast.
+    # Pinning these to String used to be harmless: the spinel FFI shim
+    # returned everything as text anyway, so the seed and the runtime
+    # agreed. Once `Db.column_value` began answering the native-type
+    # contract the other shims already met, the String pin became the
+    # thing FORCING the coercion back — `pluck(:thread_id)` handed back
+    # `"19948"` where the model attribute held `19948`, and every Hash
+    # lookup between them missed (lobsters /threads).
+    #
+    # `untyped` is the honest type at this level: the column's type is
+    # not knowable from `Relation`. Typing it precisely means the
+    # lowerer monomorphizing per call site from the schema, the way
+    # `ids` below can be Array[Integer] because it only ever reads a
+    # primary key.
+    def pluck: (untyped col) -> Array[untyped]
+    def pick: (untyped col) -> untyped
+    def ids: () -> Array[Integer]
+    def find: (Integer id) -> untyped
+    def find_by: (untyped conditions) -> untyped
+    def find_by!: (untyped conditions) -> untyped
+    def first_or_initialize: () -> untyped
+    def find_or_create_by: (Hash[Symbol, untyped] conditions) -> untyped
+
+    def to_sql: () -> String
+    def to_subquery_sql: () -> String
+    def select_sql_with: (String default_cols) -> String
+    def count_sql: () -> String
+    def hash_conditions: (untyped hash) -> String
+    def column_predicate: (String col, untyped val) -> String
+    def substitute_binds: (String sql, Array[untyped] args) -> String
+    def escape_list: (Array[untyped] vals) -> String
+    def order_term: (untyped p) -> String
+  end
+end

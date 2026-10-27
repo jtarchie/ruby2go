@@ -49,6 +49,7 @@ func (c *Compiler) link(ctx context.Context) {
 	for _, m := range c.topDefList {
 		c.resolveMethod(m)
 	}
+	c.markOutParams()
 	c.markCalleeDefaults()
 	c.markSuperBridges()
 	for _, cls := range c.classList {

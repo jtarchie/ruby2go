@@ -1,15 +1,18 @@
 package compiler
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
 
 func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els parser.Node, negate bool, t tail) {
-	if f.c.absentGuard(f.f, pred, f.lex) || f.cannotRespond(pred) { // the guarded branch names what no file defines: it cannot run (decision 167)
+	isA, folded := f.foldedIsA(pred)
+	folded = folded && isA == negate                                          // only a branch that cannot run is dropped: one that always runs keeps its if, so the code after it stays reachable for go vet
+	if f.c.absentGuard(f.f, pred, f.lex) || f.cannotRespond(pred) || folded { // the guarded branch names what no file defines: it cannot run (decision 167)
 		taken := els
-		if negate {
+		if negate && !folded {
 			taken = then
 		}
 		switch e := taken.(type) {
@@ -26,7 +29,11 @@ func (f *fctx) genIf(n parser.Node, pred parser.Node, then parser.Node, els pars
 	cond, narrow := f.genCond(pred)
 	f.applyNarrow(f.callNarrowing(pred)) // the condition ran before either branch: a local it called a method on is not nil (decision 357)
 	if negate {
-		cond = "!(" + cond + ")"
+		if inner, ok := strings.CutPrefix(cond, "!"); ok && strings.HasSuffix(inner, ".ok") && !strings.ContainsAny(inner, " &|!") {
+			cond = inner // `unless x.nil?` of an rbOpt: staticcheck's SA4013 rejects `!(!x.ok)` (decision 396)
+		} else {
+			cond = "!(" + cond + ")"
+		}
 		narrow, elseNarrow = elseNarrow, narrow
 	}
 	f.emit("if %s {", cond)
@@ -401,6 +408,34 @@ func (f *fctx) classEqqAsIsA(n parser.Node) parser.Node {
 }
 
 // genCond renders a Ruby truthiness test as a Go bool expression.
+// foldedIsA decides `x.is_a?(C)` on a variable from its static type: the branch it rules out is not compiled, so its impossible values never reach inference (decision 404).
+func (f *fctx) foldedIsA(pred parser.Node) (value, ok bool) {
+	call, isCall := pred.(*parser.CallNode)
+	if !isCall || !isIsA(call) {
+		return false, false
+	}
+	switch call.Receiver.(type) {
+	case *parser.LocalVariableReadNode, *parser.InstanceVariableReadNode:
+	default:
+		return false, false
+	}
+	cls := f.classRef(call.Arguments.Arguments[0])
+	if cls == nil || cls.IsModule || cls.universal || slices.Contains([]string{"TrueClass", "FalseClass", "NilClass"}, cls.RubyName) {
+		return false, false
+	}
+	t, isClass := f.probeType(call.Receiver, nil).(TClass)
+	if !isClass || isAbstract(t) || t.C.RubyName == "Bignum" || t.C.IsModule {
+		return false, false
+	}
+	switch {
+	case t.C.isSubclassOf(cls):
+		return true, true
+	case cls.isSubclassOf(t.C):
+		return false, false
+	}
+	return false, true
+}
+
 func (f *fctx) genCond(n parser.Node) (string, []narrowInfo) {
 	n = f.classEqqAsIsA(n)
 	switch n := n.(type) {

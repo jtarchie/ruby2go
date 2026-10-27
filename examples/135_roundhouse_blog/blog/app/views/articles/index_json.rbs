@@ -1,0 +1,5 @@
+module Views
+  module Articles
+    def self.index_json: (Array[Article] articles) -> String
+  end
+end

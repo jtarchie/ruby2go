@@ -52,4 +52,17 @@ module OpensslTests
       assert_equal OpenSSL::PKey::PKeyError, OpenSSL::PKey::RSAError
     end
   end
+
+  class DigestTest < Minitest::Test
+    def test_hmac
+      assert_equal "2d93cbc1be167bcb1637a4a23cbff01a7878f0c50ee833954ea5221bb1b8c628", OpenSSL::HMAC.hexdigest("SHA256", "key", "msg")
+      assert_equal "102900b72b7bf1031eec76b4804b66052376896b", OpenSSL::HMAC.hexdigest("SHA1", "key", "msg")
+      assert_equal 32, OpenSSL::HMAC.digest("SHA256", "k", "m").bytesize
+    end
+
+    def test_pbkdf2
+      key = OpenSSL::PKCS5.pbkdf2_hmac("secret", "salt", 1000, 32, "SHA256")
+      assert_equal "a8df899f3c4f204d967e0ad63c092987c10055ebb017b3d9d28add218d4f7aad", key.unpack1("H*")
+    end
+  end
 end

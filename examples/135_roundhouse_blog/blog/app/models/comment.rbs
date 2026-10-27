@@ -1,0 +1,82 @@
+class Comment < ApplicationRecord
+  attr_reader id: Integer
+  attr_writer id: Integer
+  def id?: () -> bool
+  attr_reader article_id: Integer
+  attr_writer article_id: Integer
+  def article_id?: () -> bool
+  def article_id_previously_changed?: () -> bool
+  def saved_change_to_article_id?: () -> bool
+  def article_id_previously_was: () -> untyped
+  attr_reader commenter: String?
+  attr_writer commenter: String?
+  def commenter?: () -> bool
+  def commenter_previously_changed?: () -> bool
+  def saved_change_to_commenter?: () -> bool
+  def commenter_previously_was: () -> untyped
+  attr_reader body: String?
+  attr_writer body: String?
+  def body?: () -> bool
+  def body_previously_changed?: () -> bool
+  def saved_change_to_body?: () -> bool
+  def body_previously_was: () -> untyped
+  attr_reader created_at: Time?
+  attr_reader created_at_raw: String
+  def created_at=: (Time value) -> nil
+  attr_writer created_at_raw: String
+  def created_at?: () -> bool
+  def created_at_previously_changed?: () -> bool
+  def saved_change_to_created_at?: () -> bool
+  def created_at_previously_was: () -> untyped
+  attr_reader updated_at: Time?
+  attr_reader updated_at_raw: String
+  def updated_at=: (Time value) -> nil
+  attr_writer updated_at_raw: String
+  def updated_at?: () -> bool
+  def updated_at_previously_changed?: () -> bool
+  def saved_change_to_updated_at?: () -> bool
+  def updated_at_previously_was: () -> untyped
+  def self.table_name: () -> String
+  def self.schema_columns: () -> Array[Symbol]
+  def self.schema_time_columns: () -> Array[Symbol]
+  def self.instantiate: (Hash[String, untyped] row) -> Comment
+  def self.from_row: (CommentRow row) -> Comment
+  def self.from_stmt: (untyped stmt) -> Comment
+  def initialize: (?Hash[Symbol, untyped] attrs) -> nil
+  def attributes: () -> Hash[String, untyped]
+  def []: (Symbol name) -> untyped
+  def []=: (Symbol name, (Integer | String) value) -> (Integer | String | nil)
+  def update: (Hash[Symbol, untyped] attrs) -> bool
+  def update!: (Hash[Symbol, untyped] attrs) -> Comment
+  def fill_timestamps: (bool creating) -> nil
+  def self._adapter_find_by_id: (Integer id) -> Comment?
+  def self._adapter_all: () -> Array[Comment]
+  def self._adapter_last: () -> Comment?
+  def _adapter_insert: () -> Integer
+  def _adapter_update: () -> nil
+  def _adapter_delete: () -> nil
+  def self._adapter_count: () -> Integer
+  def self._adapter_exists_by_id?: (Integer id) -> bool
+  def self._adapter_truncate: () -> nil
+  def self.delete_all: () -> nil
+  def _adapter_reload: () -> Comment
+  def self._columns_sql: () -> String
+  def self._hydrate_all: (String sql) -> Array[Comment]
+  def self.from_params: (CommentParams p) -> Comment
+  def update_from_comment_params: (CommentParams p) -> bool
+  def update_from_comment_params!: (CommentParams p) -> Comment
+  def validate: () -> nil
+  def article: () -> Article?
+  def article=: (Article? value) -> nil
+  def dom_prefix: () -> String
+  def to_param: () -> String
+  def dom_record_key: () -> String
+  def cache_key: () -> String
+  def cache_key_with_version: () -> String
+  def after_create_commit: () -> nil
+  def after_update_commit: () -> nil
+  def after_destroy_commit: () -> nil
+  def to_gid_param: () -> untyped
+  def _autosave_article: () -> untyped
+  def before_validation: () -> untyped
+end

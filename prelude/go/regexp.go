@@ -516,6 +516,14 @@ func rbReBlock(blk func(String) any) func(s string, loc []int, names []string) s
 	}
 }
 
+// rbReHash replaces a match by its value in h (sub/gsub with a Hash).
+func rbReHash(h *Hash[String, String]) func(s string, loc []int, names []string) string {
+	return func(s string, loc []int, _ []string) string {
+		v, _ := h.rbGet(String(s[loc[0]:loc[1]]))
+		return string(v)
+	}
+}
+
 // rbReBlockLM is rbReBlock in a frame that reads $~ or $1: each match is the frame's last match while its block runs
 // (decision 241).
 func rbReBlockLM(lm ***MatchData, re *Regexp, blk func(String) any) func(s string, loc []int, names []string) string {
