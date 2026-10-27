@@ -16,6 +16,8 @@ type fctx struct {
 	noStrIndexSet  bool                          // generating an untyped local's `[]=` as other receivers take it (genStringBang's fallback)
 	noFuse         *parser.CallNode              // the `h[k] = (h[k] || d) op v` whose miss arm is generating unfused (genFusedIndexAssign)
 	superTarget    *Method                       // a gem super call's target while its arguments generate: they type none of its parameters
+	nilRecv        Type                          // the receiver of the call whose arguments genArgs is about to generate (decision 393)
+	nilArg         nilCall                       // the call whose argument is being coerced: a nil one raises MRI's error for it (decision 393)
 	probeDepth     int                           // inside probe: output is discarded
 	unionArm       int                           // inside a union argument's arm: a call it cannot make raises there, not dynamic (unionArgCall)
 	erbDepth       int                           // inside a spliced template, where a bare name may be the caller's local

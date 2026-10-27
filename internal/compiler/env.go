@@ -22,6 +22,7 @@ type envConfig struct {
 	GopoisonDump  string // RUGAROO_GOPOISON_DUMP: path prefix for the Go before rejected gem methods become stubs
 	UntypedWhy    bool   // RUGAROO_UNTYPED_WHY: each dynamic-call warning names where its untyped receiver came from
 	IntOverflow   string // RUGAROO_INT_OVERFLOW: raise (default), wrap or promote; the CLI's --int-overflow sets it (decision 372)
+	NilCheck      string // RUGAROO_NIL_CHECK: compile (default) or runtime; the CLI's --nil-check sets it (decision 393)
 }
 
 func loadEnv() envConfig {
@@ -45,5 +46,6 @@ func loadEnv() envConfig {
 		GopoisonDump:  os.Getenv("RUGAROO_GOPOISON_DUMP"),
 		UntypedWhy:    set("RUGAROO_UNTYPED_WHY"),
 		IntOverflow:   os.Getenv("RUGAROO_INT_OVERFLOW"),
+		NilCheck:      os.Getenv("RUGAROO_NIL_CHECK"),
 	}
 }

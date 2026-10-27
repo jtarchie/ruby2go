@@ -305,6 +305,9 @@ func (f *fctx) genMethodCall(n parser.Node, recv expr, name string, args []parse
 	if e, ok := f.lenientLookup(n, recv, name, args, block); ok {
 		return e
 	}
+	if e, ok := f.nilSpaceship(n, recv, name, args, block); ok {
+		return e
+	}
 	return f.genMethodCall1(n, recv, name, args, block)
 }
 

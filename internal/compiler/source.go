@@ -23,6 +23,7 @@ type File struct {
 	path     string  // a user file's real path on disk, which require_relative resolves against
 	data     *string // the text after `__END__`, which DATA reads
 	overflow string  // its own `# int_overflow: mode` line, which governs the Integer arithmetic written in it (decision 381)
+	nilCheck string  // its own `# nil_check: mode` line, which governs the T? uses written in it (decision 393)
 
 	// standalone annotation comments by the line they precede (first code line after)
 	leading map[int][]comment
@@ -80,6 +81,9 @@ func parseFile(ctx context.Context, p *parser.Parser, name string, src []byte, o
 	if origin != originPrelude {
 		if m := intOverflowComment.FindSubmatch(src); m != nil {
 			f.overflow = checkOverflowMode(name+": # int_overflow", string(m[1]))
+		}
+		if m := nilCheckComment.FindSubmatch(src); m != nil {
+			f.nilCheck = checkNilMode(name+": # nil_check", string(m[1]))
 		}
 	}
 	f.lines = []int{0}

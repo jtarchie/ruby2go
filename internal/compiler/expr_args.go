@@ -24,6 +24,8 @@ func truncatesFloats(m *Method) bool {
 func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []parser.Node, exprs []expr) ([]string, int) {
 	var codes []string
 	restIdx := -1
+	call := nilCall{m: m, recv: f.nilRecv}
+	f.nilRecv = nil
 	kw := &kwArgs{named: map[string]*parser.AssocNode{}, used: map[string]bool{}}
 	if exprs == nil && m.hasKeywords() {
 		args, kw = f.splitKeywordArgs(m, args)
@@ -67,6 +69,9 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 		a = f.truncFloat(m, p, env, a)
 		unify(p.Type, a.typ, env)
 		f.bindGemUnbound(m, env, p.Type)
+		prev := f.nilArg
+		f.nilArg = nilCall{m: call.m, recv: call.recv, param: p.Type}
+		defer func() { f.nilArg = prev }()
 		codes = append(codes, f.coerceArg(an, a, p, env))
 	}
 	for _, p := range m.Params {
@@ -616,7 +621,7 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if len(args) >= 1 && classTwins(m.Name) && !optOn(owner, m) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
-		if o, ok := a.typ.(TOpt); ok && f.lenient() { // a gem's T? is its T, nil raising where used (decision 172)
+		if o, ok := a.typ.(TOpt); ok && (f.lenient() || f.nilRuntime() && !nilEqualOps[m.Name]) { // a gem's T? is its T, nil raising where used (decisions 172, 393)
 			a.typ = o.Elem
 		}
 		if c, ok := a.typ.(TClass); ok {

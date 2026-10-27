@@ -358,6 +358,7 @@ func (f *fctx) callMethod0(n parser.Node, e *entry, recv expr, args []parser.Nod
 	if len(m.arms) > 0 {
 		armT = f.armRet(n, m, args)
 	}
+	f.nilRecv = recv.typ
 	codes, restIdx := f.genArgs(n, m, env, args, nil)
 	if m.Block != nil && m.Iterator && block == nil && !m.Block.Optional {
 		if r, ok := f.iterEnum(n, e, recv, codes, env); ok {

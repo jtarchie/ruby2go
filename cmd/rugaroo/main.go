@@ -72,6 +72,9 @@ func main() {
 	fs.Func("int-overflow", "what an Integer result past 64 bits does: `raise` (RangeError, the default), wrap or promote (to a Bignum; decision 372)", func(m string) error {
 		return os.Setenv("RUGAROO_INT_OVERFLOW", m) // read per compile, as the other RUGAROO_* settings
 	})
+	fs.Func("nil-check", "a possibly-nil value where a value is expected: a `compile` error (the default), or a runtime check that raises on nil as MRI does (decision 393)", func(m string) error {
+		return os.Setenv("RUGAROO_NIL_CHECK", m)
+	})
 	fs.Func("I", "a directory `require` searches for your own files, as `ruby -I` (repeatable)", func(dir string) error {
 		opts.loadPath = append(opts.loadPath, dir)
 		return nil

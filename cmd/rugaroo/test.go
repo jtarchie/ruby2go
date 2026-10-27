@@ -57,6 +57,12 @@ func testBuildFlags(argv []string) (buildOpts, []string, error) {
 			if err != nil {
 				return opts, nil, fmt.Errorf("rugaroo test: %w", err)
 			}
+		case strings.HasPrefix(a, "-nil-check="), strings.HasPrefix(a, "--nil-check="):
+			_, m, _ := strings.Cut(a, "=")
+			err := os.Setenv("RUGAROO_NIL_CHECK", m)
+			if err != nil {
+				return opts, nil, fmt.Errorf("rugaroo test: %w", err)
+			}
 		case strings.HasPrefix(a, "-gcflags="):
 			opts.gcflags = strings.TrimPrefix(a, "-gcflags=")
 		case strings.HasPrefix(a, "-I"): // -Idir, as ruby's, or -I=dir, as the flag package's

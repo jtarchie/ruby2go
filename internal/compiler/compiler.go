@@ -514,6 +514,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.env = opts.env
 	c.genCount, c.genLimit = opts.genCount, opts.genLimit
 	c.env.IntOverflow = checkOverflowMode("--int-overflow", c.env.IntOverflow)
+	c.env.NilCheck = checkNilMode("--nil-check", c.env.NilCheck)
 	c.loadPreludeGo()
 	libs, parsed, perr := c.scanRequires(ctx, sources)
 	if perr != nil {

@@ -345,6 +345,9 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if code, ok := f.lenientClass(n, e, to); ok {
 		return code
 	}
+	if isOpt(e.typ) && f.nilRuntime() {
+		return f.coerceClass(n, f.nilUnwrap(e, to), to)
+	}
 	if isOpt(e.typ) {
 		f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", e.typ, to)
 	}

@@ -1827,6 +1827,30 @@ func rbMust[T any](p *T, want string) T {
 	return *p
 }
 
+// rbNilArg is a T? where T is wanted under --nil-check=runtime (decision 393): nil raises the error MRI raises there.
+func rbNilArg[T any](p *T, msg string, arg bool) T {
+	if p == nil {
+		panic(rbNilErr(msg, arg))
+	}
+	return *p
+}
+
+// rbNilArgV is rbNilArg for a C? that holds nil itself, a leaf's *C or an interface (decisions 360, 378).
+func rbNilArgV[T comparable](v T, msg string, arg bool) T {
+	var z T
+	if v == z {
+		panic(rbNilErr(msg, arg))
+	}
+	return v
+}
+
+func rbNilErr(msg string, arg bool) any {
+	if arg {
+		return NewArgumentError(Ref(String(msg)))
+	}
+	return NewTypeError(Ref(String(msg)))
+}
+
 // rbDerefOrNil is a gem's T? where object type T is wanted: nil stays a nil interface (decision 257).
 func rbDerefOrNil[T any](p *T) (z T) {
 	if p == nil {

@@ -574,6 +574,9 @@ func (f *fctx) annotatedIvarValue(n parser.Node, val expr, ann Type) (expr, Type
 		}
 	}
 	if o, ok := val.typ.(TOpt); ok && !isOpt(ann) && typeEq(o.Elem, ann) { // `@name = T.let(name, String)` of a String?
+		if !f.lenient() && f.nilRuntime() {
+			return expr{code: f.nilUnwrap(val, ann).code, typ: ann}, ann
+		}
 		if !f.lenient() {
 			f.errorf(n, "possibly-nil %s where %s is expected; check it first (`if x`, `x ||= ...`, `return unless x`)", val.typ, ann)
 		}
