@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -21,7 +22,7 @@ func (f *fctx) hoistLocals(scope int) {
 		}
 	}
 	for _, li := range sortedLocals(f.locals) {
-		if li.scope == scope && li.appended {
+		if li.scope == scope && li.appended && !strings.HasSuffix(f.appendBufRef(li.name), ".b") { // an out parameter appends through its caller's buffer
 			f.emit("var %s []byte", appendBuf(li.name))
 		}
 		if li.scope != scope || !li.hoist || li.noHoist || li.typ == nil {

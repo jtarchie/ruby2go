@@ -80,7 +80,10 @@ func (f *fctx) outArgs(n parser.Node, m *Method, args []parser.Node, codes []str
 		if why := f.appendWhy(lv.Name); why != "" {
 			f.errorf(n, "%s appends to `%s`: Strings are immutable in rugaroo, and %s (decision 405)", m.Name, lv.Name, why)
 		}
-		codes[off+i] = "&" + f.genExpr(lv, nil).code
+		if li := f.localInfo(lv.Name); li != nil {
+			li.appended = true // its buffer goes along, so the callee appends in place
+		}
+		codes[off+i] = "rbStrOut{&" + f.genExpr(lv, nil).code + ", " + f.appendBufRef(lv.Name) + "}"
 	}
 }
 

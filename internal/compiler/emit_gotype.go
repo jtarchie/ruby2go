@@ -161,7 +161,7 @@ func (c *Compiler) sig(m *Method, env map[string]Type) (params string, ret strin
 			continue
 		}
 		if p.Out {
-			ps = append(ps, outParamName(p, i)+" *String")
+			ps = append(ps, outParamName(p, i)+" rbStrOut")
 			continue
 		}
 		ps = append(ps, name+" "+c.goType(subst(p.Type, env)))

@@ -587,7 +587,7 @@ func (f *fctx) userAppend(n *parser.CallNode) (expr, bool) {
 		li.appended = true
 	}
 	str := f.cls("String")
-	buf := appendBuf(lv.Name)
+	buf := f.appendBufRef(lv.Name)
 	for i := len(links) - 1; i >= 0; i-- {
 		args := callArgs(links[i])
 		if len(args) == 0 || links[i].Name == "<<" && len(args) != 1 {
@@ -614,7 +614,7 @@ func (f *fctx) userAppend(n *parser.CallNode) (expr, bool) {
 			}
 		}
 		for _, c := range codes {
-			write(expr{code: fmt.Sprintf("rbStrAppend(&%s, %s, %s)", buf, f.genExpr(lv, nil).code, c), typ: str})
+			write(expr{code: fmt.Sprintf("rbStrAppend(%s, %s, %s)", buf, f.genExpr(lv, nil).code, c), typ: str})
 		}
 	}
 	v := f.genExpr(lv, nil)
@@ -633,7 +633,7 @@ func (f *fctx) userSetbyte(n *parser.CallNode) (expr, bool) {
 		if !typeEq(f.probeType(r, nil), str) {
 			return expr{}, false
 		}
-		why, buf = f.appendWhy(r.Name), appendBuf(r.Name)
+		why, buf = f.appendWhy(r.Name), f.appendBufRef(r.Name)
 		if li := f.localInfo(r.Name); li != nil && why == "" {
 			li.appended = true
 		}
@@ -641,7 +641,7 @@ func (f *fctx) userSetbyte(n *parser.CallNode) (expr, bool) {
 		if !typeEq(f.probeType(r, nil), str) {
 			return expr{}, false
 		}
-		why, buf = f.ivarSetbyteWhy(r.Name), ivarBuf(r.Name)
+		why, buf = f.ivarSetbyteWhy(r.Name), "&"+ivarBuf(r.Name)
 		if why == "" {
 			if f.ivarBufs == nil {
 				f.ivarBufs = map[string]bool{}
@@ -665,7 +665,7 @@ func (f *fctx) userSetbyte(n *parser.CallNode) (expr, bool) {
 		f.emit("%s := Integer(%s)", codes[j], f.coerce(a, f.genExpr(a, intT), intT))
 	}
 	_, write, _ := f.stringBangTarget(n, n.Receiver)
-	write(expr{code: fmt.Sprintf("rbStrSetbyte(&%s, %s, %s, %s)", buf, f.genExpr(n.Receiver, nil).code, codes[0], codes[1]), typ: str})
+	write(expr{code: fmt.Sprintf("rbStrSetbyte(%s, %s, %s, %s)", buf, f.genExpr(n.Receiver, nil).code, codes[0], codes[1]), typ: str})
 	return expr{code: codes[1], typ: intT, stmt: true, done: true}, true
 }
 
@@ -674,5 +674,17 @@ func ivarBuf(name string) string { return "rbBufIv_" + goLocalName(strings.TrimP
 
 // appendBuf is the Go name of an appended local's buffer, declared with it by hoistLocals.
 func appendBuf(name string) string { return "rbBuf_" + goLocalName(name) }
+
+// appendBufRef is the *[]byte a local's appends go through: its own buffer, or an out parameter's caller's (decision 405).
+func (f *fctx) appendBufRef(name string) string {
+	if f.m != nil {
+		for i, p := range f.m.Params {
+			if p.Out && p.Name == name {
+				return outParamName(p, i) + ".b"
+			}
+		}
+	}
+	return "&" + appendBuf(name)
+}
 
 func endOf(n parser.Node) int { l := n.GetLocation(); return l.StartOffset + l.Length }

@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -624,4 +625,21 @@ func rbSockIPAddressList() *Array[*Addrinfo] {
 		}
 	}
 	return out
+}
+
+// rbReadBufs are readpartial's scratch buffers: a read of up to 64 KiB allocates only the bytes that arrived, not n.
+var rbReadBufs = sync.Pool{New: func() any { b := make([]byte, 64<<10); return &b }}
+
+// rbReadSome is one Read of at most n bytes, as a String of what arrived.
+func rbReadSome(r io.Reader, n int) (String, error) {
+	if n > 64<<10 {
+		buf := make([]byte, n)
+		k, err := r.Read(buf)
+		return String(buf[:k]), err
+	}
+	bp, _ := rbReadBufs.Get().(*[]byte)
+	k, err := r.Read((*bp)[:n])
+	s := String((*bp)[:k]) // a copy: the scratch buffer goes back to the pool
+	rbReadBufs.Put(bp)
+	return s, err
 }

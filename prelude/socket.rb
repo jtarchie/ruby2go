@@ -119,13 +119,12 @@ class BasicSocket < Object
       if n == 0 {
         return Ref(String(""))
       }
-      buf := make([]byte, int(n))
-      k, err := self.r.Read(buf)
-      if k == 0 {
+      got, err := rbReadSome(self.r, int(n))
+      if len(got) == 0 {
         rbSockReadErr(err)
         return nil
       }
-      return Ref(String(buf[:k]))
+      return Ref(got)
     }
 
     #: () -> bool

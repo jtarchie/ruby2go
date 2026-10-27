@@ -805,6 +805,12 @@ func rbStrCat(a, b string) string {
 	return out
 }
 
+// rbStrOut is a String out parameter (decision 405): the caller's String and the buffer its appends share, so a callee appends in place.
+type rbStrOut struct {
+	s *String
+	b *[]byte
+}
+
 // rbStrAppend is an unaliased local's `s << x` (decision 382): buf is the local's own, so no other builder evicts it as in rbStrCat's slots.
 func rbStrAppend(buf *[]byte, s, x String) String {
 	b := *buf

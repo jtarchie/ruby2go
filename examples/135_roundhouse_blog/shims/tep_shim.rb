@@ -244,8 +244,8 @@ module Tep
     nil
   end
 
-  #: (TCPSocket, Response) -> void
-  def self.write_response(io, res)
+  #: (TCPSocket, Response, bool) -> void
+  def self.write_response(io, res, keep_alive)
     if res.upgrading_ws
       res.status = 501
       res.body = "WebSocket is not served by the rugaroo Tep shim yet"
@@ -255,17 +255,20 @@ module Tep
     head = "HTTP/1.1 " + res.status.to_s + " " + REASONS.fetch(res.status, "") + "\r\n"
     res.headers.each { |k, v| head += k + ": " + v + "\r\n" }
     res.set_cookies.each { |line| head += "Set-Cookie: " + line + "\r\n" }
-    io.write(head + "Content-Length: " + body.bytesize.to_s + "\r\nConnection: close\r\n\r\n")
+    io.write(head + "Content-Length: " + body.bytesize.to_s + "\r\nConnection: " + (keep_alive ? "keep-alive" : "close") + "\r\n\r\n")
     io.write(body)
   end
 
   #: (TCPSocket) -> void
-  def self.serve_connection(io)
-    req = read_request(io)
-    unless req.nil?
+  def self.serve_connection(io) # HTTP/1.1 keeps the connection for the next request, as tep does, unless a side asks to close
+    loop do
+      req = read_request(io)
+      break if req.nil?
+      keep = req.http_version == "HTTP/1.1" && req.req_headers.fetch("connection", "").downcase != "close"
       res = Response.new
       APP.dispatch(req, res)
-      write_response(io, res)
+      write_response(io, res, keep)
+      break unless keep
     end
   ensure
     io.close

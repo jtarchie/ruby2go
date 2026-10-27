@@ -333,8 +333,8 @@ func (c *Compiler) emitBody(m *Method, namedRet bool) {
 	prologue := func() {
 		for i, p := range m.Params {
 			if p.Out { // copied in, and back out however the method returns, so a raise keeps the appends as in MRI
-				f.emit("%s := *%s", goLocalName(p.Name), outParamName(p, i))
-				f.emit("defer func() { *%s = %s }()", outParamName(p, i), goLocalName(p.Name))
+				f.emit("%s := *%s.s", goLocalName(p.Name), outParamName(p, i))
+				f.emit("defer func() { *%s.s = %s }()", outParamName(p, i), goLocalName(p.Name))
 			}
 		}
 		for _, p := range m.Params {
