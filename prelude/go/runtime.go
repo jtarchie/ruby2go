@@ -1540,7 +1540,7 @@ func rbIntOverflow(a Integer, op string, b Integer) {
 	panic(rbIntOverflowed{a, b, op}.err())
 }
 
-// rbIntOverflowed is panicked as a value, not built by a call: Go's inliner charges a call ~57 of 80, a panic 1; rbWrapPanic makes it the RangeError (decision 401).
+// rbIntOverflowed is panicked as a value, not built by a call: Go's inliner charges a call ~57 of 80, a panic 1; rbWrapPanic makes it the RangeError (decision 400).
 type rbIntOverflowed struct {
 	a, b Integer
 	op   string

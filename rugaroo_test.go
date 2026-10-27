@@ -1457,7 +1457,7 @@ func TestInlinePush(t *testing.T) {
 	}
 }
 
-// TestIntOverflowValuePanic: no MRI oracle, MRI promotes to a Bignum; rescue, ensure and the top level must still see the RangeError (decision 401).
+// TestIntOverflowValuePanic: no MRI oracle, MRI promotes to a Bignum; rescue, ensure and the top level must still see the RangeError (decision 400).
 func TestIntOverflowValuePanic(t *testing.T) {
 	requireToolchain(t)
 	t.Parallel()
@@ -1483,7 +1483,7 @@ func TestIntOverflowValuePanic(t *testing.T) {
 	}
 }
 
-// TestStructWriterFrozenConst: the writer's frozen check folds away only when nothing can freeze (decision 401).
+// TestStructWriterFrozenConst: the writer's frozen check folds away only when nothing can freeze (decision 400).
 func TestStructWriterFrozenConst(t *testing.T) {
 	t.Parallel()
 	for src, want := range map[string]bool{

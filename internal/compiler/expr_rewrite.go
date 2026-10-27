@@ -349,7 +349,7 @@ func (f *fctx) genFoldOrLower(n *parser.CallNode) (expr, bool) {
 	return f.genStringLowering(n)
 }
 
-// frozenFlagConst: a Go constant when nothing can freeze (rbObjFrozenFlag is nil), so Go's inliner skips the writer's raise (decision 401).
+// frozenFlagConst: a Go constant when nothing can freeze (rbObjFrozenFlag is nil), so Go's inliner skips the writer's raise (decision 400).
 func (f *fctx) frozenFlagConst(n *parser.CallNode) bool {
 	return n.Name == "__frozen_flag?" && n.Receiver == nil && n.Arguments == nil && n.Block == nil && f.m != nil &&
 		!f.c.objFreeze() && slices.Contains(f.m.Owner.allAncestors(), f.c.classes["Struct"])
