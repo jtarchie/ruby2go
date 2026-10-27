@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rugaroo updates</title>
+<meta name="description" content="What's new in rugaroo, the typed Ruby to native Go compiler.">
+<link rel="canonical" href="https://rugaroo.dev/updates.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="rugaroo">
+<meta property="og:url" content="https://rugaroo.dev/updates.html">
+<meta property="og:title" content="rugaroo updates">
+<meta property="og:description" content="What's new in rugaroo, the typed Ruby to native Go compiler.">
+<meta property="og:image" content="https://assets.rugaroo.dev/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#17142b">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<style>
+:root {
+  --sky: #17142b; --sky2: #241f42; --card: #2a2550; --line: #3b3570;
+  --fg: #f5f0ff; --muted: #c4bce6; --moon: #fef3c7; --ruby: #fb7185; --ruby-deep: #e11d48;
+  --round: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { background: var(--sky); }
+body { margin: 0; color: var(--fg); font: 17px/1.6 var(--round); background: linear-gradient(var(--sky2), var(--sky) 600px) no-repeat; }
+a { color: var(--ruby); text-decoration: underline; }
+a:focus-visible { outline: 3px solid var(--moon); outline-offset: 3px; }
+main { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; }
+.top { display: flex; align-items: center; gap: 12px; padding: 28px 0 8px; }
+.top img { width: 48px; height: 48px; }
+.top a { color: var(--fg); text-decoration: none; font-weight: 800; font-size: 22px; }
+h1 { font-weight: 800; font-size: clamp(36px, 7vw, 52px); line-height: 1.1; margin: 24px 0 8px; letter-spacing: -0.02em; }
+.lede { color: var(--muted); margin: 0 0 32px; }
+article { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 24px 24px 20px; margin: 0 0 24px; }
+article h2 { font-weight: 700; font-size: 26px; margin: 4px 0 4px; line-height: 1.25; }
+article h3 { font-weight: 700; font-size: 19px; margin: 24px 0 8px; color: var(--moon); }
+time { color: var(--moon); font-size: 15px; }
+article p, article li { color: var(--fg); }
+article ul { padding-left: 22px; }
+.exp { font-size: 13px; font-weight: 700; vertical-align: middle; color: var(--moon); border: 1px solid var(--moon); border-radius: 999px; padding: 2px 10px; margin-left: 6px; }
+code { font: 0.92em var(--mono); }
+pre { margin: 8px 0 12px; background: #100e20; border: 1px solid var(--line); border-radius: 16px; padding: 16px; overflow-x: auto; font: 13.5px/1.55 var(--mono); color: #e9e4ff; }
+.c { color: #8f88b8; }
+footer { text-align: center; color: var(--muted); font-size: 15px; padding: 32px 16px 48px; border-top: 1px solid var(--line); }
+footer p { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <img src="/logo.svg" alt="" width="48" height="48">
+    <a href="/">rugaroo</a>
+  </div>
+  <h1>Updates</h1>
+  <p class="lede">What's new in rugaroo.</p>
+
+  <article id="roundhouse">
+    <time datetime="2026-10-27">October 27, 2026</time>
+    <h2>A Rails app, compiled to one Go binary <span class="exp">experimental</span></h2>
+    <p><a href="https://rubys.github.io/roundhouse/">Roundhouse</a> turns a Rails app into plain Ruby with no Rails left in it, written for the <a href="https://github.com/matz/spinel">Spinel</a> compiler. rugaroo now compiles that output too. Roundhouse's Blog app (articles, nested comments, validations, partials and JSON views) becomes one native binary that serves HTTP, and it answers the same as when the same code runs on Ruby.</p>
+    <p>The handful of files that only work under Spinel (its HTTP server, its sqlite binding, two crypto helpers) are replaced by Ruby versions in the <a href="https://github.com/jtarchie/roundhouse-rugaroo">roundhouse-rugaroo</a> gem. The rest of the app is compiled as roundhouse wrote it.</p>
+
+    <h3>Try the Blog</h3>
+    <p>You need Go and Ruby 4.0.</p>
+<pre><code>git clone https://github.com/jtarchie/rugaroo.git
+cd rugaroo
+go install ./cmd/rugaroo
+bundle install --gemfile examples/135_roundhouse_blog/Gemfile
+cd examples/135_roundhouse_blog
+
+ruby main.rb                 <span class="c"># on Ruby</span>
+rugaroo run -trace main.rb   <span class="c"># compiled</span></code></pre>
+    <p>Both print the same fifteen requests: listing, showing and editing articles, a failed create, a new article and comment, an update and two deletes. <code>-trace</code> runs the program once under Ruby first, to see which files it loads.</p>
+
+    <h3>Your own app</h3>
+    <p>The <a href="https://github.com/jtarchie/roundhouse-rugaroo#getting-started">roundhouse-rugaroo README</a> walks from <code>rails new</code> and a scaffold to a running binary.</p>
+
+    <h3>Not yet</h3>
+    <ul>
+      <li>CSS and JavaScript assets aren't served, so pages are unstyled. Forms still work.</li>
+      <li>Live updates over Action Cable (WebSockets) aren't supported.</li>
+    </ul>
+    <p>Details: <a href="https://github.com/jtarchie/rugaroo/blob/main/examples/135_roundhouse_blog/README.md">example 135</a>, <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/decisions/404.md">decision 404</a> and <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/decisions/405.md">405</a>.</p>
+  </article>
+</main>
+<footer>
+  <p><a href="/">Home</a> · <a href="https://play.rugaroo.dev">Playground</a> · <a href="https://github.com/jtarchie/rugaroo">Source</a> · <a href="https://github.com/jtarchie/rugaroo/blob/main/docs/README.md">Docs</a></p>
+</footer>
+</body>
+</html>
