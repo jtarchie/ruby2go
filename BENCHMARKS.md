@@ -12,30 +12,30 @@ COLS=ruby,rugaroo scripts/benchmark fib array  # some columns, some workloads
 
 | workload | MRI | MRI+YJIT | rugaroo | spinel | Crystal | Go |
 |---|---:|---:|---:|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.093s | 0.018s | 0.015s | 0.017s | 0.015s |
-| `Hash` counting, 500k | 0.11s | 0.096s | 0.013s | 0.008s | 0.013s | 0.010s |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.13s | 0.019s | 0.011s | 0.012s | 0.012s |
-| string build/split, 100k | 0.11s | 0.11s | 0.023s | 0.018s | 0.025s | 0.018s |
-| `Math.sin`/`cos`, 200k | 0.086s | 0.073s | 0.010s | 0.007s | 0.009s | 0.008s |
-| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.036s | - | 0.014s | 0.013s |
-| binary trees (allocation), depth 10 | 0.082s | 0.069s | 0.011s | 0.009s | 0.011s | 0.008s |
-| splay tree | 0.21s | 0.12s | 0.015s | 0.020s | 0.019s | 0.013s |
-| blocks, procs, lambdas, enumerator chains | 0.36s | 0.33s | 0.038s | 0.15s | 0.037s | 0.013s |
-| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.11s | 0.077s | 2.50s | 0.019s |
-| regexp match/gsub/scan/tr, StringScanner | 0.74s | 0.71s | 0.21s | 0.83s | 0.21s | 0.28s |
-| sort_by/group_by/tally, Set, Struct | 0.54s | 0.52s | 0.12s | 1.10s | 0.054s | 0.068s |
-| format, StringIO, case mapping | 0.48s | 0.45s | 0.13s | 0.20s | 0.14s | 0.10s |
-| JSON generate + parse | 0.14s | 0.15s | 0.12s | 0.23s | 0.13s | 0.25s |
-| Bignum: Fibonacci, 2000!, 1,200 digits of pi | 0.21s | 0.21s | 0.059s | 0.12s | 0.085s | 0.038s |
-| pairing_heap gem: Dijkstra + heapsort | 0.66s | 0.33s | 0.093s | - | 0.039s | 0.035s |
-| liquid gem: a template rendered 400 times | 0.37s | 0.30s | 0.15s | - | - | - |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.44s | 0.55s | 0.39s | - | - | - |
-| total (rows each one ran) | 5.51s | 4.67s | 1.55s | 2.80s | 3.32s | 0.90s |
-| vs MRI on those rows | 1.0x | 1.2x | 3.5x | 1.4x | 1.4x | 5.2x |
+| `fib(32)` | 0.27s | 0.092s | 0.016s | 0.015s | 0.017s | 0.014s |
+| `Hash` counting, 500k | 0.12s | 0.100s | 0.012s | 0.008s | 0.014s | 0.010s |
+| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.14s | 0.018s | 0.011s | 0.011s | 0.010s |
+| string build/split, 100k | 0.11s | 0.11s | 0.022s | 0.018s | 0.024s | 0.017s |
+| `Math.sin`/`cos`, 200k | 0.085s | 0.071s | 0.009s | 0.007s | 0.008s | 0.007s |
+| classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.034s | - | 0.014s | 0.012s |
+| binary trees (allocation), depth 10 | 0.082s | 0.069s | 0.010s | 0.009s | 0.011s | 0.007s |
+| splay tree | 0.21s | 0.12s | 0.014s | 0.020s | 0.018s | 0.012s |
+| blocks, procs, lambdas, enumerator chains | 0.36s | 0.33s | 0.035s | 0.15s | 0.035s | 0.011s |
+| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.11s | 0.077s | 2.51s | 0.018s |
+| regexp match/gsub/scan/tr, StringScanner | 0.77s | 0.78s | 0.21s | 0.83s | 0.21s | 0.28s |
+| sort_by/group_by/tally, Set, Struct | 0.55s | 0.53s | 0.12s | 1.10s | 0.051s | 0.069s |
+| format, StringIO, case mapping | 0.50s | 0.47s | 0.12s | 0.20s | 0.14s | 0.10s |
+| JSON generate + parse | 0.14s | 0.16s | 0.12s | 0.23s | 0.12s | 0.25s |
+| Bignum: Fibonacci, 2000!, 1,200 digits of pi | 0.20s | 0.20s | 0.056s | 0.12s | 0.073s | 0.037s |
+| pairing_heap gem: Dijkstra + heapsort | 0.67s | 0.34s | 0.093s | - | 0.038s | 0.035s |
+| liquid gem: a template rendered 400 times | 0.39s | 0.30s | 0.15s | - | - | - |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.44s | 0.57s | 0.37s | - | - | - |
+| total (rows each one ran) | 5.58s | 4.78s | 1.52s | 2.80s | 3.29s | 0.89s |
+| vs MRI on those rows | 1.0x | 1.2x | 3.7x | 1.4x | 1.4x | 5.3x |
 
-This run follows decisions 381-399 (the spinel parity work: per-file `int_overflow`, `String#<<` on an
+This run follows decisions 381-401 (the spinel parity work: per-file `int_overflow`, `String#<<` on an
 unaliased local, ivar and tuple-stack typing, window reuse for `each_cons`/`each_slice`, counted loops as Go `for`
-loops, an open-addressed Hash index): rugaroo's total went from 1.60s to 1.55s, blocks 0.045s to 0.038s, Hash
+loops, an open-addressed Hash index): rugaroo's total went from 1.60s to 1.52s, blocks 0.045s to 0.038s, Hash
 counting 0.017s to 0.013s; the other rows are within noise. Their bigger effect is on spinel's own suite, below.
 `TestCompileCost` compiles 2,032 / 7,948 / 30,419 functions for 05_word_count / 64_observable / 116_cuba_web (2,014 /
 7,730 / 30,289 before; the Hash index's probe and insert helpers now compile once per key type).
@@ -126,7 +126,7 @@ micro-benchmarks of one VM path (ivar reads and writes, sends, allocation,
 loops) plus a few small applications (a template engine, a CSV pipeline, a
 Lisp). Neither compiler was tuned against the other's suite, so this is the
 away game for rugaroo, as `benchmarks/` is for spinel. Same machine and
-versions as above, spinel `baea3e28`, 2026-10-27 after decision 399, median of 5 runs:
+versions as above, spinel `baea3e28`, 2026-10-27 after decision 401, median of 5 runs:
 
 ```sh
 S=/path/to/spinel
@@ -142,94 +142,95 @@ Every other row is rugaroo's default.
 
 | workload | MRI | MRI+YJIT | rugaroo | spinel |
 |---|---:|---:|---:|---:|
-| bm_ackermann | 0.49s | 0.12s | 0.075s | 0.069s |
-| bm_ao_render | 2.68s | 1.14s | 0.13s | 0.11s |
-| bm_attr_accessor | 1.52s | 1.63s | 0.070s | 0.055s |
-| bm_bigint_fib | 0.054s | 0.055s | 0.008s | 0.006s |
-| bm_binary_trees | 0.081s | 0.069s | 0.011s | 0.009s |
-| bm_csv_build | 1.84s | 1.62s | - | 0.38s |
-| bm_csv_process | 0.80s | 0.69s | 0.35s | 0.24s |
-| bm_fannkuch † | 0.060s | 0.061s | 0.008s | 0.006s |
-| bm_fasta † | 0.058s | 0.060s | 0.008s | 0.006s |
-| bm_fib | 0.61s | 0.15s | 0.036s | 0.030s |
-| bm_gcbench | 3.24s | 1.67s | 0.24s | 0.30s |
-| bm_getivar | 0.17s | 0.18s | 0.014s | 0.005s |
-| bm_getivar_module | 1.23s | 1.24s | 0.070s | 0.006s |
-| bm_handle_read_loop | 3.02s | 1.91s | - | 0.19s |
-| bm_handle_readonly_param † | 2.62s | 1.22s | 0.053s | 0.072s |
-| bm_histogram † | 18.49s | 18.45s | 0.88s | 0.41s |
+| bm_ackermann | 0.49s | 0.12s | 0.069s | 0.069s |
+| bm_ao_render | 2.68s | 1.15s | 0.099s | 0.11s |
+| bm_attr_accessor | 1.53s | 1.61s | 0.058s | 0.055s |
+| bm_bigint_fib | 0.053s | 0.054s | 0.007s | 0.005s |
+| bm_binary_trees | 0.082s | 0.069s | 0.011s | 0.009s |
+| bm_csv_build | 1.83s | 1.63s | - | 0.38s |
+| bm_csv_process | 0.80s | 0.70s | 0.35s | 0.24s |
+| bm_fannkuch † | 0.058s | 0.059s | 0.007s | 0.006s |
+| bm_fasta † | 0.060s | 0.060s | 0.008s | 0.006s |
+| bm_fib | 0.61s | 0.15s | 0.032s | 0.031s |
+| bm_gcbench | 3.20s | 1.66s | 0.24s | 0.30s |
+| bm_getivar | 0.17s | 0.18s | 0.013s | 0.005s |
+| bm_getivar_module | 1.23s | 1.24s | 0.059s | 0.006s |
+| bm_handle_read_loop | 3.04s | 1.92s | - | 0.19s |
+| bm_handle_readonly_param † | 2.60s | 1.22s | 0.053s | 0.072s |
+| bm_histogram † | 18.48s | 18.49s | 0.88s | 0.40s |
 | bm_huffman † | 0.11s | 0.11s | 0.019s | 0.012s |
-| bm_inline | 1.70s | 1.19s | 0.10s | 0.033s |
-| bm_io_wordcount | 0.12s | 0.12s | 0.054s | 0.035s |
-| bm_jekyll_lite † | 0.055s | 0.055s | 0.008s | 0.005s |
-| bm_json_parse † | 0.41s | 0.31s | 0.065s | 0.058s |
-| bm_keyword_args | 0.26s | 0.25s | 0.018s | 0.006s |
-| bm_life | 0.85s | 0.41s | 0.088s | 0.030s |
+| bm_inline | 1.70s | 1.15s | 0.095s | 0.034s |
+| bm_io_wordcount | 0.13s | 0.12s | 0.055s | 0.036s |
+| bm_jekyll_lite † | 0.055s | 0.055s | 0.008s | 0.006s |
+| bm_json_parse † | 0.41s | 0.30s | 0.066s | 0.058s |
+| bm_keyword_args | 0.26s | 0.25s | 0.009s | 0.006s |
+| bm_life | 0.85s | 0.42s | 0.081s | 0.031s |
 | bm_linked_list | 0.34s | 0.28s | 0.037s | 0.043s |
-| bm_loops_times | 1.08s | 0.35s | 0.039s | 0.039s |
-| bm_mandel_term | 0.072s | 0.064s | 0.016s | 0.007s |
-| bm_matmul † | 0.40s | 0.40s | 0.027s | 0.012s |
-| bm_micro_lisp | 0.054s | 0.068s | - | 0.006s |
-| bm_nbody | 0.061s | 0.066s | 0.008s | 0.006s |
-| bm_nested_loop | 0.65s | 0.64s | 0.019s | 0.006s |
-| bm_nil_recv_loop | 1.35s | 0.28s | 0.069s | 0.070s |
-| bm_nqueens † | 0.32s | 0.32s | 0.027s | 0.013s |
-| bm_object_new | 0.17s | 0.17s | 0.009s | 0.006s |
-| bm_object_new_init | 0.26s | 0.19s | 0.009s | 0.006s |
-| bm_object_new_no_escape | 0.30s | 0.18s | 0.010s | 0.006s |
-| bm_partial_sums | 1.27s | 1.28s | 0.073s | 0.024s |
-| bm_pidigits | 0.054s | 0.056s | 0.008s | 0.006s |
-| bm_point_in_polygon | 1.01s | 0.35s | 0.18s | 0.060s |
+| bm_loops_times | 1.07s | 0.36s | 0.039s | 0.039s |
+| bm_mandel_term | 0.072s | 0.064s | 0.009s | 0.007s |
+| bm_matmul † | 0.45s | 0.44s | 0.023s | 0.012s |
+| bm_micro_lisp | 0.055s | 0.068s | - | 0.007s |
+| bm_nbody | 0.062s | 0.066s | 0.008s | 0.006s |
+| bm_nested_loop | 0.64s | 0.64s | 0.019s | 0.006s |
+| bm_nil_recv_loop | 1.33s | 0.29s | 0.085s | 0.070s |
+| bm_nqueens † | 0.32s | 0.32s | 0.026s | 0.013s |
+| bm_object_new | 0.17s | 0.17s | 0.008s | 0.006s |
+| bm_object_new_init | 0.26s | 0.19s | 0.009s | 0.007s |
+| bm_object_new_no_escape | 0.29s | 0.18s | 0.011s | 0.006s |
+| bm_partial_sums | 1.28s | 1.28s | 0.064s | 0.025s |
+| bm_pidigits | 0.054s | 0.055s | 0.008s | 0.006s |
+| bm_point_in_polygon | 1.03s | 0.35s | 0.18s | 0.060s |
 | bm_poly_cells | 0.054s | 0.055s | - | 0.007s |
-| bm_range_each | 22.62s | 14.54s | 0.67s | 0.44s |
+| bm_range_each | 22.53s | 14.72s | 0.67s | 0.44s |
 | bm_rbs_items | 0.22s | 0.19s | 0.014s | 0.027s |
-| bm_rbs_items_control | 0.20s | 0.21s | 0.013s | 0.033s |
+| bm_rbs_items_control | 0.20s | 0.22s | 0.013s | 0.034s |
 | bm_rbtree | 0.52s | 0.18s | 0.027s | 0.032s |
-| bm_reader_index † | 12.85s | 11.71s | 0.51s | 0.23s |
-| bm_ruby_xor † | 1.47s | 0.39s | 0.092s | 0.088s |
-| bm_send_bmethod | 0.31s | 0.28s | - | 0.006s |
-| bm_send_cfunc_block | 1.09s | 1.07s | 0.032s | 0.17s |
-| bm_send_rubyfunc_block | 1.79s | 1.09s | 0.094s | 0.071s |
-| bm_setivar | 0.29s | 0.29s | 0.018s | 0.015s |
-| bm_setivar_object | 0.29s | 0.30s | 0.019s | 0.015s |
+| bm_reader_index † | 12.71s | 11.93s | 0.35s | 0.23s |
+| bm_ruby_xor † | 1.46s | 0.38s | 0.067s | 0.087s |
+| bm_send_bmethod | 0.31s | 0.29s | - | 0.006s |
+| bm_send_cfunc_block | 1.09s | 1.08s | 0.031s | 0.17s |
+| bm_send_rubyfunc_block | 1.79s | 1.07s | 0.074s | 0.070s |
+| bm_setivar | 0.29s | 0.29s | 0.018s | 0.014s |
+| bm_setivar_object | 0.29s | 0.30s | 0.018s | 0.015s |
 | bm_setivar_young | 0.29s | 0.29s | 0.018s | 0.015s |
-| bm_sieve | 0.64s | 0.64s | 0.034s | 0.021s |
-| bm_sinatra_mini † | 0.054s | 0.055s | 0.008s | 0.005s |
-| bm_so_lists | 0.42s | 0.26s | 0.083s | 0.031s |
-| bm_so_mandelbrot | 1.53s | 1.53s | 0.12s | 0.034s |
-| bm_sort_by | 0.066s | 0.067s | 0.017s | 0.012s |
-| bm_spectral_norm † | 0.11s | 0.087s | 0.011s | 0.006s |
-| bm_splay | 0.22s | 0.11s | 0.014s | 0.020s |
-| bm_stark_field † | 1.25s | 0.91s | 0.13s | 0.10s |
-| bm_str_concat | 0.054s | 0.056s | 0.008s | 0.006s |
-| bm_str_readonly_param † | 0.055s | 0.056s | 0.013s | 0.009s |
-| bm_structaref | 0.24s | 0.24s | 0.014s | 0.008s |
-| bm_structaset | 0.46s | 0.46s | 0.046s | 0.017s |
-| bm_sudoku † | 0.18s | 0.11s | 0.016s | 0.009s |
-| bm_tak | 0.55s | 0.14s | 0.037s | 0.028s |
-| bm_tarai | 0.45s | 0.13s | 0.031s | 0.023s |
-| bm_template † | 0.91s | 0.70s | 0.19s | 0.15s |
-| bm_template_render | 1.39s | 1.21s | - | 0.28s |
-| bm_threaded_render | 6.29s | 5.80s | 0.67s | 0.55s |
-| bm_throw | 0.29s | 0.24s | - | 0.007s |
-| bm_tree_walker † | 2.12s | 0.47s | 0.085s | 0.18s |
-| bm_tree_walker_frames | 0.40s | 0.13s | - | 0.044s |
-| bm_wordfreq | 0.057s | 0.058s | 0.011s | 0.006s |
-| total (rows run) | 107.60s | 81.46s | 5.88s | 5.07s |
-| vs MRI | 1.0x | 1.3x | 17.1x | 21.2x |
+| bm_sieve | 0.64s | 0.64s | 0.033s | 0.020s |
+| bm_sinatra_mini † | 0.053s | 0.053s | 0.007s | 0.005s |
+| bm_so_lists | 0.42s | 0.26s | 0.083s | 0.030s |
+| bm_so_mandelbrot | 1.53s | 1.53s | 0.044s | 0.033s |
+| bm_sort_by | 0.076s | 0.075s | 0.017s | 0.013s |
+| bm_spectral_norm † | 0.10s | 0.085s | 0.009s | 0.006s |
+| bm_splay | 0.21s | 0.12s | 0.014s | 0.019s |
+| bm_stark_field † | 1.25s | 0.92s | 0.12s | 0.10s |
+| bm_str_concat | 0.054s | 0.055s | 0.007s | 0.005s |
+| bm_str_readonly_param † | 0.055s | 0.055s | 0.012s | 0.008s |
+| bm_structaref | 0.24s | 0.24s | 0.012s | 0.007s |
+| bm_structaset | 0.45s | 0.45s | 0.018s | 0.016s |
+| bm_sudoku † | 0.17s | 0.10s | 0.013s | 0.008s |
+| bm_tak | 0.56s | 0.14s | 0.032s | 0.028s |
+| bm_tarai | 0.45s | 0.13s | 0.028s | 0.024s |
+| bm_template † | 0.91s | 0.70s | 0.19s | 0.14s |
+| bm_template_render | 1.39s | 1.20s | - | 0.28s |
+| bm_threaded_render | 6.50s | 5.95s | 0.80s | 0.65s |
+| bm_throw | 0.29s | 0.24s | - | 0.006s |
+| bm_tree_walker † | 2.14s | 0.48s | 0.084s | 0.18s |
+| bm_tree_walker_frames | 0.40s | 0.13s | - | 0.043s |
+| bm_wordfreq | 0.057s | 0.057s | 0.010s | 0.005s |
+| total (rows run) | 107.54s | 82.09s | 5.58s | 5.17s |
+| vs MRI | 1.0x | 1.3x | 18.0x | 20.8x |
 
 rugaroo builds 65 of the 73 unmodified: 47 by default, 18 more with
 `--nil-check=runtime`. On the 65 rows both ran,
-the totals are MRI 100.2s, YJIT 75.9s, rugaroo 5.88s (17.0x MRI), spinel 4.16s
-(24.1x MRI); before decisions 381-388 that was 9.5x against 23.3x on 44 rows.
+the totals are MRI 100.2s, YJIT 76.5s, rugaroo 5.58s (18.0x MRI), spinel 4.23s
+(23.7x MRI); before decisions 381-388 that was 9.5x against 23.3x on 44 rows.
 The footer's ratios above are over different row sets, so spinel's there
 includes the 8 programs rugaroo does not build.
 
-- **rugaroo ahead of spinel:** `bm_send_cfunc_block` (5.2x), `bm_rbs_items*`
-  (1.9-2.6x), `bm_tree_walker` † (2.1x; decision 396 took it from 0.28s to
-  0.086s), `bm_handle_readonly_param` † (1.4x), `bm_splay`, `bm_gcbench`,
-  `bm_rbtree`, `bm_linked_list` (1.15-1.25x): the allocation and block-call
-  rows, as in the main table. `bm_loops_times` and `bm_nil_recv_loop` are even.
+- **rugaroo ahead of spinel:** `bm_send_cfunc_block` (5.5x), `bm_rbs_items*`
+  (1.9-2.6x), `bm_tree_walker` † (2.1x), `bm_handle_readonly_param` †,
+  `bm_ruby_xor` †, `bm_splay` (1.35x), `bm_gcbench`, `bm_rbtree`,
+  `bm_linked_list`, `bm_ao_render` (1.1-1.25x): the allocation and block-call
+  rows, as in the main table. `bm_loops_times`, `bm_ackermann`, `bm_fib` and
+  `bm_attr_accessor` are even.
 - **Closed by decision 387** (counted loops as Go `for` loops, in-place
   `Array#[]=`, unboxed compares): `bm_loops_times` 0.19s to 0.040s,
   `bm_range_each` 2.15s to 0.67s, `bm_sieve` 0.099s to 0.035s,
@@ -243,11 +244,21 @@ includes the 8 programs rugaroo does not build.
   `bm_getivar_module` 0.15s to 0.070s, `bm_template` † 0.73s to 0.19s,
   `bm_json_parse` † 0.25s to 0.065s, `bm_huffman` † 0.028s to 0.019s; #139
   has the rest of the String gap.
-- **Furthest behind:** `bm_getivar_module` (12x; Go does not hoist the ivar
+- **Closed by decisions 400-401** (an Integer overflow panics a value, so
+  small arithmetic methods inline; a Struct writer's frozen check folds away
+  when nothing calls `freeze`; `/dev/null` is not a terminal, so `print` stays
+  buffered, as in MRI; `Math.sqrt` called directly; Float operators written at
+  the call site): `bm_so_mandelbrot` 0.12s to 0.044s, `bm_structaset` 0.046s
+  to 0.018s, `bm_reader_index` † 0.51s to 0.35s, `bm_ao_render` 0.13s to
+  0.099s, `bm_keyword_args` 168M to 42M instructions. `bm_nil_recv_loop` went
+  0.069s to 0.085s with the same instruction count: Go now loads `v` and `nxt`
+  with one pair load, which lengthens its pointer-chasing chain on Apple cores.
+- **Furthest behind:** `bm_getivar_module` (10x; Go does not hoist the ivar
   load out of the loop, as clang does for spinel; decision 398),
-  `bm_so_mandelbrot` (3.5x), `bm_nested_loop` (3.2x: spinel's C compiler folds
-  the loops away), `bm_partial_sums`, `bm_inline`, `bm_keyword_args`,
-  `bm_point_in_polygon`, `bm_life`, `bm_getivar` (2.8-3x).
+  `bm_nested_loop` (3.2x: spinel's C compiler folds the loops away),
+  `bm_point_in_polygon` (3x: its Float arrays fall back to untyped, #141),
+  `bm_inline`, `bm_so_lists`, `bm_life` (#140), `bm_getivar`,
+  `bm_partial_sums` (2.6-2.8x: Go's pure-Go `math.Sin`/`Cos` on arm64).
 - Rows under 10 ms are mostly process start-up for both binaries.
 
 Why 26 do not compile by default, by the first error each reports (18 of them build with `--nil-check=runtime`):
