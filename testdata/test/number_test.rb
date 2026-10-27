@@ -2621,6 +2621,14 @@ module NumberTests
       assert_equal 0, -(-max - 1) & 0xffff
     end
 
+    # sum's block loop (decision 402) adds with the same checked `+` as the prelude's sum.
+    def test_wrap_sum_low_bits
+      max = number_id(0x7fff_ffff_ffff_ffff)
+      xs = [max, 1, 2]
+      low = xs.sum { |x| x } & 0xffff
+      assert_equal 2, low
+    end
+
     def test_promote_growth
       f = 1
       1.upto(25) { |i| f *= i }

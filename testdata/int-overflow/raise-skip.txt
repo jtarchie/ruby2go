@@ -2,3 +2,4 @@
 # A line is a go test name, or a test name and a minitest method excluded on both the MRI and rugaroo side.
 TestMinitest/number test_wrap_low_bits                   # wrap's low bits; raise answers RangeError
 TestMinitest/number test_promote_growth                  # Bignums; raise answers RangeError
+TestMinitest/number test_wrap_sum_low_bits               # sum past 64 bits; raise answers RangeError

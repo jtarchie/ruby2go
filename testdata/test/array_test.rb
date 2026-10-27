@@ -3162,3 +3162,143 @@ module ArrayTests
     end
   end
 end
+
+module ArrayTests
+  # count/sum/Array.new with a literal block run as index loops at the call (decision 402): same values, length re-read each step.
+  class ArrayBlockLoopTest < Minitest::Test
+    OFFSETS = [-1, 0, 1].freeze
+
+    #: (Array[Integer], Integer, Integer) -> Integer
+    def around(cells, x, y)
+      OFFSETS.sum { |dy| OFFSETS.count { |dx| cells[(y + dy) % 3 * 3 + (x + dx) % 3] == 1 } }
+    end
+
+    def test_count
+      none = [] #: Array[Integer]
+      assert_equal 0, none.count { |x| x > 0 }
+      assert_equal 2, [1, 2, 3, 4].count { |x| x.even? }
+      odd = [1, 2, 3, 4].count do |x|
+        next true if x.even?
+        next if x == 3
+        x > 0
+      end
+      assert_equal 3, odd
+      assert_equal 2, [5, 6, 7].count { _1 > 5 }
+      assert_equal 1, [5, 6, 7].count { it == 7 }
+      total = [1, 2, 3].count { true }
+      assert_equal 3, total
+    end
+
+    def test_count_mutating_receiver
+      a = [1, 2, 3]
+      popped = a.count do
+        a.pop
+        true
+      end
+      assert_equal [2, [1]], [popped, a]
+      b = [1, 2]
+      n = b.count do |x|
+        b << x + 10 if x < 3
+        true
+      end
+      assert_equal [4, [1, 2, 11, 12]], [n, b]
+      c = [1, 2, 3]
+      cleared = c.count do
+        c.clear
+        true
+      end
+      assert_equal 1, cleared
+    end
+
+    def test_sum_integer
+      none = [] #: Array[Integer]
+      assert_equal 0, none.sum { |x| x * 2 }
+      assert_equal 12, [1, 2, 3].sum { |x| x * 2 }
+      skipped = [1, 2, 3].sum do |x|
+        next 10 if x == 2
+        x
+      end
+      assert_equal 14, skipped
+      a = [1, 2, 3]
+      shrunk = a.sum do |x|
+        a.pop
+        x
+      end
+      assert_equal 3, shrunk
+      assert_equal 5, [[1, 2], [3]].sum { |r| r.sum { |x| x + 0 } } - 1
+    end
+
+    def test_sum_float_compensated
+      assert_equal 1.0, ([0.1] * 10).sum { |x| x }
+      assert_equal 1.0, [1e100, 1.0, -1e100].sum { |x| x }
+      assert_equal 0.6, [0.1, 0.2, 0.3].sum { |x| x + 0.0 }
+      assert_equal [3.0, 1.5], [[1.0, 2.0].sum { |x| x }, [3].sum { |x| x / 2.0 }]
+      assert_equal Float::INFINITY, [1.0, Float::INFINITY].sum { |x| x }
+      assert_predicate [Float::INFINITY, -Float::INFINITY].sum { |x| x }, :nan?
+      tenth = [0.1, 0.2].sum { |x| x }
+      assert_equal 0.30000000000000004, tenth
+    end
+
+    def test_break_out_of_statement_call
+      n = 0
+      [1, 2, 3].count do |x|
+        n += x
+        break if x == 2
+        true
+      end
+      assert_equal 3, n
+      seen = [] #: Array[Integer]
+      Array.new(4) do |i|
+        seen << i
+        break if i == 1
+        i
+      end
+      assert_equal [0, 1], seen
+    end
+
+    def test_inner_loops_keep_their_own_jumps
+      v = [3, 4].sum do |x|
+        t = 0
+        x.times do |i|
+          next if i.odd?
+          break if i > 2
+          t += i
+        end
+        t
+      end
+      assert_equal 4, v
+    end
+
+    def test_array_new
+      assert_equal [0, 1, 4, 9], Array.new(4) { |i| i * i }
+      none = Array.new(0) { 1 }
+      assert_equal [], none
+      marked = Array.new(3) do |i|
+        next -1 if i == 1
+        i
+      end
+      assert_equal [0, -1, 2], marked
+      assert_equal [[0, 1], [0, 1]], Array.new(2) { Array.new(2) { |j| j } }
+      assert_equal ["a0", "a1"], Array.new(2) { |i| "a#{i}" }
+      assert_equal [0.5, 1.5], Array.new(2) { |i| i + 0.5 }
+      procs = Array.new(3) { |i| -> { i * 10 } }
+      assert_equal [0, 10, 20], procs.map(&:call)
+      e = assert_raises(ArgumentError) { Array.new(-1) { 0 } }
+      assert_equal "negative array size", e.message
+    end
+
+    def test_rescue_in_block
+      rescued = [1, 2].sum do |x|
+        Integer("z#{x}")
+      rescue ArgumentError
+        x
+      end
+      assert_equal 3, rescued
+    end
+
+    def test_neighbours
+      cells = [0, 1, 0, 1, 1, 0, 0, 0, 1]
+      assert_equal [4, 4, 4], [0, 1, 2].map { |x| around(cells, x, 1) }
+    end
+  end
+end

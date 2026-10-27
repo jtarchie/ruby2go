@@ -160,6 +160,7 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 		}
 	}
 	if !env.NoCountedLoop {
+		inlineBlockLoops(f)
 		inlineIdxSet(f)
 		inlinePush(f)
 	}
