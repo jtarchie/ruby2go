@@ -77,6 +77,10 @@ first, marking the originals loaded with
 shims are the [roundhouse-rugaroo](https://github.com/jtarchie/roundhouse-rugaroo)
 gem, whose README walks from `rails new` to a running binary.
 
+Roundhouse's `runtime/` is a framework the app carries, not the app's own code,
+so it is compiled as an installed gem is (only what the app reaches, leniently):
+`rugaroo build -gem blog/runtime main.rb` ([decision 406](decisions/406.md)).
+
 Proof: [example 135](../examples/135_roundhouse_blog/README.md), roundhouse's
 Blog app (articles, nested comments, validations, partials, JSON views) served
 over HTTP, its answers equal to MRI's on the same files

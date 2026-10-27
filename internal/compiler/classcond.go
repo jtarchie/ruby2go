@@ -20,7 +20,7 @@ func (c *Compiler) takenBranch(f *File, n parser.Node, scope []*Class) (stmts []
 	switch n := n.(type) {
 	case *parser.IfNode:
 		v, ok := c.foldCond(f, n.Predicate, scope)
-		if !ok {
+		if !ok && c.gemFile(f) { // boot's answer folds gem code only (decision 201): a program's own `if ENV["PORT"]` is decided when it runs
 			v, ok = c.bootTook(f, n.Location, false)
 		}
 		if !ok {
@@ -38,7 +38,7 @@ func (c *Compiler) takenBranch(f *File, n parser.Node, scope []*Class) (stmts []
 		return nil, true
 	case *parser.UnlessNode:
 		v, ok := c.foldCond(f, n.Predicate, scope)
-		if !ok {
+		if !ok && c.gemFile(f) {
 			v, ok = c.bootTook(f, n.Location, true)
 		}
 		if !ok {

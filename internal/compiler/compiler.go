@@ -963,7 +963,7 @@ func (c *Compiler) findRequireUncached(required string) string {
 		name += ".rb"
 	}
 	dirs := c.loadPath
-	if !builtinLib(required) { // the prelude's lib wins over a gem's copy (base64, forwardable), as does a vendored gem's (sqlite3)
+	if first, _, _ := strings.Cut(required, "/"); !builtinLib(required) && !builtinLib(first) { // the prelude's lib wins over a gem's copy (base64, forwardable), as does a vendored gem's (sqlite3, its own `sqlite3/x` files too)
 		dirs = append(slices.Clip(dirs), c.gemDirs...)
 	}
 	return resolveOnPath(dirs, name)

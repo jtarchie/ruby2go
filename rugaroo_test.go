@@ -406,7 +406,7 @@ func TestTraceRun(t *testing.T) {
 	sameAsRuby(t, dir, "main.rb", goBuild(t, gen, ""))
 }
 
-var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path|trace): (.*)$`)
+var directive = regexp.MustCompile(`(?m)^# (error|warning|skip|args|env|stdin|stderr|load_path|trace|gem): (.*)$`)
 
 // directives returns the text of each `# kind: text` line in src.
 func directives(src []byte, kind string) []string {
@@ -659,7 +659,16 @@ func testExample(t *testing.T, dir, gen string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compile := CompileWithGems             // gems as the CLI finds them (decision 173)
+	compile := CompileWithGems                         // gems as the CLI finds them (decision 173)
+	if gems := directives(src, "gem"); len(gems) > 0 { // `# gem: dir`: a directory compiled as a gem, as `rugaroo build -gem dir` (decision 406)
+		gemDirs := make([]string, len(gems))
+		for i, g := range gems {
+			gemDirs[i] = filepath.Join(dir, g)
+		}
+		compile = func(ctx context.Context, name string, s []byte, lp ...string) ([]byte, []string, error) {
+			return CompileWithGemDirs(ctx, name, s, gemDirs, lp...)
+		}
+	}
 	if len(directives(src, "trace")) > 0 { // `# trace: why`: compiled from what an MRI run loads, as `rugaroo build -trace` (decision 296)
 		compile = func(ctx context.Context, name string, _ []byte, lp ...string) ([]byte, []string, error) {
 			return CompileTrace(ctx, name, [][]string{nil}, nil, lp...) // ponytail: one run with no args; pass `# args:` here when a traced example takes some

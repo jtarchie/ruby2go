@@ -38,21 +38,33 @@ func CompileWithBoot(ctx context.Context, preludeFS, gemSigs fs.FS, sources []So
 
 // CompileWithGems compiles with the installed gems MRI finds for requires only a gem answers (decision 173); without such a require it never starts Ruby.
 func CompileWithGems(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, loadPath ...string) ([]byte, []string, error) {
+	return CompileWithGemDirs(ctx, preludeFS, gemSigs, sources, nil, loadPath...)
+}
+
+// CompileWithGemDirs is CompileWithGems with directories the program carries as libraries (`-gem dir`, decision 406): gem code, searched before the installed gems.
+func CompileWithGemDirs(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, gemDirs []string, loadPath ...string) ([]byte, []string, error) {
 	if len(sources) == 0 {
 		return nil, nil, errors.New("no Ruby files to compile")
 	}
-	names, err := gemRequires(ctx, sources, loadPath)
-	var gemDirs []string
+	names, err := gemRequires(ctx, sources, loadPath, gemDirs)
+	var found []string
 	if err == nil && len(names) > 0 {
-		gemDirs, err = boot.FindGems(ctx, filepath.Dir(sourceName(sources[0])), names)
+		found, err = boot.FindGems(ctx, filepath.Dir(sourceName(sources[0])), names)
 	}
 	if err != nil {
 		return nil, nil, err //nolint:wrapcheck // the caller adds "rugaroo: "
 	}
-	if len(gemDirs) == 0 {
+	all := slices.Clip(gemDirs)
+	for _, d := range found {
+		if m := gemDir.FindStringSubmatch(d + "/"); m != nil && builtinLib(m[1]) {
+			continue // a gem the prelude is (base64, sqlite3) came back as a dependency: the prelude's copy serves, and its shipped sig/ would type the prelude's by its own (decisions 173, 406)
+		}
+		all = append(all, d)
+	}
+	if len(all) == 0 {
 		return CompileFilesWithWarnings(ctx, preludeFS, sources, loadPath...)
 	}
-	return CompileWithBoot(ctx, preludeFS, gemSigs, sources, gemDirs, loadPath...)
+	return CompileWithBoot(ctx, preludeFS, gemSigs, sources, all, loadPath...)
 }
 
 // bootSources runs boot on sources[0] and appends the files its resolved
@@ -75,6 +87,9 @@ func bootSources(ctx context.Context, sources []Source, loadPath []string) ([]So
 	out := sources
 	for _, a := range m.Autoloads {
 		if !a.Resolved || a.Loaded == "" || !strings.HasSuffix(a.Loaded, ".rb") || seen[realPath(a.Loaded)] {
+			continue
+		}
+		if d, _ := under(a.Loaded, m.StdDirs); d != "" { // MRI's own library (Bundler's and Thor's autoloads under `bundler/setup`): the prelude is rugaroo's copy, never a source (decisions 173, 404)
 			continue
 		}
 		seen[realPath(a.Loaded)] = true

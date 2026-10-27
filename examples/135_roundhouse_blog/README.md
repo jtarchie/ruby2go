@@ -17,7 +17,7 @@ and [405](../../docs/decisions/405.md)).
 ```sh
 bundle install --gemfile examples/135_roundhouse_blog/Gemfile   # once
 ruby main.rb                     # MRI
-rugaroo run -trace main.rb       # compiled; -trace because blog/runtime and the gem compile as gems do
+rugaroo run -gem blog/runtime main.rb   # compiled: blog/runtime is library code the app carries, compiled as a gem is
 ```
 
 `main.rb` marks the Spinel-only files loaded before anything requires them
@@ -27,11 +27,13 @@ the originals.
 
 ## `main.rb`
 
-- `# trace:`, `$LOAD_PATH` and Bundler: `blog/runtime/` is on the load path and
-  the gem comes through Bundler (`ENV["BUNDLE_GEMFILE"]` and
-  `require "bundler/setup"`, as a Rails app's `config/boot.rb` does), so rugaroo
-  compiles both as it compiles a gem: only what the blog reaches. `blog/app/`
-  stays the program's own code, strictly typed.
+- `# gem: blog/runtime` (the harness's `rugaroo build -gem blog/runtime`,
+  [decision 406](../../docs/decisions/406.md)) and Bundler: roundhouse's runtime
+  is a library the app carries, and the gem comes through Bundler
+  (`ENV["BUNDLE_GEMFILE"]` and `require "bundler/setup"`, as a Rails app's
+  `config/boot.rb` does), so rugaroo compiles both as it compiles a gem: only
+  what the blog reaches. `blog/app/` stays the program's own code, strictly
+  typed. The `$LOAD_PATH.unshift` line is for `ruby main.rb`.
 - `# nil_check: runtime`: the emitted code uses possibly-nil values where it
   knows they are not nil, as Ruby lets it. rugaroo checks those at run time
   instead of refusing to compile them.

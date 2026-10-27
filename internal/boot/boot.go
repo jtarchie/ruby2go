@@ -29,6 +29,7 @@ var hookFS embed.FS
 type Manifest struct {
 	LoadedFeatures []string                `json:"loaded_features"` // files loaded during boot
 	LoadPath       []string                `json:"load_path"`       // $LOAD_PATH as boot left it: what `$LOAD_PATH` reads in the compiled program (decision 301)
+	StdDirs        []string                `json:"std_dirs"`        // rubylibdir and archdir: MRI's own library, never a source (decision 404)
 	Classes        []ClassInfo             `json:"classes"`
 	DefineMethods  []MethodInfo            `json:"define_methods"`
 	Aliases        []AliasInfo             `json:"aliases"`  // each alias_method boot ran (decision 330)

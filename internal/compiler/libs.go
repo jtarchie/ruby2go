@@ -116,7 +116,7 @@ func builtinLib(name string) bool {
 }
 
 // gemRequires lists required names (through -I files too) only an installed gem can answer (decision 173); it only parses.
-func gemRequires(ctx context.Context, sources []Source, loadPath []string) (names []string, err error) {
+func gemRequires(ctx context.Context, sources []Source, loadPath, gemDirs []string) (names []string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			ce, ok := r.(compileError)
@@ -130,7 +130,7 @@ func gemRequires(ctx context.Context, sources []Source, loadPath []string) (name
 	if err != nil {
 		return nil, fmt.Errorf("prism: %w", err)
 	}
-	c := &Compiler{parser: p, loadPath: loadPath, env: loadEnv()}
+	c := &Compiler{parser: p, loadPath: loadPath, gemDirs: gemDirs, env: loadEnv()}
 	libs, _, err := c.scanRequires(ctx, sources)
 	if c.methodRequiresRuntime {
 		return nil, err // decision 197: the traced entry names every library through -I; nothing to look up

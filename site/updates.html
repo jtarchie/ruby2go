@@ -71,8 +71,8 @@ bundle install --gemfile examples/135_roundhouse_blog/Gemfile
 cd examples/135_roundhouse_blog
 
 ruby main.rb                 <span class="c"># on Ruby</span>
-rugaroo run -trace main.rb   <span class="c"># compiled</span></code></pre>
-    <p>Both print the same fifteen requests: listing, showing and editing articles, a failed create, a new article and comment, an update and two deletes. <code>-trace</code> runs the program once under Ruby first, to see which files it loads.</p>
+rugaroo run -gem blog/runtime main.rb   <span class="c"># compiled</span></code></pre>
+    <p>Both print the same fifteen requests: listing, showing and editing articles, a failed create, a new article and comment, an update and two deletes. <code>-gem blog/runtime</code> tells rugaroo that directory is library code the app carries (roundhouse's runtime), compiled like an installed gem: only what the app reaches.</p>
 
     <h3>Your own app</h3>
     <p>The <a href="https://github.com/jtarchie/roundhouse-rugaroo#getting-started">roundhouse-rugaroo README</a> walks from <code>rails new</code> and a scaffold to a running binary.</p>

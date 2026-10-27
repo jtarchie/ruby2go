@@ -183,6 +183,8 @@ module RugarooBoot
         next unless (name = safe_name(mod))
 
         mod.constants(false).each do |c|
+          next if mod.autoload?(c, false) # resolving it would load a file the program never did (decision 404)
+
           obj = (mod.const_get(c, false) rescue next)
           return "#{name}::#{c}" if obj.equal?(value)
 
@@ -289,7 +291,7 @@ module RugarooBoot
 
     def resolve_autoloads
       @autoloads.map do |a|
-        owner = Object.const_get(a["owner"]) rescue nil
+        owner = RugarooBoot.const_at(a["owner"])
         pending = owner.respond_to?(:autoload?) ? owner.autoload?(a["const"]) : nil
         resolved = owner && pending.nil?
         loaded = nil
@@ -304,7 +306,7 @@ module RugarooBoot
     def class_state
       out = []
       @classes.each_key do |name|
-        owner = Object.const_get(name) rescue next
+        owner = RugarooBoot.const_at(name)
         next unless owner.is_a?(Module)
         owner.instance_variables.each do |ivar|
           value = owner.instance_variable_get(ivar)
@@ -347,14 +349,27 @@ module RugarooBoot
     # Constants whose value is a class named otherwise: `Impl = case ... end` picked at load time.
     MOD_CONSTANTS = Module.instance_method(:constants)
     MOD_AUTOLOAD = Module.instance_method(:autoload?)
+    # The constant a qualified name names, or nil: never through a pending autoload, which would load a file the
+    # program never did, with this hook watching (decision 404).
+    def const_at(name)
+      name.to_s.split("::").reject(&:empty?).reduce(Object) do |mod, seg|
+        return nil unless mod.is_a?(Module) && MOD_CONST_DEFINED.bind_call(mod, seg, false) && !MOD_AUTOLOAD.bind_call(mod, seg)
+
+        MOD_CONST_GET.bind_call(mod, seg, false)
+      end
+    rescue StandardError, NameError
+      nil
+    end
+
     MOD_NAME = Module.instance_method(:name)
     MOD_ANCESTORS = Module.instance_method(:ancestors)
     MOD_CONST_GET = Module.instance_method(:const_get)
+    MOD_CONST_DEFINED = Module.instance_method(:const_defined?)
 
     def const_classes
       out = {}
       @classes.each_key do |name|
-        owner = (Object.const_get(name) rescue next)
+        owner = RugarooBoot.const_at(name)
         next unless Module === owner
 
         # Module's own methods: a module can make them private for itself (brew's Cask::Quarantine, `extend self`).
@@ -400,13 +415,14 @@ module RugarooBoot
       @alias_tp&.disable
       @include_tp&.disable
       classes = @classes.map do |name, info|
-        owner = Object.const_get(name) rescue nil
+        owner = RugarooBoot.const_at(name)
         anc = owner.is_a?(Module) ? owner.ancestors.map { |a| safe_name(a) } : []
         info.merge("ancestors" => anc)
       end
       manifest = {
         "loaded_features" => ($LOADED_FEATURES - @features),
         "load_path" => $LOAD_PATH.map(&:to_s),
+        "std_dirs" => [RbConfig::CONFIG["rubylibdir"], RbConfig::CONFIG["archdir"]], # MRI's own library: a file there is never a source (decision 404)
         "classes" => classes,
         "define_methods" => @define_methods,
         "aliases" => @aliases,

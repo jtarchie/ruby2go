@@ -1,7 +1,6 @@
 # rbs_inline: enabled
 # nil_check: runtime
-# trace: roundhouse's runtime/ is on $LOAD_PATH and roundhouse-rugaroo is a gem, so both compile as gems do: only what the blog reaches (decision 296)
-# load_path: blog/runtime
+# gem: blog/runtime
 
 # Roundhouse's Blog (a Rails app, transpiled by roundhouse --target spinel into blog/, unmodified), served by the roundhouse-rugaroo gem and driven by Net::HTTP (README.md).
 $LOADED_FEATURES << File.expand_path("blog/runtime/tep/tep.rb", __dir__)

@@ -20,9 +20,9 @@ import (
 	"github.com/jtarchie/rugaroo"
 )
 
-const usage = `usage: rugaroo build [-o prog] [-I dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [traced args...]
-       rugaroo run [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [args...]
-       rugaroo gen [-I dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] main.rb [traced args...] > main.go
+const usage = `usage: rugaroo build [-o prog] [-I dir]... [-gem dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [traced args...]
+       rugaroo run [-I dir]... [-gem dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [args...]
+       rugaroo gen [-I dir]... [-gem dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] main.rb [traced args...] > main.go
        rugaroo test [-I dir]... [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] [paths...] [minitest flags: -v, -s seed, -n pattern, -e pattern, -S kinds, --show-skips]
        rugaroo web [-addr 127.0.0.1:8080]
        rugaroo web -static dir -assets https://host/path/`
@@ -77,6 +77,10 @@ func main() {
 	})
 	fs.Func("I", "a directory `require` searches for your own files, as `ruby -I` (repeatable)", func(dir string) error {
 		opts.loadPath = append(opts.loadPath, dir)
+		return nil
+	})
+	fs.Func("gem", "a directory of library code the program carries, compiled as an installed gem is: only what the program reaches, leniently (repeatable; decision 406)", func(dir string) error {
+		opts.gemDirs = append(opts.gemDirs, dir)
 		return nil
 	})
 	_ = fs.Parse(os.Args[2:]) // ExitOnError
@@ -187,6 +191,7 @@ type buildOpts struct {
 	args     []string   // the program's args
 	also     [][]string // -trace-also
 	loadPath []string   // -I
+	gemDirs  []string   // -gem
 }
 
 // compileFile is the CLI's compile: a traced entry with -main (decision 288), else a program.
@@ -197,7 +202,7 @@ func compileFile(ctx context.Context, file string, src []byte, opts buildOpts) (
 	if opts.main != "" {
 		return rugaroo.CompileTraced(ctx, file, src, opts.main, opts.loadPath...) //nolint:wrapcheck // already "rugaroo: "-prefixed
 	}
-	return rugaroo.CompileWithGems(ctx, file, src, opts.loadPath...) //nolint:wrapcheck // already "rugaroo: "-prefixed
+	return rugaroo.CompileWithGemDirs(ctx, file, src, opts.gemDirs, opts.loadPath...) //nolint:wrapcheck // already "rugaroo: "-prefixed
 }
 
 func build(ctx context.Context, file, bin string, opts buildOpts) int {

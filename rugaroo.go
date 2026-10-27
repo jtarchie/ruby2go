@@ -108,8 +108,13 @@ func CompileTrace(ctx context.Context, main string, runs [][]string, rubyOpts []
 
 // CompileWithGems is Compile for the CLI: a require only an installed gem answers is looked up under MRI and the program compiled with the gem (decision 173); a program without one never starts Ruby.
 func CompileWithGems(ctx context.Context, mainName string, src []byte, loadPath ...string) ([]byte, []string, error) {
+	return CompileWithGemDirs(ctx, mainName, src, nil, loadPath...)
+}
+
+// CompileWithGemDirs is CompileWithGems with directories compiled as gems the program carries (`rugaroo build -gem dir`, decision 406).
+func CompileWithGemDirs(ctx context.Context, mainName string, src []byte, gemDirs []string, loadPath ...string) ([]byte, []string, error) {
 	srcs := []compiler.Source{{Name: filepath.Base(mainName), Src: src, Path: mainName}}
-	out, warnings, err := compiler.CompileWithGems(ctx, Prelude, GemSigs, srcs, loadPath...)
+	out, warnings, err := compiler.CompileWithGemDirs(ctx, Prelude, GemSigs, srcs, gemDirs, loadPath...)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("rugaroo: %w", err)
 	}
