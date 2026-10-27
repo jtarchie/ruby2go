@@ -379,8 +379,7 @@ class IO < Object
   #: () -> bool
   def tty? = %x{
     self.rbOpen()
-    fi, err := self.rbOSFile().Stat()
-    return Boolean(err == nil && fi.Mode()&os.ModeCharDevice != 0)
+    return Boolean(rbIsTTY(self.rbOSFile()))
   }
 
   #: () -> Integer?

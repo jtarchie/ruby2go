@@ -33,10 +33,18 @@ var stdout = bufio.NewWriter(os.Stdout)
 var stdoutMu sync.Mutex
 
 // stdoutTTY: MRI flushes a terminal's stdout on every write, so prompts and progress show at once; pipes stay buffered, as in MRI.
-var stdoutTTY = func() bool {
-	fi, err := os.Stdout.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
-}()
+var stdoutTTY = rbIsTTY(os.Stdout)
+
+// rbIsTTY is isatty(3) for IO#tty? and stdout's flushing: /dev/null is a character device too, but not a terminal (decision 400).
+// ponytail: other character devices (/dev/zero, a serial port) still count; a real isatty needs per-OS ioctl constants.
+func rbIsTTY(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	nul, err := os.Stat(os.DevNull)
+	return err != nil || !os.SameFile(fi, nul)
+}
 
 // stdoutSync is `$stdout.sync = true`: flush every write, terminal or not.
 var stdoutSync atomic.Bool
