@@ -162,7 +162,7 @@ func rbRandInt(n int) int {
 	if rbRandSeeded {
 		return rbDefaultRandom.mt.upto(n)
 	}
-	return mrand.IntN(n)
+	return mrand.IntN(n) //nolint:gosec // Kernel#rand is not a cryptographic generator in MRI either; SecureRandom is
 }
 
 // rbRandFloat is Kernel#rand with no bound: uniform in [0, 1).
@@ -170,7 +170,7 @@ func rbRandFloat() float64 {
 	if rbRandSeeded {
 		return rbDefaultRandom.mt.real()
 	}
-	return mrand.Float64()
+	return mrand.Float64() //nolint:gosec // as above
 }
 
 func rbShuffle[E any](xs []E, m *rbMT) {
