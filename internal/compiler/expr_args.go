@@ -621,7 +621,7 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if len(args) >= 1 && classTwins(m.Name) && !optOn(owner, m) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
 		var a expr
 		f.probe(func() { a = f.genExpr(args[0], nil) })
-		if o, ok := a.typ.(TOpt); ok && (f.lenient() || f.nilRuntime() && !nilEqualOps[m.Name]) { // a gem's T? is its T, nil raising where used (decisions 172, 393)
+		if o, ok := a.typ.(TOpt); ok && (f.lenient() || f.nilTwin(m, o)) { // a gem's T? is its T, nil raising where used (decisions 172, 393)
 			a.typ = o.Elem
 		}
 		if c, ok := a.typ.(TClass); ok {

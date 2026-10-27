@@ -73,6 +73,11 @@ func (f *fctx) nilMessage(to Type) (string, bool) {
 	return "no implicit conversion of nil into " + want, false
 }
 
+// nilTwin: only numeric operators pick a twin by the unwrapped T; a twin taking T? (`Integer(h[:k])`) already has MRI's message.
+func (f *fctx) nilTwin(m *Method, o TOpt) bool {
+	return f.nilRuntime() && towerOps[m.Name] && m.Name != "<=>" && numLevel(classOf(o.Elem)) >= 0
+}
+
 // nilNumArgs unwraps a numeric T? argument before numericTower picks the class to convert to, as MRI's coerce fails on nil first.
 func (f *fctx) nilNumArgs(m *Method, recv Type, xs []expr, nodes []parser.Node) {
 	if !f.nilRuntime() || nilEqualOps[m.Name] {
