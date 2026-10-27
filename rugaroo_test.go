@@ -1463,7 +1463,8 @@ func TestIntOverflowValuePanic(t *testing.T) {
 	t.Parallel()
 	src := "# int_overflow: raise\ndef add(a, b) = a + b\ndef neg(a) = -a\n\ndef check\n  yield\nrescue RangeError => e\n  puts \"#{e.class}: #{e.message} #{(e.backtrace || [])[0]}\"\nend\n\n" +
 		"big = 4611686018427387904\ncheck { add(big, big) }\ncheck { add(-big, -big - 1) }\ncheck { neg(-big - big) }\ncheck { (-big - big) / -1 }\n" +
-		"x = begin\n  add(big, big)\nrescue => e\n  e.class.name\nensure\n  puts \"ensure\"\nend\nputs x\nadd(big, big)\n"
+		"x = begin\n  add(big, big)\nrescue => e\n  e.class.name\nensure\n  puts \"ensure\"\nend\nputs x\n" +
+		"def inner(b)\n  add(b, b)\nrescue ZeroDivisionError\n  0\nend\ncheck { inner(big) }\nadd(big, big)\n"
 	gen := transpile(t, "overflow.rb", []byte(src))
 	code, err := os.ReadFile(filepath.Join(gen, "main.go")) //nolint:gosec // under t.TempDir()
 	if err != nil || !bytes.Contains(code, []byte("panic(rbIntOverflowed{")) {
@@ -1475,7 +1476,8 @@ func TestIntOverflowValuePanic(t *testing.T) {
 		"RangeError: -4611686018427387904 + -4611686018427387905" + msg + " overflow.rb:2\n" +
 		"RangeError: 0 - -9223372036854775808" + msg + " overflow.rb:3\n" +
 		"RangeError: -9223372036854775808 / -1" + msg + " overflow.rb:15\n" +
-		"ensure\nRangeError\n"
+		"ensure\nRangeError\n" +
+		"RangeError: 4611686018427387904 + 4611686018427387904" + msg + " overflow.rb:2\n" // through a rescue that did not match: the overflow's own frames
 	if stdout := regexp.MustCompile(`:in '[^']*'`).ReplaceAllString(got.Stdout, ""); stdout != want || got.Code != 1 || !strings.Contains(got.Stderr, "4611686018427387904 + 4611686018427387904"+msg+" (RangeError)") {
 		t.Errorf("exit %d\nstdout:\n%s\nwant:\n%s\nstderr:\n%s", got.Code, got.Stdout, want, got.Stderr)
 	}

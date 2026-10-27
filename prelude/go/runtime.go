@@ -1385,7 +1385,7 @@ func rbWrapPanic(r any) any {
 	case rbStop, rbThrow, rbBreak, rbIterBreak, *rbReturn:
 		return r
 	case rbIntOverflowed:
-		return e.err()
+		return rbCaptureBacktrace(e.err()) // now, while the overflow's frames are on the stack: a rescue that does not match re-raises the RangeError, not this value
 	case RxUnsupported:
 		return NewRegexpError(Ref(String(e)))
 	case RxTimeout:
