@@ -524,7 +524,7 @@ func (f *fctx) callCode(e *entry, recv expr, args []string, env map[string]Type)
 	direct := f.c.isDirectMethod(m)
 	free := f.staticDef == m || m.generic() || (staticPrivate(m) && !direct) || (m.Owner.GoType == "" && !f.hasForwarder(recv.typ, e)) || (m.Owner.GoType != "" && !direct) ||
 		m.Owner.universal && mentionsSelf(m.Ret) || // an interface declares `-> self` as `any`; the free func returns Self
-		f.leafCall(recv)
+		f.leafCall(recv) || exactMetaCall(recv, m)
 	if !free && f.plainCalls && recv.code == "self" && f.owner != nil && !direct {
 		if code, ok := f.wrapperSelfCall(e, argList); ok {
 			return code
@@ -1020,6 +1020,12 @@ func (f *fctx) leafSelf(e expr, cls *Class) expr {
 // that runs, so the call is its free func, no forwarder (decision 359).
 func (f *fctx) leafCall(recv expr) bool {
 	return leafRecv(recv.typ) || isSelfVar(recv.typ) && f.owner != nil && f.owner.leaf()
+}
+
+// exactMetaCall: `Math.sqrt(x)` on the constant itself can only be Math's own singleton method, so its free func, which Go inlines, not a Math_MetaI call (decision 400).
+func exactMetaCall(recv expr, m *Method) bool {
+	c, ok := recv.typ.(TClass)
+	return ok && recv.classObj && c.C.metaOf != nil && m.Owner == c.C && (m.Kind == kindDef || m.Kind == kindPrimitive) && !m.generic()
 }
 
 // leafRecv reports a receiver typed as a leaf class (decision 359).

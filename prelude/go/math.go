@@ -6,6 +6,10 @@ package prelude
 // rbMathDomain raises MRI's Math::DomainError for an out-of-domain argument.
 func rbMathDomain(bad Boolean, name string) {
 	if bad {
-		panic(NewMath_DomainError(Ref(String(`Numerical argument is out of domain - ` + name))))
+		rbMathDomainRaise(name) // out of line, so the check inlines into Math.sqrt and the rest (decision 400)
 	}
+}
+
+func rbMathDomainRaise(name string) {
+	panic(NewMath_DomainError(Ref(String(`Numerical argument is out of domain - ` + name))))
 }
