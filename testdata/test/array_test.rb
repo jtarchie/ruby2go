@@ -128,7 +128,7 @@ def total_elem(*ns) = ns.reduce(0) { |acc, n| acc + n }
 def total_mixed(*ns) = ns.reduce(0) { |acc, n| acc + n }
 
 #: (Array[Integer]) -> [Integer?, Integer?]
-def min_max(nums) = [nums.min, nums.max]
+def min_max(nums) = nums.minmax
 
 #: (Array[untyped]) -> String
 def show_list(xs) = xs.map { |x| x.inspect }.join(" ")
@@ -201,7 +201,7 @@ def array_divmod2(a, b) = [a / b, a % b]
 def describe_str(s) = [s.upcase, s.size, s.empty?]
 
 #: (Array[Integer]) -> [Integer?, Integer?]
-def bounds(nums) = [nums.min, nums.max]
+def bounds(nums) = nums.minmax
 
 #: ([Integer, String]) -> String
 def render(pair) = "#{pair[1]}=#{pair[0]}"
