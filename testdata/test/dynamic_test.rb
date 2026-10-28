@@ -182,7 +182,7 @@ end
 
 #: (DynamicTests::Vehicle) -> String
 def checks(v)
-  [v.is_a?(DynamicTests::Vehicle), v.is_a?(DynamicTests::Car), v.kind_of?(DynamicTests::Truck), v.is_a?(Object), v.is_a?(BasicObject), v.is_a?(Kernel)].inspect
+  [v.is_a?(DynamicTests::Vehicle), v.is_a?(DynamicTests::Car), v.is_a?(DynamicTests::Truck), v.is_a?(Object), v.is_a?(BasicObject), v.is_a?(Kernel)].inspect
 end
 
 #: (untyped) -> String
@@ -356,7 +356,7 @@ end
 #: (DynamicTests::NShape) -> String
 def narrow_area_of(s)
   return "#{s.name}: #{s.radius * s.radius * 3}" if s.is_a?(DynamicTests::NCircle)
-  return "#{s.name}: #{s.side * s.side}" if s.kind_of?(DynamicTests::NSquare)
+  return "#{s.name}: #{s.side * s.side}" if s.is_a?(DynamicTests::NSquare)
   "#{s.name}: ?"
 end
 
@@ -648,7 +648,7 @@ module DynamicTests
       assert_equal true, [1].is_a?(Array)
       assert_equal true, { "a" => 1 }.is_a?(Hash)
       assert_equal true, BugCar.new.is_a?(BugVehicle)
-      assert_equal false, BugCar.new.kind_of?(String)
+      assert_equal false, BugCar.new.is_a?(String)
     end
 
     def test_is_a_string_narrows_a_nilable_before_a_typed_call
@@ -663,7 +663,7 @@ module DynamicTests
     def test_is_a_object_on_nil
       none = maybe_isa(-1)
       assert_equal true, none.is_a?(Object)
-      assert_equal true, none.kind_of?(BasicObject)
+      assert_equal true, none.is_a?(BasicObject)
       assert_equal true, none.is_a?(Kernel)
       assert_equal false, none.is_a?(Integer)
       assert_equal true, maybe_isa(2).is_a?(Object)
@@ -882,7 +882,7 @@ module DynamicTests
     def car? = is_a?(Car)
 
     #: () -> bool
-    def self_truck? = self.kind_of?(Truck)
+    def self_truck? = self.is_a?(Truck)
   end
 
   class Car < Vehicle
@@ -911,19 +911,19 @@ module DynamicTests
 
   class DynamicIsATest < Minitest::Test
     def test_static_types_decide_is_a_on_primitives
-      assert_equal [true, false, true, true, true, true], [1.is_a?(Integer), 1.is_a?(Float), 1.is_a?(Comparable), 1.is_a?(Object), 1.kind_of?(BasicObject), 1.is_a?(Kernel)]
+      assert_equal [true, false, true, true, true, true], [1.is_a?(Integer), 1.is_a?(Float), 1.is_a?(Comparable), 1.is_a?(Object), 1.is_a?(BasicObject), 1.is_a?(Kernel)]
       assert_equal [true, false, true], [1.5.is_a?(Float), 1.5.is_a?(Integer), 1.5.is_a?(Comparable)]
-      assert_equal [true, true, false, true], ["s".is_a?(String), "s".is_a?(Comparable), "s".is_a?(Symbol), "".kind_of?(Object)]
+      assert_equal [true, true, false, true], ["s".is_a?(String), "s".is_a?(Comparable), "s".is_a?(Symbol), "".is_a?(Object)]
       sym = :s
       arr = [1]
       hsh = { "a" => 1 }
       assert_equal [true, false, true], [sym.is_a?(Symbol), sym.is_a?(String), sym.is_a?(Comparable)]
       assert_equal :s, sym
-      assert_equal [true, true, false, true], [arr.is_a?(Array), arr.is_a?(Enumerable), arr.is_a?(Hash), arr.kind_of?(Object)]
+      assert_equal [true, true, false, true], [arr.is_a?(Array), arr.is_a?(Enumerable), arr.is_a?(Hash), arr.is_a?(Object)]
       assert_equal [1], arr
       assert_equal [true, true, false], [hsh.is_a?(Hash), hsh.is_a?(Enumerable), hsh.is_a?(Array)]
       assert_equal "{\"a\" => 1}", hsh.inspect
-      assert_equal [true, true, false], [true.is_a?(Object), false.kind_of?(Object), nil.is_a?(Integer)]
+      assert_equal [true, true, false], [true.is_a?(Object), false.is_a?(Object), nil.is_a?(Integer)]
       pair = [1, "a"]
       assert_equal [true, true, false], [pair.is_a?(Array), pair.is_a?(Object), pair.is_a?(Hash)]
       assert_equal [1, "a"], pair
@@ -935,7 +935,7 @@ module DynamicTests
       assert_equal "[true, false, true, true, true, true]", checks(Truck.new)
       car = Car.new
       truck = Truck.new
-      assert_equal [true, false, true, false], [car.is_a?(Vehicle), car.is_a?(Truck), car.is_a?(Named), truck.kind_of?(Car)]
+      assert_equal [true, false, true, false], [car.is_a?(Vehicle), car.is_a?(Truck), car.is_a?(Named), truck.is_a?(Car)]
       assert_equal "car", car.kind
       assert_equal "vehicle", truck.kind
     end
@@ -956,8 +956,8 @@ module DynamicTests
                     "[false, false, false, false, false, false, false, false, true]"], vals.map { |v| untyped_checks(v) }
       assert_equal true, dynamic_ident(Car.new).is_a?(Vehicle)
       assert_equal false, dynamic_ident(Truck.new).is_a?(Car)
-      assert_equal true, dynamic_ident([]).kind_of?(Array)
-      assert_equal true, dynamic_ident({}).kind_of?(Hash)
+      assert_equal true, dynamic_ident([]).is_a?(Array)
+      assert_equal true, dynamic_ident({}).is_a?(Hash)
     end
 
     def test_exceptions
@@ -970,7 +970,7 @@ module DynamicTests
                     [true, false, false, false, true, true],
                     [true, false, false, false, false, true]], got
       e = assert_raises(StandardError) { raise KeyError, "missing" }
-      assert_equal [true, true, false], [e.is_a?(KeyError), e.is_a?(IndexError), e.kind_of?(ArgumentError)]
+      assert_equal [true, true, false], [e.is_a?(KeyError), e.is_a?(IndexError), e.is_a?(ArgumentError)]
       assert_equal "missing", e.message
     end
 
@@ -983,7 +983,7 @@ module DynamicTests
       pt3 = Geo::Pt3.new(2)
       assert_equal true, dynamic_ident(Geo::Pt3.new(1)).is_a?(Geo::Pt)
       assert_equal false, dynamic_ident(Geo::Pt.new(1)).is_a?(Geo::Pt3)
-      assert_equal true, pt3.kind_of?(Geo::Pt)
+      assert_equal true, pt3.is_a?(Geo::Pt)
       assert_equal 2, pt3.x
     end
 
@@ -1001,7 +1001,7 @@ module DynamicTests
       assert_equal true, ex.is_a?(StandardError)
       assert_equal false, ex.is_a?(ArgumentError)
       assert_equal true, ex.is_a?(Exception)
-      assert_equal true, ex.kind_of?(KeyError)
+      assert_equal true, ex.is_a?(KeyError)
     end
 
     def test_is_a_on_self_in_a_method_body_is_a_runtime_check
@@ -1023,7 +1023,7 @@ module DynamicTests
       assert_equal [true, false, true], cv_kinds.map { |c| cv_e.is_a?(c) }
       assert_equal [true, false, true], cv_kinds.map { |c| c === cv_e }
       cv_m = Named #: Module
-      assert_equal [true, false], [Car.new.is_a?(cv_m), 3.kind_of?(cv_m)]
+      assert_equal [true, false], [Car.new.is_a?(cv_m), 3.is_a?(cv_m)]
       assert_equal [false, true, true, false], [Car.new.instance_of?(Vehicle), Car.new.instance_of?(Car), 3.instance_of?(Integer), cv_e.instance_of?(IndexError)]
       assert_equal [true, false, true], cv_kinds.map { |c| dynamic_ident(c) === cv_e }
       assert_equal true, cv_e.is_a?(dynamic_ident(IndexError))
@@ -1362,7 +1362,7 @@ module DynamicTests
     def tag = is_a?(MidCar) ? "car-named" : "named"
 
     #: () -> bool
-    def vehicle? = kind_of?(MidVehicle)
+    def vehicle? = is_a?(MidVehicle)
   end
 
   class MidVehicle

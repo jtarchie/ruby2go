@@ -711,7 +711,7 @@ module ArrayTests
       assert_equal true, big.is_a?(Enumerable)
       assert_equal true, big.is_a?(Object)
       assert_equal false, big.is_a?(Integer)
-      assert_equal true, big.kind_of?(Array)
+      assert_equal true, big.is_a?(Array)
       assert_equal true, big.respond_to?(:each)
       assert_equal false, big.respond_to?(:nope)
       assert_equal false, big.nil?

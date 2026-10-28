@@ -3259,7 +3259,7 @@ module ObjectTests
       assert_equal true, l.is_a?(Middle)
       assert_equal true, l.is_a?(InLeaf)
       assert_equal false, m.is_a?(InLeaf)
-      assert_equal false, b.kind_of?(Middle)
+      assert_equal false, b.is_a?(Middle)
       assert_equal [false, true, true, false, false], (all.map { |x| x.is_a?(Middle) })
       assert_equal true, l.is_a?(Object)
       assert_equal true, l.is_a?(BasicObject)

@@ -18,4 +18,4 @@ end
 puts render(nil), render(false), render(5), render("s"), render([1, "x", [2]]), render(2.5)
 value = nil #: untyped
 puts value || "fallback", (value || 3).inspect
-puts 5.is_a?(Integer), 5.is_a?(Comparable), "s".is_a?(Integer), 5.kind_of?(Object)
+puts 5.is_a?(Integer), 5.is_a?(Comparable), "s".is_a?(Integer), 5.is_a?(Object)

@@ -874,7 +874,7 @@ B
       assert_equal true, "a".is_a?(Comparable)
       assert_equal true, "a".is_a?(Object)
       assert_equal true, "a".is_a?(String)
-      assert_equal false, "a".kind_of?(Symbol)
+      assert_equal false, "a".is_a?(Symbol)
       d = string_ident(" Hello\n")
       assert_equal " Hello\n Hello\n", (d * 2)
       assert_equal false, d.between?("a", "z")

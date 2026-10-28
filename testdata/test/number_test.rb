@@ -2007,7 +2007,7 @@ module NumberTests
       assert_equal true, 1.is_a?(Integer)
       assert_equal true, 1.is_a?(Comparable)
       assert_equal false, 1.is_a?(Float)
-      assert_equal true, 1.kind_of?(Object)
+      assert_equal true, 1.is_a?(Object)
       assert_equal true, 1.5.is_a?(Float)
       assert_equal true, 1.5.is_a?(Comparable)
       assert_equal false, 1.5.is_a?(Integer)
@@ -2288,7 +2288,7 @@ module NumberTests
       assert_equal ["int 2", "float 1", "number false", "number true", "number false", "other", "other", "other"], vs.map { |v| number_numeric_kind(v) }
       assert_equal [true, true, true, true, true, false, false, false], vs.map { |v| v.is_a?(Numeric) }
       assert_equal ["number 2", "number 1.5", "other"], [number_only_numeric(-2), number_only_numeric(1.5), number_only_numeric("x")]
-      assert_equal [true, false, true, true, true], [Numeric === 2, Numeric === "2", 1.kind_of?(Numeric), Complex(1, 2).is_a?(Comparable), BigDecimal("1").is_a?(Comparable)]
+      assert_equal [true, false, true, true, true], [Numeric === 2, Numeric === "2", 1.is_a?(Numeric), Complex(1, 2).is_a?(Comparable), BigDecimal("1").is_a?(Comparable)]
       assert_equal ["even true", "nan false", "other false"], [number_narrow(2), number_narrow(1.5), number_narrow(Rational(1, 2))]
       assert_equal [2, 2.5, Rational(3, 2), nil], [number_succ(1), number_succ(1.5), number_succ(Rational(1, 2)), number_succ("x")]
       assert_equal ["int 2", "number false", "other"], [number_generic_kind(1), number_generic_kind(2.5), number_generic_kind("a")]
