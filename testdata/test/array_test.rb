@@ -1507,7 +1507,7 @@ module ArrayTests
       assert_equal 10, (odd[1] || -1) + 1
       assert_equal(-1, none[0] || -1)
       assert_equal 4, odd.first(1)[0]
-      assert_equal 9, odd.sort.last
+      assert_equal 9, odd.max
       assert_equal "4", odd.map { |n| n.to_s }.max_by(&:size)
       assert_equal([2, 0], grid.map { |r| r.max || 0 })
       assert_equal [2, 1], grid.flat_map { |r| r }.sort.reverse.first(2)
