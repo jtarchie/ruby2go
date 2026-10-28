@@ -484,15 +484,15 @@ module RxjsonTests
 
     # Escaped punctuation and control escapes are literal characters in both engines.
     def test_escaped_punctuation_and_control_escapes
-      assert_equal true, /a\-b/.match?("a-b")
+      assert_equal true, /a-b/.match?("a-b")
       assert_equal true, /a\#b/.match?("a#b")
       assert_equal true, %r{/}.match?("/")
-      assert_equal true, /\:/.match?(":")
-      assert_equal true, /a\_b/.match?("a_b")
+      assert_equal true, /:/.match?(":")
+      assert_equal true, /a_b/.match?("a_b")
       assert_equal true, /a\ b/.match?("a b")
-      assert_equal true, /\<b\>/.match?("<b>")
-      assert_equal true, /\%\@\~\&\=\,\;\!\`/.match?("%@~&=,;!`")
-      assert_equal true, /a\"b\'c/.match?("a\"b'c")
+      assert_equal true, /<b>/.match?("<b>")
+      assert_equal true, /%@~&=,;!`/.match?("%@~&=,;!`")
+      assert_equal true, /a"b'c/.match?("a\"b'c")
       assert_equal true, /\n/.match?("\n")
       assert_equal true, /\t/.match?("\t")
       assert_equal true, /\0/.match?("\0")

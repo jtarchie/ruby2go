@@ -65,7 +65,7 @@ class UserAgent
   # `useragent`'s own MATCHER, with its `^` written `\A` (a user-agent
   # header is one line) and the outer alternation made non-capturing so
   # the comment is group 3.
-  MATCHER = %r{\A['"]*([^/\s]+)/?([^\s,]*)(?:\s\(([^\)]*)\)|,gzip\(gfe\))?}
+  MATCHER = %r{\A['"]*([^/\s]+)/?([^\s,]*)(?:\s\(([^)]*)\)|,gzip\(gfe\))?}
 
   DEFAULT_USER_AGENT = "Mozilla/4.0 (compatible)"
 
@@ -186,7 +186,7 @@ class UserAgent
       return true if t.product.match?(/\AAppleWebKit\z/i)
 
       t.comment.each do |c|
-        return true if c.match?(%r{\A(AppleWebKit)/([\d\.]+)}i)
+        return true if c.match?(%r{\A(AppleWebKit)/([\d.]+)}i)
       end
     end
     false
@@ -268,7 +268,7 @@ class UserAgent
     when "internet_explorer"
       return "" if app.nil?
 
-      app.comment.join("; ")[/(MSIE\s|rv:)([\d\.]+)/, 2].to_s
+      app.comment.join("; ")[/(MSIE\s|rv:)([\d.]+)/, 2].to_s
     when "chrome"
       t = UserAgent.find_product(@tokens, "CriOS")
       t = UserAgent.find_product(@tokens, "Chrome") if t.nil?
@@ -295,7 +295,7 @@ class UserAgent
     t = UserAgent.find_product(@tokens, "Version")
     return t.version unless t.nil?
 
-    ios = os[/iOS ([\d\.]+)/, 1].to_s
+    ios = os[/iOS ([\d.]+)/, 1].to_s
     return ios.tr("_", ".") if !ios.empty? && browser == "Safari"
 
     build = webkit_build
@@ -309,7 +309,7 @@ class UserAgent
 
     @tokens.each do |tok|
       tok.comment.each do |c|
-        v = c[%r{\A(AppleWebKit)/([\d\.]+)}i, 2].to_s
+        v = c[%r{\A(AppleWebKit)/([\d.]+)}i, 2].to_s
         return v unless v.empty?
       end
     end
@@ -363,10 +363,10 @@ class UserAgent
 
     case @kind
     when "edge"
-      UserAgent.normalize_os(comment_match(/Windows NT [\d\.]+|Windows Phone (OS )?[\d\.]+/))
+      UserAgent.normalize_os(comment_match(/Windows NT [\d.]+|Windows Phone (OS )?[\d.]+/))
     when "internet_explorer"
       UserAgent.normalize_os(
-        app.comment.join("; ")[/Windows NT [\d\.]+|Windows Phone (OS )?[\d\.]+/, 0].to_s
+        app.comment.join("; ")[/Windows NT [\d.]+|Windows Phone (OS )?[\d.]+/, 0].to_s
       )
     when "chrome"
       chrome_os(app)
@@ -541,8 +541,8 @@ class UserAgent
     # an empty capture" and "did not match" are different answers. The
     # iOS and ChromeOS groups are mandatory, so a non-empty capture is
     # itself the proof that the pattern hit.
-    unless os[/(?:Intel|PPC) Mac OS X\s*([0-9_\.]+)?/, 0].to_s.empty?
-      v = os[/(?:Intel|PPC) Mac OS X\s*([0-9_\.]+)?/, 1].to_s
+    unless os[/(?:Intel|PPC) Mac OS X\s*([0-9_.]+)?/, 0].to_s.empty?
+      v = os[/(?:Intel|PPC) Mac OS X\s*([0-9_.]+)?/, 1].to_s
       return v.empty? ? "OS X" : "OS X #{v.tr("_", ".")}"
     end
     v = os[IOS_VERSION_REGEX, 1].to_s

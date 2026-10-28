@@ -361,7 +361,7 @@ module Resty
     class Edit < Base
       def self.matches?(request)
         request.get? &&
-          request.path =~ %r{\/edit(\.\w+)?/?$} &&
+          request.path =~ %r{/edit(\.\w+)?/?$} &&
           !Resource.find_by_request(request).id.nil?
       end
 
