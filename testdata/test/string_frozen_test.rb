@@ -96,7 +96,7 @@ module StringFrozenTests
       assert_equal false, ("a" == "b")
       assert_equal false, ("a" == :a)
       assert_equal false, ("1" == 1)
-      assert_equal false, ("".nil?)
+      assert_equal false, "".nil?
       assert_equal true, ("a" != "b")
       assert_equal false, ("a" != "a")
       assert_equal false, (!"a")
@@ -411,7 +411,7 @@ module StringFrozenTests
       one = "abc"[0]
       assert_equal false, (none == "a")
       assert_equal true, (one == "a")
-      assert_equal true, (none.nil?)
+      assert_equal true, none.nil?
       assert_nil "abc"[9]&.upcase&.downcase
       assert_equal "b", "abc"[1]&.upcase&.downcase
       hello = "hello"

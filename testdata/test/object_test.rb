@@ -2914,8 +2914,8 @@ def secret = "s3cret"
       assert_equal "ObjectTests::CmSquare", s.class.to_s
       assert_equal "ObjectTests::CmSquare", s.class.name
       assert_equal "square", s.class.kind
-      assert_equal true, (s.instance_of?(CmSquare))
-      assert_equal false, (s.instance_of?(CmShape))
+      assert_equal true, s.instance_of?(CmSquare)
+      assert_equal false, s.instance_of?(CmShape)
       shapes = [CmShape.new(1), CmSquare.new(2), Tri.new(3), Tiny.new] #: Array[CmShape]
       assert_equal(["ObjectTests::CmShape", "ObjectTests::CmSquare", "ObjectTests::Tri", "ObjectTests::Tiny"], shapes.map { |x| x.class.name })
       assert_equal([0, 4, 3, 4], shapes.map { |x| x.class.sides })
@@ -2937,8 +2937,8 @@ def secret = "s3cret"
       assert_equal "Class", Integer.class.to_s
       assert_equal "Integer", Integer.name
       assert_equal "String", String.inspect
-      assert_equal true, (1.instance_of?(Integer))
-      assert_equal false, ("s".instance_of?(Symbol))
+      assert_equal true, 1.instance_of?(Integer)
+      assert_equal false, "s".instance_of?(Symbol)
       CmRegistry.bump
       CmRegistry.bump
       SubRegistry.bump
@@ -3695,7 +3695,7 @@ def secret = "s3cret"
       assert_equal false, (c1 == Coin.new(6))
       assert_equal false, (c1 == 5)
       assert_equal false, (c1 == "5")
-      assert_equal false, (c1.nil?)
+      assert_equal false, c1.nil?
       coins = [c1, coin(1)] #: Array[Coin]
       assert_equal true, coins.include?(coin(1))
       assert_equal false, coins.include?(coin(2))
@@ -3874,7 +3874,7 @@ def secret = "s3cret"
       assert_equal true, pa.equal?(pb)
       assert_equal false, pa.equal?(SdPoint.new(9, 2))
       assert_equal true, (pa == SdPoint.new(9, 2))
-      assert_equal false, (pa.nil?)
+      assert_equal false, pa.nil?
       assert_equal false, (pa == 9)
       assert_equal false, (pa == [9, 2])
       assert_equal false, (Money.new(1, "x") == SdPoint.new(1, 2))

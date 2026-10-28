@@ -1155,7 +1155,7 @@ module HashTests
       assert_equal true, (c == { "x" => 1 })
       assert_equal false, (c == { "x" => 2 })
       assert_equal false, (a == 1)
-      assert_equal false, (a.nil?)
+      assert_equal false, a.nil?
       assert_equal false, (a == [1])
       assert_equal false, (a == "x")
       assert_equal true, a.equal?(a)

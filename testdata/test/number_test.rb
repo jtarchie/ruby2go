@@ -530,7 +530,7 @@ module NumberTests
       assert_equal false, (f == true)
       assert_equal false, (t == 1)
       assert_equal false, (f == 0)
-      assert_equal false, (f.nil?)
+      assert_equal false, f.nil?
       assert_equal false, (t == "true")
       assert_equal false, (t == :true)
       assert_equal true, (t != f)
@@ -606,7 +606,7 @@ module NumberTests
       assert_equal true, (u == true)
       assert_equal true, (w == false)
       assert_equal true, (u != w)
-      assert_equal false, (w.nil?)
+      assert_equal false, w.nil?
       assert_equal false, (u == 1)
       assert_equal "yes", (u ? "yes" : "no")
       assert_equal "no", (w ? "yes" : "no")
@@ -668,7 +668,7 @@ module NumberTests
       bc_b = true #: bool?
       assert_equal true, bc_b.is_a?(TrueClass)
       assert_equal false, 1.is_a?(TrueClass)
-      assert_equal true, (true.instance_of?(TrueClass))
+      assert_equal true, true.instance_of?(TrueClass)
       assert_equal "TrueClass", TrueClass.to_s
       assert_equal "NilClass", NilClass.to_s
     end
@@ -1019,7 +1019,7 @@ module NumberTests
       assert_equal true, (!x)
       assert_equal true, !!h["a"]
       assert_equal false, !h["a"]
-      assert_equal true, (x.nil?)
+      assert_equal true, x.nil?
       assert_equal true, (h["a"] == 1)
       assert_equal true, (h["a"] == 1.0)
       assert_equal false, (x == 0)
@@ -1253,7 +1253,7 @@ module NumberTests
       assert_equal false, (x == 2)
       assert_equal true, (-z == z)
       assert_equal false, (x == "2.5")
-      assert_equal false, (x.nil?)
+      assert_equal false, x.nil?
       assert_equal false, (x == true)
       assert_equal false, (nan == nan)
       assert_equal true, (inf == inf)
@@ -1448,7 +1448,7 @@ module NumberTests
       assert_equal true, (a == 7.0)
       assert_equal false, (a == 7.5)
       assert_equal false, (a == "7")
-      assert_equal false, (a.nil?)
+      assert_equal false, a.nil?
       assert_equal false, (a == true)
       assert_equal true, (z == 0.0)
       assert_equal true, (z == -0.0)
