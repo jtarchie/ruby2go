@@ -18,7 +18,8 @@ class Thermostat
       "extreme"
     elsif reading > 20
       "warm"
-    else "mild"
+    else
+      "mild"
     end
   end
   alias label describe

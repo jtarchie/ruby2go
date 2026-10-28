@@ -4718,7 +4718,8 @@ end
         "huge"
       elsif x > 10
         "big"
-      else "small"
+      else
+        "small"
       end
     end
 
