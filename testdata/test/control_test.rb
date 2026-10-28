@@ -1826,14 +1826,14 @@ module ControlTests
       lo = 0
       hi = 0
       pairs = [[1, 9], [2, 8]] #: Array[[Integer, Integer]]
-      pairs.each do |pair| 
+      pairs.each do |pair|
   lo = pair[1]
         hi = pair[0]
 end
       assert_equal 8, lo
       assert_equal 2, hi
       ww = 0
-      res = [5].map do |x| 
+      res = [5].map do |x|
   ww = x
               z = x * 2; z
 end
