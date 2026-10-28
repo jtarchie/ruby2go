@@ -910,7 +910,7 @@ end
 #: () -> String
 def ensure_value
   "body value"
-ensure
+
 end
 
 #: (Integer) -> String
