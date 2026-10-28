@@ -103,7 +103,7 @@ module SocketTests
       assert_equal "127.0.0.1", server.local_address.ip_address
       assert server.local_address.ip_port == port
       assert_equal [true, false, false], [peer.local_address.ipv4?, peer.local_address.ipv6?, peer.local_address.unix?]
-      assert /\A#<TCPSocket:fd \d+, AF_INET, 127\.0\.0\.1, \d+>\z/.match?(client.inspect)
+      assert(/\A#<TCPSocket:fd \d+, AF_INET, 127\.0\.0\.1, \d+>\z/.match?(client.inspect))
       assert_equal "#<TCPServer:fd F, AF_INET, 127.0.0.1, P>", mask(server.inspect, port).sub(/fd \d+/, "fd F")
       assert client.fileno >= 0
       [server, client, peer].each(&:close)
@@ -248,7 +248,7 @@ module SocketTests
       cls, msg = socket_raised { v.send("x", 0, "127.0.0.1", port) }
       assert_equal ["Errno::EISCONN", "Socket is already connected - sendto(2) for \"127.0.0.1\" port P"], [cls, mask(msg, port)]
       assert v.peeraddr[1] == port
-      assert /\A#<UDPSocket:fd \d+, AF_INET, 127\.0\.0\.1, \d+>\z/.match?(u.inspect)
+      assert(/\A#<UDPSocket:fd \d+, AF_INET, 127\.0\.0\.1, \d+>\z/.match?(u.inspect))
       u.close
       v.close
       assert u.closed?
@@ -272,7 +272,7 @@ module SocketTests
         client = UNIXSocket.new(path)
         peer = server.accept
         assert_equal UNIXSocket, peer.class
-        assert /\A#<UNIXSocket:fd \d+>\z/.match?(client.inspect)
+        assert(/\A#<UNIXSocket:fd \d+>\z/.match?(client.inspect))
         assert peer.path == path
         assert_equal "", client.path
         assert_equal ["AF_UNIX", ""], client.addr
@@ -299,7 +299,7 @@ module SocketTests
       assert_equal [UNIXSocket, UNIXSocket], [a.class, b.class]
       assert_equal ["AF_UNIX", ""], a.addr
       assert_equal ["AF_UNIX", ""], a.peeraddr
-      assert /\A#<UNIXSocket:fd \d+>\z/.match?(a.inspect)
+      assert(/\A#<UNIXSocket:fd \d+>\z/.match?(a.inspect))
       a.write("pair")
       a.close_write
       assert_equal "pair", b.read
