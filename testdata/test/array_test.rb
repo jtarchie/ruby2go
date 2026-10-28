@@ -1383,27 +1383,27 @@ module ArrayTests
       assert_equal([4, 3, 5, 3, 4, 5, 6], words.map(&:size))
       assert_equal %w[PEAR FIG APPLE FIG KIWI ÄPFEL BANANA], words.map(&:upcase)
       assert_equal ["5", "-3", "0", "12", "-3", "7"], nums.map(&:to_s)
-      assert_equal([true, false, false, true, false, true], nums.map { |n| n.positive? })
+      assert_equal([true, false, false, true, false, true], nums.map(&:positive?))
       assert_equal "[2.5, -1.5, 0.0, 6.0, -1.5, 3.5]", nums.map { |n| n.to_f / 2 }.inspect
-      assert_equal([5, 12, 7], nums.select { |n| n.positive? })
-      assert_equal([-3, 0, -3], nums.reject { |n| n.positive? })
+      assert_equal([5, 12, 7], nums.select(&:positive?))
+      assert_equal([-3, 0, -3], nums.reject(&:positive?))
       assert_equal [0], nums.select(&:zero?)
-      assert_equal([], none.select { |n| n.positive? })
-      assert_equal([], none.reject { |n| n.positive? })
+      assert_equal([], none.select(&:positive?))
+      assert_equal([], none.reject(&:positive?))
       assert_equal [5, 0, 12, 7], nums.reject(&:negative?)
       assert_equal(12, nums.find { |n| n > 6 })
       assert_nil(nums.find { |n| n > 100 })
       assert_equal(-3, nums.detect(&:negative?))
-      assert_nil(none.detect { |n| n.positive? })
+      assert_nil(none.detect(&:positive?))
       assert_equal(true, nums.any? { |n| n > 10 })
       assert_equal(false, nums.any? { |n| n > 100 })
-      assert_equal(false, none.any? { |n| n.positive? })
+      assert_equal(false, none.any?(&:positive?))
       assert_equal(true, nums.all? { |n| n > -5 })
-      assert_equal(false, nums.all? { |n| n.positive? })
-      assert_equal(true, none.all? { |n| n.positive? })
+      assert_equal(false, nums.all?(&:positive?))
+      assert_equal(true, none.all?(&:positive?))
       assert_equal(true, nums.none? { |n| n > 100 })
       assert_equal false, nums.none?(&:zero?)
-      assert_equal(true, none.none? { |n| n.positive? })
+      assert_equal(true, none.none?(&:positive?))
       assert_equal 6, nums.count
       assert_equal 0, none.count
       assert_equal 7, words.count
@@ -3194,7 +3194,7 @@ module ArrayTests
 
     def test_count
       none = [] #: Array[Integer]
-      assert_equal(0, none.count { |x| x.positive? })
+      assert_equal(0, none.count(&:positive?))
       assert_equal(2, [1, 2, 3, 4].count(&:even?))
       odd = [1, 2, 3, 4].count do |x|
         next true if x.even?

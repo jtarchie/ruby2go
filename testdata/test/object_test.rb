@@ -5496,7 +5496,7 @@ module ObjectTests
 
     def test_nilclass_method_on_optional_receiver
       none = [1].find { |v| v > 5 }
-      one = [1].find { |v| v.positive? }
+      one = [1].find(&:positive?)
       assert_equal %i[nil int], [none.object_tests_kind, one.object_tests_kind]
     end
 
