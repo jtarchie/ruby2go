@@ -31,8 +31,8 @@ cask "rugaroo" do
     skip "Auto-generated on release."
   end
   depends_on formula: [
-      "go",
-    ]
+    "go",
+  ]
 
   binary "rugaroo"
 
