@@ -450,7 +450,7 @@ module ActionView
       inner_opts.delete(:method)
       inner_opts.delete(:form_class)
       # `.to_h` makes form_attrs a Hash (Ruby no-op; Crystal converts
-       # the NamedTuple literal). Subsequent `[:class] = ...` mutation
+      # the NamedTuple literal). Subsequent `[:class] = ...` mutation
       # would fail on Crystal's immutable NamedTuple.
       form_attrs = { action: href, method: "post" }.to_h
       # Rails' `button_to` defaults the form class to `button_to` when

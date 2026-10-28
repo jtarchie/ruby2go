@@ -20,11 +20,11 @@ module Tep
       @req_params       = Tep.str_hash   # path captures + query + form merged
       @query        = Tep.str_hash   # raw query string only
       @req_headers  = Tep.str_hash   # downcased header names; renamed
-                                     # from `headers` to avoid sharing
-                                     # an ivar slot with Response (spinel
-                                     # mis-codegens polymorphic ivar
-                                     # writes when two classes share an
-                                     # ivar name).
+      # from `headers` to avoid sharing
+      # an ivar slot with Response (spinel
+      # mis-codegens polymorphic ivar
+      # writes when two classes share an
+      # ivar name).
       @cookies      = Tep.str_hash   # parsed from Cookie: header
       # @session dropped: collides with controllers' :session via
       # poly-receiver dispatch. Roundhouse uses ActionDispatch::Session.
@@ -32,12 +32,12 @@ module Tep
       @remote_host  = +""
       @passed       = false          # `pass` flag: skip to the next matching route
       @ivars        = Tep.str_hash   # per-request bag for `@name = ...`
-                                     # set by handlers and `before` filters,
-                                     # read by templates as `ivars[k]`. The
-                                     # Sinatra-compat translator rewrites
-                                     # `@x = v` -> `req.ivars["x"] = (v).to_s`
-                                     # in handler bodies and `@x` -> `ivars["x"]`
-                                     # inside ERB chunks.
+      # set by handlers and `before` filters,
+      # read by templates as `ivars[k]`. The
+      # Sinatra-compat translator rewrites
+      # `@x = v` -> `req.ivars["x"] = (v).to_s`
+      # in handler bodies and `@x` -> `ivars["x"]`
+      # inside ERB chunks.
       # File parts of a multipart body, by full field name
       # (`message[attachment]`); the text parts join @req_params. The
       # typed String hash cannot hold a file, so the two travel apart
