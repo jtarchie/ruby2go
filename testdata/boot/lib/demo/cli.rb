@@ -814,7 +814,7 @@ class DemoStanzaDSL
 
   T::Sig::WithoutRuntime.sig {
     type_parameters(:U).params(stanza: Symbol, should_return: T::Boolean, _block: T.proc.returns(T.type_parameter(:U)))
-      .returns(T.type_parameter(:U))
+                       .returns(T.type_parameter(:U))
   }
   def set_unique_stanza(stanza, should_return, &_block)
     return instance_variable_get(:"@#{stanza}") if should_return
