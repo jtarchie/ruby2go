@@ -2688,10 +2688,10 @@ end
       a = true
       b = false
       got = [] #: Array[String]
-      got << "and-not" if a and !b
+      got << "and-not" if a && !b
       got << "unless-or" unless a || b
       got << "not-or" unless a || b
-      got << "neither" unless a or b
+      got << "neither" unless a || b
       assert_equal ["and-not"], got
       assert_equal true, (a || b && b)
       r = (b or a and b)
