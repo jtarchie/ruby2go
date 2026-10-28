@@ -928,7 +928,7 @@ end
     def test_block_params
       us_h = { "a" => 1, "bb" => 2 } #: Hash[String, Integer]
       vals = [] #: Array[Integer]
-      us_h.each { |_, v| vals << v }
+      us_h.each_value { |v| vals << v }
       assert_equal [1, 2], vals
       assert_equal([3, 6], us_h.map { |_, v| v * 3 })
       assert_equal "{\"bb\" => 2}", us_h.select { |k, _| k.size > 1 }.inspect
@@ -1376,7 +1376,7 @@ end
       assert_equal [1, 5, -2, 7], h.map(&:last)
       e = {} #: Hash[String, Integer]
       out = []
-      e.each { |k, _v| out << "never #{k}" }
+      e.each_key { |k| out << "never #{k}" }
       e.each_key { |k| out << "never #{k}" }
       e.each_value { |v| out << "never #{v}" }
       e.each_pair { |k, _v| out << "never #{k}" }
@@ -1454,11 +1454,11 @@ end
       assert_equal "{\"a\" => 10, \"bb\" => 20, \"ccc\" => 30}", w.inspect
       w.each_key { |k| w[k] = (w[k] || 0) + 1 }
       assert_equal "{\"a\" => 11, \"bb\" => 21, \"ccc\" => 31}", w.inspect
-      w.keys.each { |k| w.delete(k) if k != "bb" }
+      w.each_key { |k| w.delete(k) if k != "bb" }
       assert_equal "{\"bb\" => 21}", w.inspect
       w.clear
       out = []
-      w.each { |k, _v| out << "never #{k}" }
+      w.each_key { |k| out << "never #{k}" }
       w["z"] = 1
       w.each_pair { |k, v| out << "#{k}#{v}" }
       assert_equal ["z1"], out
@@ -2424,7 +2424,7 @@ module HashTests
       h = {} #: Hash[Integer, String]
       40.times { |i| h[i] = i.to_s }
       seen = [] #: Array[Integer]
-      h.each do |k, _v|
+      h.each_key do |k|
         seen << k
         h.delete(k + 1) if k.even?
         h.delete(k) if k % 3 == 0
@@ -2448,7 +2448,7 @@ module HashTests
       end
       assert raised
       assert_equal %i[a b c], h.keys
-      h.each { |k, _v| h.delete(k) }
+      h.each_key { |k| h.delete(k) }
       assert_empty h
       h[:z] = 1
       assert_equal({ z: 1 }, h)
@@ -2457,7 +2457,7 @@ module HashTests
     def test_clear_and_shift_during_each
       h = { a: 1, b: 2, c: 3 }
       seen = [] #: Array[Symbol]
-      h.each do |k, _v|
+      h.each_key do |k|
         seen << k
         h.clear if k == :a
       end
@@ -2465,7 +2465,7 @@ module HashTests
       assert_empty h
       h = { a: 1, b: 2, c: 3 }
       seen = []
-      h.each do |k, _v|
+      h.each_key do |k|
         seen << k
         h.shift if k == :a
       end
@@ -2618,7 +2618,7 @@ end
     def test_clear_during_each_then_reuse
       h = {} #: Hash[String, Integer]
       12.times { |i| h["k#{i}"] = i }
-      h.each { |k, _v| h.clear if k == "k3" }
+      h.each_key { |k| h.clear if k == "k3" }
       assert_empty h
       12.times { |i| h["k#{i}"] = i * 2 }
       h.delete("k5")
@@ -2756,7 +2756,7 @@ end
       h = Hash.new(0) #: Hash[Symbol, Integer]
       h[:a] = 1
       h[:b] = 2
-      h.each { |k, _v| h[k] += 10 }
+      h.each_key { |k| h[k] += 10 }
       assert_equal({ a: 11, b: 12 }, h)
       raised = false
       begin
