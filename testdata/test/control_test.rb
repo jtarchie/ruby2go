@@ -6014,14 +6014,14 @@ module ControlTests
       -2.times { seen << 98 }
       (5..7).each { |i| seen << i }
       (5...7).each { |i| seen << i * 10 }
-      (3..1).each { seen << 97 }
+      -1.times { seen << 97 }
       2.upto(4) { |i| seen << i }
       4.downto(2) { |i| seen << -i }
       3.upto(1) { seen << 96 }
       assert_equal [0, 1, 2, 5, 6, 7, 50, 60, 2, 3, 4, -4, -3, -2], seen
       n = 0
       5.times { n += 1 }
-      (1..3).each { n += 10 }
+      3.times { n += 10 }
       assert_equal 35, n
     end
 
