@@ -2,6 +2,7 @@
 
 class SplayNode
   attr_accessor :key, :value, :left, :right
+
   def initialize(key, value)
     @key = key
     @value = value

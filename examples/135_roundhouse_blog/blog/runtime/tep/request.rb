@@ -47,6 +47,7 @@ module Tep
 
     attr_accessor :passed
     attr_accessor :uploads
+
     def set_passed; @passed = true; end
 
     # Sinatra-compat read aliases removed in the vendored copy.

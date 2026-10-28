@@ -41,6 +41,7 @@ module Tep
   # put them in a homogeneous container. Vendored from tep's lib/tep.rb.
   class FiberSlot
     attr_accessor :f
+
     def initialize(f)
       @f = f
     end
