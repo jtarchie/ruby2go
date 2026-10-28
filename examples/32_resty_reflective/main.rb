@@ -161,7 +161,7 @@ module Resty
 
     #: () { (singleton(Base)) -> void } -> void
     def self.each(&block)
-      constants.map{|c| self.const_get(c)}.each(&block)
+      constants.map {|c| self.const_get(c)}.each(&block)
     end
   end
 end
@@ -178,7 +178,7 @@ module Resty
       def body
         return "" unless resource
         if resource.is_a?(Array)
-          resource.map{|r| self.class.new(r).body }.join
+          resource.map {|r| self.class.new(r).body }.join
         else
           "<h1>#{resource.to_s}</h1>"
         end
@@ -257,7 +257,7 @@ module Resty
 
     #: () { (singleton(Base)) -> void } -> void
     def self.each(&block)
-      constants.map{|c| self.const_get(c)}.each(&block)
+      constants.map {|c| self.const_get(c)}.each(&block)
     end
   end
 end
