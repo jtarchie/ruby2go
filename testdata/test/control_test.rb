@@ -1277,9 +1277,7 @@ def joined(out, n)
   out << y.inspect
   label = if n > 0
     "pos"
-  else
-    nil
-          end
+  end
   out << label.inspect
 end
 

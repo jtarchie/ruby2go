@@ -173,9 +173,7 @@ module ActiveRecord
       end
       @records = if sort_in_place!(sorted, terms)
         sorted
-      else
-        nil
-                 end
+      end
       self
     end
 
