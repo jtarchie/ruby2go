@@ -577,7 +577,7 @@ module NumberTests
       assert_equal true, (t || noisy(log, "never", false))
       assert_equal false, (f && noisy(log, "never", true))
       assert_equal true, (f || noisy(log, "rhs", true))
-      assert_equal ["or", "and", "xor", "rhs"], log
+      assert_equal %w[or and xor rhs], log
 
       # op-assign
       b = true
@@ -680,7 +680,7 @@ module NumberTests
       assert_equal "float", kind_eqq(2.5)
       assert_equal "true", kind_eqq(true)
       assert_equal "other", kind_eqq("s")
-      assert_equal(["1", "Fizz", "Buzz", "FizzBuzz"], [1, 3, 5, 15].map { |i| fizz(i) })
+      assert_equal(%w[1 Fizz Buzz FizzBuzz], [1, 3, 5, 15].map { |i| fizz(i) })
       assert_equal "zero", sized(0)
       assert_equal "int", sized(7)
     end
@@ -1618,7 +1618,7 @@ module NumberTests
       assert_equal 15, total
       grid = [] #: Array[String]
       2.times { |r| 3.times { |c| grid << "#{r}#{c}" } }
-      assert_equal ["00", "01", "02", "10", "11", "12"], grid
+      assert_equal %w[00 01 02 10 11 12], grid
       acc = 0.0
       4.times { |i| acc += i.to_f / 2.0 }
       assert_equal "3.0", acc.inspect
@@ -1896,7 +1896,7 @@ module NumberTests
       assert_equal false, a.send(:<, b)
       assert_equal [-1, 2, -3], [1, -2, 3].map(&:-@)
       assert_equal "[1.5, 2.5]", [1.5, -2.5].map(&:abs).inspect
-      assert_equal ["3", "4"], [3, 4].map(&:to_s)
+      assert_equal %w[3 4], [3, 4].map(&:to_s)
     end
   end
 
@@ -1909,7 +1909,7 @@ module NumberTests
       assert_equal 1, 0.factorial
       assert_equal 120, 5.factorial
       assert_equal 2_432_902_008_176_640_000, 20.factorial
-      assert_equal(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "101st", "111th", "0th"], [1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111, 0].map { |i| i.ordinal })
+      assert_equal(%w[1st 2nd 3rd 4th 11th 12th 13th 21st 22nd 101st 111th 0th], [1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111, 0].map { |i| i.ordinal })
       assert_equal true, 4.5.above_zero?
       assert_equal false, -0.5.above_zero?
       assert_equal "1.5", 3.0.half.inspect
@@ -2000,7 +2000,7 @@ module NumberTests
       assert_equal "Float 3.5", number_kind(7.0 / 2.0)
 
       # only nil and false are falsy; 0 and 0.0 are truthy
-      assert_equal(["truthy", "truthy", "truthy", "falsy", "falsy", "truthy", "truthy", "truthy"], vals.map { |v| truthy(v) })
+      assert_equal(%w[truthy truthy truthy falsy falsy truthy truthy truthy], vals.map { |v| truthy(v) })
 
       # values round-trip through untyped
       i = number_ident(42) #: Integer
@@ -2525,12 +2525,12 @@ module NumberTests
 
     def test_format_d_of_a_float_past_int64
       z = 0.0 #: Float
-      assert_equal ["FloatDomainError", "FloatDomainError", "FloatDomainError"],
+      assert_equal %w[FloatDomainError FloatDomainError FloatDomainError],
                    [number_class_of { format("%d", z / z) }, number_class_of { format("%d", 1.0 / z) }, number_class_of { format("%x", -1.0 / z) }]
-      assert_equal true, ["100000000000000000000", "RangeError"].include?(begin; format("%d", 1e20); rescue RangeError; "RangeError"; end)
-      assert_equal true, ["56bc75e2d63100000", "RangeError"].include?(begin; format("%x", 1e20); rescue RangeError; "RangeError"; end)
+      assert_equal true, %w[100000000000000000000 RangeError].include?(begin; format("%d", 1e20); rescue RangeError; "RangeError"; end)
+      assert_equal true, %w[56bc75e2d63100000 RangeError].include?(begin; format("%x", 1e20); rescue RangeError; "RangeError"; end)
       assert_equal "-9223372036854775808", format("%d", -9_223_372_036_854_775_808.0)
-      assert_equal true, ["9300000000000000000", "RangeError"].include?(begin; format("%d", 9.3e18); rescue RangeError; "RangeError"; end)
+      assert_equal true, %w[9300000000000000000 RangeError].include?(begin; format("%d", 9.3e18); rescue RangeError; "RangeError"; end)
     end
   end
 

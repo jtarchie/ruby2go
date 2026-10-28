@@ -518,7 +518,7 @@ module UnionTests
 
     def test_assignment_narrows
       assert_equal ["b", "d", 2, 1], [union_rebase("a/b"), union_rebase(Pathname("d")), union_resize(12), union_resize("x")]
-      assert_equal ["s1", "1"], [union_branch(1, true), union_branch(1, false)]
+      assert_equal %w[s1 1], [union_branch(1, true), union_branch(1, false)]
     end
 
     #: (String | Symbol | nil v) -> String?

@@ -89,7 +89,7 @@ module FiddleTests
     end
 
     def test_struct_layout_and_members
-      assert_equal [24, 8, ["a", "b", "c", "f"], [3, 5, [-2, 3], 7]], [Lib::Pair.size, Lib::Pair.alignment, Lib::Pair.members, Lib::Pair.types]
+      assert_equal [24, 8, %w[a b c f], [3, 5, [-2, 3], 7]], [Lib::Pair.size, Lib::Pair.alignment, Lib::Pair.members, Lib::Pair.types]
       assert_equal([0, 8, 16, 20, nil], %w[a b c f nope].map { |m| Lib::Pair.offsetof(m) })
       pair = Lib::Pair.malloc(Fiddle::RUBY_FREE)
       pair.a = -2

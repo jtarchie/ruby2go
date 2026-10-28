@@ -13,7 +13,7 @@ module RegexpTests
     def test_scan_groups_through_constant
       got = "fix CVE-2024-1234 and cve-2023-99999".scan(CVE_PATTERN).map { |y, id| "#{y}/#{id}" }
       assert_equal ["2024/1234", "2023/99999"], got
-      assert_equal [["a", "b"], ["c", "d"]], "a=b c=d".scan(PAIR_PATTERN)
+      assert_equal [%w[a b], %w[c d]], "a=b c=d".scan(PAIR_PATTERN)
     end
 
     # \b is backspace inside a class, a word boundary outside; Go's parser has no \b escape in a class.
@@ -50,8 +50,8 @@ module RegexpTests
       assert_equal "> a\n", s.sub(/\b/, "> ")
       assert_equal "<>a<>\n", s.gsub(/\b/) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/\b/)
-      assert_equal ["a", "\n"], s.split(/\b/)
-      assert_equal ["a", "\n"], s.split(/\b/, -1)
+      assert_equal %W[a \n], s.split(/\b/)
+      assert_equal %W[a \n], s.split(/\b/, -1)
     end
 
     def test_c4
@@ -60,8 +60,8 @@ module RegexpTests
       assert_equal "> a\n", s.sub(/\b/m, "> ")
       assert_equal "<>a<>\n", s.gsub(/\b/m) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/\b/m)
-      assert_equal ["a", "\n"], s.split(/\b/m)
-      assert_equal ["a", "\n"], s.split(/\b/m, -1)
+      assert_equal %W[a \n], s.split(/\b/m)
+      assert_equal %W[a \n], s.split(/\b/m, -1)
     end
 
     def test_c5
@@ -90,7 +90,7 @@ module RegexpTests
       assert_equal "> a\n", s.sub(/b*/, "> ")
       assert_equal "<>a<>\n<>", s.gsub(/b*/) { |m| "<#{m}>" }
       assert_equal ["", "", ""], s.scan(/b*/)
-      assert_equal ["a", "\n"], s.split(/b*/)
+      assert_equal %W[a \n], s.split(/b*/)
       assert_equal ["a", "\n", ""], s.split(/b*/, -1)
     end
 
@@ -110,7 +110,7 @@ module RegexpTests
       assert_equal "> a\n", s.sub(/^|$/, "> ")
       assert_equal "<>a<>\n<>", s.gsub(/^|$/) { |m| "<#{m}>" }
       assert_equal ["", "", ""], s.scan(/^|$/)
-      assert_equal ["a", "\n"], s.split(/^|$/)
+      assert_equal %W[a \n], s.split(/^|$/)
       assert_equal ["a", "\n", ""], s.split(/^|$/, -1)
     end
 
@@ -120,8 +120,8 @@ module RegexpTests
       assert_equal "> a\nb\n", s.sub(/^/, "> ")
       assert_equal "<>a\n<>b\n", s.gsub(/^/) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/^/)
-      assert_equal ["a\n", "b\n"], s.split(/^/)
-      assert_equal ["a\n", "b\n"], s.split(/^/, -1)
+      assert_equal %W[a\n b\n], s.split(/^/)
+      assert_equal %W[a\n b\n], s.split(/^/, -1)
     end
 
     def test_c11
@@ -130,8 +130,8 @@ module RegexpTests
       assert_equal "> a\nb\n", s.sub(/^/m, "> ")
       assert_equal "<>a\n<>b\n", s.gsub(/^/m) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/^/m)
-      assert_equal ["a\n", "b\n"], s.split(/^/m)
-      assert_equal ["a\n", "b\n"], s.split(/^/m, -1)
+      assert_equal %W[a\n b\n], s.split(/^/m)
+      assert_equal %W[a\n b\n], s.split(/^/m, -1)
     end
 
     def test_c12
@@ -140,8 +140,8 @@ module RegexpTests
       assert_equal "> a\nb\n", s.sub(/\b/, "> ")
       assert_equal "<>a<>\n<>b<>\n", s.gsub(/\b/) { |m| "<#{m}>" }
       assert_equal ["", "", "", ""], s.scan(/\b/)
-      assert_equal ["a", "\n", "b", "\n"], s.split(/\b/)
-      assert_equal ["a", "\n", "b", "\n"], s.split(/\b/, -1)
+      assert_equal %W[a \n b \n], s.split(/\b/)
+      assert_equal %W[a \n b \n], s.split(/\b/, -1)
     end
 
     def test_c13
@@ -150,8 +150,8 @@ module RegexpTests
       assert_equal "> a\nb\n", s.sub(/\b/m, "> ")
       assert_equal "<>a<>\n<>b<>\n", s.gsub(/\b/m) { |m| "<#{m}>" }
       assert_equal ["", "", "", ""], s.scan(/\b/m)
-      assert_equal ["a", "\n", "b", "\n"], s.split(/\b/m)
-      assert_equal ["a", "\n", "b", "\n"], s.split(/\b/m, -1)
+      assert_equal %W[a \n b \n], s.split(/\b/m)
+      assert_equal %W[a \n b \n], s.split(/\b/m, -1)
     end
 
     def test_c14
@@ -180,7 +180,7 @@ module RegexpTests
       assert_equal "> a\nb\n", s.sub(/b*/, "> ")
       assert_equal "<>a<>\n<b><>\n<>", s.gsub(/b*/) { |m| "<#{m}>" }
       assert_equal ["", "", "b", "", ""], s.scan(/b*/)
-      assert_equal ["a", "\n", "\n"], s.split(/b*/)
+      assert_equal %W[a \n \n], s.split(/b*/)
       assert_equal ["a", "\n", "\n", ""], s.split(/b*/, -1)
     end
 
@@ -200,7 +200,7 @@ module RegexpTests
       assert_equal "> a\nb\n", s.sub(/^|$/, "> ")
       assert_equal "<>a<>\n<>b<>\n<>", s.gsub(/^|$/) { |m| "<#{m}>" }
       assert_equal ["", "", "", "", ""], s.scan(/^|$/)
-      assert_equal ["a", "\n", "b", "\n"], s.split(/^|$/)
+      assert_equal %W[a \n b \n], s.split(/^|$/)
       assert_equal ["a", "\n", "b", "\n", ""], s.split(/^|$/, -1)
     end
 
@@ -429,7 +429,7 @@ module RegexpTests
       assert_equal ">  > \nb > \n", s.gsub(/\bé|\ba/, "> ") # ba
       assert_equal ">  a\nb é\n", s.sub(/\bé|\ba/, "> ")
       assert_equal "<é> <a>\nb <é>\n", s.gsub(/\bé|\ba/) { |m| "<#{m}>" }
-      assert_equal ["é", "a", "é"], s.scan(/\bé|\ba/)
+      assert_equal %w[é a é], s.scan(/\bé|\ba/)
       assert_equal ["", " ", "\nb ", "\n"], s.split(/\bé|\ba/)
       assert_equal ["", " ", "\nb ", "\n"], s.split(/\bé|\ba/, -1)
     end
@@ -480,8 +480,8 @@ module RegexpTests
       assert_equal "> ab\n\n", s.sub(/^/, "> ")
       assert_equal "<>ab\n<>\n", s.gsub(/^/) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/^/)
-      assert_equal ["ab\n", "\n"], s.split(/^/)
-      assert_equal ["ab\n", "\n"], s.split(/^/, -1)
+      assert_equal %W[ab\n \n], s.split(/^/)
+      assert_equal %W[ab\n \n], s.split(/^/, -1)
     end
 
     def test_c47
@@ -490,8 +490,8 @@ module RegexpTests
       assert_equal "> ab\n\n", s.sub(/^/m, "> ")
       assert_equal "<>ab\n<>\n", s.gsub(/^/m) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/^/m)
-      assert_equal ["ab\n", "\n"], s.split(/^/m)
-      assert_equal ["ab\n", "\n"], s.split(/^/m, -1)
+      assert_equal %W[ab\n \n], s.split(/^/m)
+      assert_equal %W[ab\n \n], s.split(/^/m, -1)
     end
 
     def test_c48
@@ -500,8 +500,8 @@ module RegexpTests
       assert_equal "> ab\n\n", s.sub(/\b/, "> ")
       assert_equal "<>ab<>\n\n", s.gsub(/\b/) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/\b/)
-      assert_equal ["ab", "\n\n"], s.split(/\b/)
-      assert_equal ["ab", "\n\n"], s.split(/\b/, -1)
+      assert_equal %W[ab \n\n], s.split(/\b/)
+      assert_equal %W[ab \n\n], s.split(/\b/, -1)
     end
 
     def test_c49
@@ -510,8 +510,8 @@ module RegexpTests
       assert_equal "> ab\n\n", s.sub(/\b/m, "> ")
       assert_equal "<>ab<>\n\n", s.gsub(/\b/m) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/\b/m)
-      assert_equal ["ab", "\n\n"], s.split(/\b/m)
-      assert_equal ["ab", "\n\n"], s.split(/\b/m, -1)
+      assert_equal %W[ab \n\n], s.split(/\b/m)
+      assert_equal %W[ab \n\n], s.split(/\b/m, -1)
     end
 
     def test_c50
@@ -540,7 +540,7 @@ module RegexpTests
       assert_equal "> ab\n\n", s.sub(/b*/, "> ")
       assert_equal "<>a<b><>\n<>\n<>", s.gsub(/b*/) { |m| "<#{m}>" }
       assert_equal ["", "b", "", "", ""], s.scan(/b*/)
-      assert_equal ["a", "\n", "\n"], s.split(/b*/)
+      assert_equal %W[a \n \n], s.split(/b*/)
       assert_equal ["a", "\n", "\n", ""], s.split(/b*/, -1)
     end
 
@@ -560,7 +560,7 @@ module RegexpTests
       assert_equal "> ab\n\n", s.sub(/^|$/, "> ")
       assert_equal "<>ab<>\n<>\n<>", s.gsub(/^|$/) { |m| "<#{m}>" }
       assert_equal ["", "", "", ""], s.scan(/^|$/)
-      assert_equal ["ab", "\n", "\n"], s.split(/^|$/)
+      assert_equal %W[ab \n \n], s.split(/^|$/)
       assert_equal ["ab", "\n", "\n", ""], s.split(/^|$/, -1)
     end
 
@@ -570,8 +570,8 @@ module RegexpTests
       assert_equal "> a\n\nb", s.sub(/^/, "> ")
       assert_equal "<>a\n<>\n<>b", s.gsub(/^/) { |m| "<#{m}>" }
       assert_equal ["", "", ""], s.scan(/^/)
-      assert_equal ["a\n", "\n", "b"], s.split(/^/)
-      assert_equal ["a\n", "\n", "b"], s.split(/^/, -1)
+      assert_equal %W[a\n \n b], s.split(/^/)
+      assert_equal %W[a\n \n b], s.split(/^/, -1)
     end
 
     def test_c56
@@ -580,8 +580,8 @@ module RegexpTests
       assert_equal "> a\n\nb", s.sub(/^/m, "> ")
       assert_equal "<>a\n<>\n<>b", s.gsub(/^/m) { |m| "<#{m}>" }
       assert_equal ["", "", ""], s.scan(/^/m)
-      assert_equal ["a\n", "\n", "b"], s.split(/^/m)
-      assert_equal ["a\n", "\n", "b"], s.split(/^/m, -1)
+      assert_equal %W[a\n \n b], s.split(/^/m)
+      assert_equal %W[a\n \n b], s.split(/^/m, -1)
     end
 
     def test_c57
@@ -590,7 +590,7 @@ module RegexpTests
       assert_equal "> a\n\nb", s.sub(/\b/, "> ")
       assert_equal "<>a<>\n\n<>b<>", s.gsub(/\b/) { |m| "<#{m}>" }
       assert_equal ["", "", "", ""], s.scan(/\b/)
-      assert_equal ["a", "\n\n", "b"], s.split(/\b/)
+      assert_equal %W[a \n\n b], s.split(/\b/)
       assert_equal ["a", "\n\n", "b", ""], s.split(/\b/, -1)
     end
 
@@ -600,7 +600,7 @@ module RegexpTests
       assert_equal "> a\n\nb", s.sub(/\b/m, "> ")
       assert_equal "<>a<>\n\n<>b<>", s.gsub(/\b/m) { |m| "<#{m}>" }
       assert_equal ["", "", "", ""], s.scan(/\b/m)
-      assert_equal ["a", "\n\n", "b"], s.split(/\b/m)
+      assert_equal %W[a \n\n b], s.split(/\b/m)
       assert_equal ["a", "\n\n", "b", ""], s.split(/\b/m, -1)
     end
 
@@ -630,7 +630,7 @@ module RegexpTests
       assert_equal "> a\n\nb", s.sub(/b*/, "> ")
       assert_equal "<>a<>\n<>\n<b><>", s.gsub(/b*/) { |m| "<#{m}>" }
       assert_equal ["", "", "", "b", ""], s.scan(/b*/)
-      assert_equal ["a", "\n", "\n"], s.split(/b*/)
+      assert_equal %W[a \n \n], s.split(/b*/)
       assert_equal ["a", "\n", "\n", ""], s.split(/b*/, -1)
     end
 
@@ -650,7 +650,7 @@ module RegexpTests
       assert_equal "> a\n\nb", s.sub(/^|$/, "> ")
       assert_equal "<>a<>\n<>\n<>b<>", s.gsub(/^|$/) { |m| "<#{m}>" }
       assert_equal ["", "", "", "", ""], s.scan(/^|$/)
-      assert_equal ["a", "\n", "\n", "b"], s.split(/^|$/)
+      assert_equal %W[a \n \n b], s.split(/^|$/)
       assert_equal ["a", "\n", "\n", "b", ""], s.split(/^|$/, -1)
     end
 
@@ -660,8 +660,8 @@ module RegexpTests
       assert_equal "> été\nnoël", s.sub(/^/, "> ")
       assert_equal "<>été\n<>noël", s.gsub(/^/) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/^/)
-      assert_equal ["été\n", "noël"], s.split(/^/)
-      assert_equal ["été\n", "noël"], s.split(/^/, -1)
+      assert_equal %W[été\n noël], s.split(/^/)
+      assert_equal %W[été\n noël], s.split(/^/, -1)
     end
 
     def test_c65
@@ -670,8 +670,8 @@ module RegexpTests
       assert_equal "> été\nnoël", s.sub(/^/m, "> ")
       assert_equal "<>été\n<>noël", s.gsub(/^/m) { |m| "<#{m}>" }
       assert_equal ["", ""], s.scan(/^/m)
-      assert_equal ["été\n", "noël"], s.split(/^/m)
-      assert_equal ["été\n", "noël"], s.split(/^/m, -1)
+      assert_equal %W[été\n noël], s.split(/^/m)
+      assert_equal %W[été\n noël], s.split(/^/m, -1)
     end
 
     def test_c66
@@ -680,7 +680,7 @@ module RegexpTests
       assert_equal "> été\nnoël", s.sub(/\b/, "> ")
       assert_equal "<>été<>\n<>noël<>", s.gsub(/\b/) { |m| "<#{m}>" }
       assert_equal ["", "", "", ""], s.scan(/\b/)
-      assert_equal ["été", "\n", "noël"], s.split(/\b/)
+      assert_equal %W[été \n noël], s.split(/\b/)
       assert_equal ["été", "\n", "noël", ""], s.split(/\b/, -1)
     end
 
@@ -690,7 +690,7 @@ module RegexpTests
       assert_equal "> été\nnoël", s.sub(/\b/m, "> ")
       assert_equal "<>été<>\n<>noël<>", s.gsub(/\b/m) { |m| "<#{m}>" }
       assert_equal ["", "", "", ""], s.scan(/\b/m)
-      assert_equal ["été", "\n", "noël"], s.split(/\b/m)
+      assert_equal %W[été \n noël], s.split(/\b/m)
       assert_equal ["été", "\n", "noël", ""], s.split(/\b/m, -1)
     end
 
@@ -720,7 +720,7 @@ module RegexpTests
       assert_equal "> été\nnoël", s.sub(/b*/, "> ")
       assert_equal "<>é<>t<>é<>\n<>n<>o<>ë<>l<>", s.gsub(/b*/) { |m| "<#{m}>" }
       assert_equal ["", "", "", "", "", "", "", "", ""], s.scan(/b*/)
-      assert_equal ["é", "t", "é", "\n", "n", "o", "ë", "l"], s.split(/b*/)
+      assert_equal %W[é t é \n n o ë l], s.split(/b*/)
       assert_equal ["é", "t", "é", "\n", "n", "o", "ë", "l", ""], s.split(/b*/, -1)
     end
 
@@ -740,7 +740,7 @@ module RegexpTests
       assert_equal "> été\nnoël", s.sub(/^|$/, "> ")
       assert_equal "<>été<>\n<>noël<>", s.gsub(/^|$/) { |m| "<#{m}>" }
       assert_equal ["", "", "", ""], s.scan(/^|$/)
-      assert_equal ["été", "\n", "noël"], s.split(/^|$/)
+      assert_equal %W[été \n noël], s.split(/^|$/)
       assert_equal ["été", "\n", "noël", ""], s.split(/^|$/, -1)
     end
   end

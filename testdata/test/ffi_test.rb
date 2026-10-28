@@ -114,7 +114,7 @@ module FfiTests
       mp.put_float(24, 0.25)
       assert_equal [200, -5, 65_535, -(2**40), 1.5, 0.25], [mp.get_uint8(0), mp.get_int8(1), mp.get_uint16(2), mp.get_int64(8), mp.get_double(16), mp.get_float(24)]
       s = FFI::MemoryPointer.from_string("pointer")
-      assert_equal ["pointer", "nter", "po"], [s.read_string, (s + 3).read_string, s.read_string(2)]
+      assert_equal %w[pointer nter po], [s.read_string, (s + 3).read_string, s.read_string(2)]
       assert_equal "ab", FFI::MemoryPointer.from_string("abc").read_bytes(2)
     end
 
@@ -225,7 +225,7 @@ module FfiTests
       arr = FFI::MemoryPointer.new(:pointer, 3)
       arr.write_array_of_pointer([a, b, FFI::Pointer::NULL])
       assert_equal true, arr.read_array_of_pointer(3).map(&:address) == [a.address, b.address, 0]
-      assert_equal ["one", "two"], arr.read_array_of_string
+      assert_equal %w[one two], arr.read_array_of_string
       assert_equal ["one", "two", nil], arr.read_array_of_string(3)
     end
 

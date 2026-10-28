@@ -9,12 +9,12 @@ module EncodingTests
     def test_constants
       assert_equal "UTF-8", Encoding::UTF_8.name
       assert_equal "UTF-8", Encoding::UTF_8.to_s
-      assert_equal ["UTF-8", "CP65001", "locale", "external", "filesystem"], Encoding::UTF_8.names
-      assert_equal ["ASCII-8BIT", "BINARY"], Encoding::BINARY.names
+      assert_equal %w[UTF-8 CP65001 locale external filesystem], Encoding::UTF_8.names
+      assert_equal %w[ASCII-8BIT BINARY], Encoding::BINARY.names
       assert_equal ["US-ASCII", "ASCII", "ANSI_X3.4-1968", "646"], Encoding::US_ASCII.names
-      assert_equal ["ISO-8859-1", "ISO8859-1"], Encoding::ISO_8859_1.names
-      assert_equal ["UTF-16BE", "UCS-2BE"], Encoding::UTF_16BE.names
-      assert_equal ["UTF-32LE", "UCS-4LE"], Encoding::UTF_32LE.names
+      assert_equal %w[ISO-8859-1 ISO8859-1], Encoding::ISO_8859_1.names
+      assert_equal %w[UTF-16BE UCS-2BE], Encoding::UTF_16BE.names
+      assert_equal %w[UTF-32LE UCS-4LE], Encoding::UTF_32LE.names
       assert_same Encoding::ASCII_8BIT, Encoding::BINARY
       assert_same Encoding::US_ASCII, Encoding::ASCII
       assert_equal "ISO-8859-1", Encoding::ISO8859_1.name
@@ -47,9 +47,9 @@ module EncodingTests
     end
 
     def test_lists
-      assert_equal ["ASCII-8BIT", "UTF-8", "US-ASCII", "UTF-16BE", "UTF-16LE"], Encoding.list.first(5).map(&:name)
+      assert_equal %w[ASCII-8BIT UTF-8 US-ASCII UTF-16BE UTF-16LE], Encoding.list.first(5).map(&:name)
       assert_equal true, Encoding.list.include?(Encoding::ISO_8859_1)
-      assert_equal ["ASCII-8BIT", "UTF-8", "US-ASCII"], Encoding.name_list.first(3)
+      assert_equal %w[ASCII-8BIT UTF-8 US-ASCII], Encoding.name_list.first(3)
       assert_equal true, Encoding.name_list.include?("BINARY")
       assert_equal "ASCII-8BIT", Encoding.aliases["BINARY"]
       assert_equal "US-ASCII", Encoding.aliases["646"]
@@ -182,7 +182,7 @@ module EncodingTests
     def test_undefined_conversion
       e = assert_raises(Encoding::UndefinedConversionError) { "café".encode("US-ASCII") }
       assert_equal "U+00E9 from UTF-8 to US-ASCII", e.message
-      assert_equal ["UTF-8", "US-ASCII", "é"], [e.source_encoding_name, e.destination_encoding_name, e.error_char]
+      assert_equal %w[UTF-8 US-ASCII é], [e.source_encoding_name, e.destination_encoding_name, e.error_char]
       assert_same Encoding::UTF_8, e.source_encoding
       assert_same Encoding::US_ASCII, e.destination_encoding
       assert_equal "U+20AC from UTF-8 to ISO-8859-1", assert_raises(Encoding::UndefinedConversionError) { "a€".encode("ISO-8859-1") }.message
@@ -311,7 +311,7 @@ module EncodingTests
           assert_equal "ñ\n", f.read
         end
         File.open(path, "r:ISO-8859-1") { |f| assert_equal [99, 97, 102, 233, 10], f.gets&.bytes }
-        mode = ["r", "ISO-8859-1", "UTF-8"].join(":")
+        mode = %w[r ISO-8859-1 UTF-8].join(":")
         f2 = File.new(path, mode)
         assert_equal "café\n", f2.gets
         f2.close
@@ -343,9 +343,9 @@ module EncodingTests
         e = assert_raises(ArgumentError) { File.open(path, "r:UTF-16LE") { |f| f.gets } }
         assert_equal "ASCII incompatible encoding needs binmode", e.message
         File.binwrite(path, "\xEF\xBB\xBFhi\n")
-        File.open(path, "r:BOM|UTF-8") { |f| assert_equal ["hi\n", "UTF-8"], [f.gets, f.external_encoding&.name] }
+        File.open(path, "r:BOM|UTF-8") { |f| assert_equal %W[hi\n UTF-8], [f.gets, f.external_encoding&.name] }
         File.binwrite(path, "\xFF\xFEh\x00\n\x00")
-        File.open(path, "r:BOM|UTF-16LE:UTF-8") { |f| assert_equal ["h\n", "UTF-16LE"], [f.gets, f.external_encoding&.name] }
+        File.open(path, "r:BOM|UTF-16LE:UTF-8") { |f| assert_equal %W[h\n UTF-16LE], [f.gets, f.external_encoding&.name] }
       end
     end
 
@@ -372,7 +372,7 @@ module EncodingTests
         File.binwrite(path, "caf\xe9\nna\xefve\n")
         File.open(path) do |f|
           assert_equal true, f.set_encoding("ISO-8859-1:UTF-8").equal?(f)
-          assert_equal ["ISO-8859-1", "UTF-8"], [f.external_encoding&.name, f.internal_encoding&.name]
+          assert_equal %w[ISO-8859-1 UTF-8], [f.external_encoding&.name, f.internal_encoding&.name]
           assert_equal "café\n", f.gets
         end
         File.open(path) do |f|
@@ -448,7 +448,7 @@ module EncodingTests
 
     def test_encoding_objects
       assert_equal Encoding::Windows_1252, Encoding.find("cp1252")
-      assert_equal ["ISO-8859-15", "ISO8859-15"], Encoding.find("ISO8859-15").names
+      assert_equal %w[ISO-8859-15 ISO8859-15], Encoding.find("ISO8859-15").names
       assert Encoding::MacRoman.ascii_compatible?
       assert Encoding.list.include?(Encoding::KOI8_U)
       assert Encoding.name_list.include?("CP1252")
@@ -527,7 +527,7 @@ module EncodingTests
       assert_equal Encoding::Shift_JIS, Encoding.find("shift_jis")
       assert_equal Encoding::Windows_31J, Encoding.find("SJIS")
       assert_equal [0x93, 0xFA], "日".encode(Encoding::Windows_31J).bytes
-      name = ["EUC", "KR"].join("-")
+      name = %w[EUC KR].join("-")
       assert_equal [0xC7, 0xD1], "한".encode(name).bytes
       path = "encoding_test_mb.txt"
       File.write(path, "日本\n".encode("Shift_JIS"))

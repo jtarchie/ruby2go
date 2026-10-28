@@ -23,7 +23,7 @@ end
 def parse_all(fields) = Parser.run(fields)
 
 begin
-  parse_all(["1", "x"])
+  parse_all(%w[1 x])
 rescue ArgumentError => e
   puts e.message
   puts e.backtrace

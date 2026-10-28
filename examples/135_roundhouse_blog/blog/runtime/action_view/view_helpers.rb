@@ -774,7 +774,7 @@ module ActionView
     # no-op concat.
     def self.method_override_input(method)
       method_str = method.to_s
-      if ["get", "post"].include?(method_str)
+      if %w[get post].include?(method_str)
         ""
       else
         %(<input type="hidden" name="_method" value="#{method_str}">)
@@ -952,7 +952,7 @@ module ActionView
     # equality against a literal is the one comparison every lane
     # already spells.
     def self.boolean_attr?(name)
-      ["allowfullscreen", "allowpaymentrequest", "async", "autofocus", "autoplay", "checked", "compact", "controls", "declare", "default", "defaultchecked", "defaultmuted", "defaultselected", "defer", "disabled", "enabled", "formnovalidate", "hidden", "indeterminate", "inert", "ismap", "itemscope", "loop", "multiple", "muted", "nohref", "nomodule", "noresize", "noshade", "novalidate", "nowrap", "open", "pauseonexit", "playsinline", "pubdate", "readonly", "required", "reversed", "scoped", "seamless", "selected", "sortable", "truespeed", "typemustmatch", "visible"].include?(name)
+      %w[allowfullscreen allowpaymentrequest async autofocus autoplay checked compact controls declare default defaultchecked defaultmuted defaultselected defer disabled enabled formnovalidate hidden indeterminate inert ismap itemscope loop multiple muted nohref nomodule noresize noshade novalidate nowrap open pauseonexit playsinline pubdate readonly required reversed scoped seamless selected sortable truespeed typemustmatch visible].include?(name)
     end
   end
 end

@@ -97,9 +97,9 @@ puts Named.new, Line.new, Custom.new
 # Arrays are flattened one element per line; nested nil prints an empty line.
 deep = [1, [2, [3]], [nil]] #: Array[untyped]
 puts deep
-puts ["a\n", "b"]
+puts %W[a\n b]
 puts [[4], [5, 6]], 7, [nil]
-words = ["w1", "w2"] #: Array[String]
+words = %w[w1 w2] #: Array[String]
 puts words, words[5]
 
 # print writes to_s with no separator and no newline.

@@ -316,7 +316,7 @@ module Main
     verb = req.verb
     if verb == "POST"
       override = req.req_params.fetch("_method", "").upcase
-      verb = override if ["PATCH", "PUT", "DELETE"].include?(override)
+      verb = override if %w[PATCH PUT DELETE].include?(override)
     end
 
     matched = ActionDispatch::Router.match(verb, request_path, Main.route_table)

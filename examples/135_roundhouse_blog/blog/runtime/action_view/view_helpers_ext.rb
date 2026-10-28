@@ -411,11 +411,11 @@ module ActionView
 
     # Rails::HTML5::SafeListSanitizer.allowed_tags, 1.7.1.
     def self.sanitize_default_tags
-      ["a", "abbr", "acronym", "address", "b", "big", "blockquote",
-       "br", "cite", "code", "dd", "del", "dfn", "div", "dl", "dt",
-       "em", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img",
-       "ins", "kbd", "li", "mark", "ol", "p", "pre", "samp", "small",
-       "span", "strong", "sub", "sup", "time", "tt", "ul", "var"]
+      %w[a abbr acronym address b big blockquote
+       br cite code dd del dfn div dl dt
+       em h1 h2 h3 h4 h5 h6 hr i img
+       ins kbd li mark ol p pre samp small
+       span strong sub sup time tt ul var]
     end
 
     # Rails::HTML5::SafeListSanitizer.allowed_attributes, 1.7.1.
@@ -433,10 +433,10 @@ module ActionView
 
     # Loofah::HTML5::SafeList::ALLOWED_PROTOCOLS.
     def self.sanitize_allowed_protocols
-      ["afs", "aim", "callto", "data", "ed2k", "fax", "ftp", "gopher",
-       "http", "https", "irc", "line", "mailto", "modem", "news",
-       "nntp", "rsync", "rtsp", "sftp", "sms", "ssh", "tag", "tel",
-       "telnet", "urn", "webcal", "xmpp"]
+      %w[afs aim callto data ed2k fax ftp gopher
+       http https irc line mailto modem news
+       nntp rsync rtsp sftp sms ssh tag tel
+       telnet urn webcal xmpp]
     end
 
     # Loofah::HTML5::SafeList::ALLOWED_URI_DATA_MEDIATYPES.
@@ -447,7 +447,7 @@ module ActionView
     # Loofah::HTML5::SafeList::VOID_ELEMENTS — serialized with no close
     # tag, never pushed on the open stack.
     def self.sanitize_void_elements
-      ["area", "br", "hr", "img", "input"]
+      %w[area br hr img input]
     end
 
     # HTML5 RAWTEXT / escapable-rawtext containers: their content is
@@ -457,13 +457,13 @@ module ActionView
     # `noscript` is deliberately absent — with scripting off, which is
     # how the gem's parser runs, its children parse as markup.
     def self.sanitize_rawtext_elements
-      ["iframe", "noembed", "noframes", "plaintext", "script", "style",
-       "textarea", "title", "xmp"]
+      %w[iframe noembed noframes plaintext script style
+       textarea title xmp]
     end
 
     # Allow-list entries this port refuses to serve (see the header).
     def self.sanitize_unservable_tags
-      sanitize_rawtext_elements + ["svg", "math", "template"]
+      sanitize_rawtext_elements + %w[svg math template]
     end
 
     def self.sanitize_space?(c)
@@ -549,7 +549,7 @@ module ActionView
                 i = after
               else
                 name = sanitize_tag_name(raw)
-                if ["svg", "math"].include?(name)
+                if %w[svg math].include?(name)
                   # Foreign content is PRUNED whole — children, text and
                   # all — matching the gem's namespace rule. A
                   # self-closing root (`<svg/>`) contains nothing.
@@ -1030,7 +1030,7 @@ module ActionView
       digits = ""
       if s[j, 1].to_s == "#"
         j += 1
-        if ["x", "X"].include?(s[j, 1].to_s)
+        if %w[x X].include?(s[j, 1].to_s)
           j += 1
           digits = "0123456789abcdefABCDEF"
         else

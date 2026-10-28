@@ -140,7 +140,7 @@ module StdlibTests
 
         out = File.join(dir, "out.csv")
         CSV.open(out, "w") do |csv|
-          csv << ["sku", "qty"]
+          csv << %w[sku qty]
           csv << ["b1", 2]
           csv << ["b2", nil]
         end
@@ -167,7 +167,7 @@ module StdlibTests
     def test_headers_and_converters
       src = "name,age,score\nAda,36,9.5\nGrace,,1_000\n Linus , 08 ,0x1A\n"
       t = CSV.parse(src, headers: true)
-      assert_equal ["name", "age", "score"], t.headers
+      assert_equal %w[name age score], t.headers
       assert_equal 3, t.size
       assert_equal "Ada", t[0]["name"]
       assert_equal "36", t[0][1]
@@ -187,8 +187,8 @@ module StdlibTests
       assert_equal [" Linus ", 8.0, 26], n[2].fields
       assert_equal 1, n.select { |r| r["age"].nil? }.size
       assert_equal [["name", "age", "score"], ["Ada", 36, 9.5], ["Grace", nil, 1000], [" Linus ", 8.0, 26]], CSV.parse(src, converters: :numeric)
-      assert_equal [["a", "b"], [1.5, 2.0]], CSV.parse("a,b\n1.5,2", converters: :float)
-      assert_equal [["a", "b"], [1.5, 2]], CSV.parse("a,b\n1.5,2", converters: %i[integer float])
+      assert_equal [%w[a b], [1.5, 2.0]], CSV.parse("a,b\n1.5,2", converters: :float)
+      assert_equal [%w[a b], [1.5, 2]], CSV.parse("a,b\n1.5,2", converters: %i[integer float])
       assert_equal [1, 2.5, "x"], CSV.parse_line("1,2.5,x", converters: :numeric)
       assert_equal [{ "a" => "1", "b" => "2", nil => "3" }, { "a" => "4", "b" => nil }], CSV.parse("a,b\n1,2,3\n4", headers: true).map(&:to_h)
       assert_equal({ "a" => "1" }, CSV.parse("a,a\n1,2", headers: true)[0].to_h)
@@ -199,7 +199,7 @@ module StdlibTests
         assert_equal 11, CSV.read(path, headers: true, converters: :integer).map { |r| r["qty"] }.sum
         skus = [] #: Array[untyped]
         CSV.foreach(path, headers: true) { |row| skus << row["sku"] }
-        assert_equal ["a1", "a2"], skus
+        assert_equal %w[a1 a2], skus
         sums = [] #: Array[untyped]
         CSV.foreach(path, converters: :integer) { |row| sums << row[1] }
         assert_equal ["qty", 4, 7], sums
@@ -339,7 +339,7 @@ module StdlibTests
 
     def test_pretty_generate
       assert_equal "{\n  \"name\": \"Ada\",\n  \"langs\": [\n    \"ruby\",\n    \"go\"\n  ],\n  \"meta\": {\n    \"active\": true\n  }\n}",
-                   JSON.pretty_generate({ "name" => "Ada", "langs" => ["ruby", "go"], "meta" => { "active" => true } })
+                   JSON.pretty_generate({ "name" => "Ada", "langs" => %w[ruby go], "meta" => { "active" => true } })
     end
 
     def test_dump_load_round_trip
@@ -496,8 +496,8 @@ module StdlibTests
 
     def test_alphanumeric
       assert_equal true, SecureRandom.alphanumeric(20).match?(/\A[A-Za-z0-9]{20}\z/)
-      assert_equal true, SecureRandom.alphanumeric(10, chars: ["x", "y", "z"]).match?(/\A[xyz]{10}\z/)
-      assert_equal 16, SecureRandom.alphanumeric(8, chars: ["ab", "cd"]).length
+      assert_equal true, SecureRandom.alphanumeric(10, chars: %w[x y z]).match?(/\A[xyz]{10}\z/)
+      assert_equal 16, SecureRandom.alphanumeric(8, chars: %w[ab cd]).length
     end
   end
 
@@ -507,7 +507,7 @@ module StdlibTests
     def test_set_ops_take_an_array
       s = Set[1, 2]
       paths = Set.new
-      paths += ["a", "b"]
+      paths += %w[a b]
       paths << "c"
       s.merge([8])
       assert_equal [[1, 2, 8, 3], [1, 2, 8, 4], [2], [2, 8], %w[a b c]],
@@ -527,7 +527,7 @@ module StdlibTests
       doubled = Set.new([1, 2, 3]) { |x| x * 2 } #: Set[Integer]
       assert_equal [2, 4, 6], doubled.sort
       strs = Set.new(1..3) { |x| x.to_s } #: Set[String]
-      assert_equal ["1", "2", "3"], strs.sort
+      assert_equal %w[1 2 3], strs.sort
     end
 
     def test_bang_methods
@@ -594,7 +594,7 @@ module StdlibTests
 
     def test_read_at_eof
       eof_io = StringIO.new("hé\nx")
-      assert_equal ["hé\n", "x"], [eof_io.readline, eof_io.readchar]
+      assert_equal %W[hé\n x], [eof_io.readline, eof_io.readchar]
       e = assert_raises(EOFError) { eof_io.readline }
       assert_equal "end of file reached", e.message
       assert_raises(EOFError) { eof_io.readchar }
@@ -644,7 +644,7 @@ module StdlibTests
       byte_io = StringIO.new("héllo")
       chars = [] #: Array[String]
       byte_io.each_char { |c| chars << c }
-      assert_equal ["h", "é", "l", "l", "o"], chars
+      assert_equal %w[h é l l o], chars
       byte_io.rewind
       bytes = [] #: Array[Integer]
       byte_io.each_byte { |b| bytes << b }
@@ -717,8 +717,8 @@ module StdlibTests
       s = StringScanner.new("2024-09-28")
       s.scan(/(?<year>\d+)-(?<month>\d+)-(?<day>\d+)/)
       assert_equal "{\"year\" => \"2024\", \"month\" => \"09\", \"day\" => \"28\"}", s.named_captures.inspect
-      assert_equal ["2024-09-28", "2024", "09", "28"], s.values_at(0, 1, 2, 3)
-      assert_equal ["28", "09"], s.values_at(-1, -2)
+      assert_equal %w[2024-09-28 2024 09 28], s.values_at(0, 1, 2, 3)
+      assert_equal %w[28 09], s.values_at(-1, -2)
       s2 = StringScanner.new("no match here")
       s2.scan(/xyz/)
       assert_equal "{}", s2.named_captures.inspect
@@ -1330,7 +1330,7 @@ module StdlibTests
     def test_join_flattens_arrays
       assert_equal ["/base/mock", "/base/x"], [joined, joined("x")]
       assert_equal "a/b/c/d", File.join("a", ["b", ["c"]], "d")
-      parts = ["x", "y"]
+      parts = %w[x y]
       assert_equal ["x/y", ""], [File.join(*parts), File.join]
       begin
         File.join("a", [1])
@@ -1431,7 +1431,7 @@ module StdlibTests
       list = "--list"
       parser.on(list, OptionParser::REQUIRED_ARGUMENT, Array, "Some list") { |v| opts[:list] = v }
       assert_equal ["wget"], parser.parse(["--json", "--days", "3", "--list=a,b", "wget"])
-      assert_equal({ json: true, days: "3", list: ["a", "b"] }, opts)
+      assert_equal({ json: true, days: "3", list: %w[a b] }, opts)
       option, = parser.make_switch(["--verbose", "Be loud"])
       lines = [] #: Array[String]
       option&.summarize({}, {}, parser.summary_width, parser.summary_width - 1, parser.summary_indent) { |l| lines << l }
@@ -1583,7 +1583,7 @@ module StdlibTests
         File.symlink(f, l)
         assert_equal [true, false, false], [File.zero?(e), File.empty?(f), File.zero?(File.join(d, "nope"))]
         assert_equal [true, true, false, true, true], [File.readable?(f), File.writable?(f), File.executable?(f), File.executable?(d), File.owned?(f)]
-        assert_equal ["file", "directory", "link", "characterSpecial"], [File.ftype(f), File.ftype(d), File.ftype(l), File.ftype("/dev/null")]
+        assert_equal %w[file directory link characterSpecial], [File.ftype(f), File.ftype(d), File.ftype(l), File.ftype("/dev/null")]
         assert_equal [true, true, true], [File.readlink(l) == f, File.lstat(l).symlink?, File.lstat(d).directory?]
         assert_equal true, File.realpath(f) == File.realpath(File.join(d, ".", "a.txt"))
         assert_equal [2, "100600"], [File.chmod(0o600, f, e), File.stat(f).mode.to_s(8)]
@@ -1623,7 +1623,7 @@ module StdlibTests
       ENV.store("SPECENV_D", "4")
       assert_equal({ "SPECENV_A" => "1", "SPECENV_B" => "2", "SPECENV_C" => "3", "SPECENV_D" => "4" }, ENV.select { |k, _v| k.start_with?("SPECENV_") }.sort.to_h)
       assert_equal [{ "SPECENV_A" => "1" }, ["2", nil]], [ENV.slice("SPECENV_A", "SPECENV_NOPE"), ENV.values_at("SPECENV_B", "SPECENV_NOPE")]
-      assert_equal [true, false, true, "SPECENV_D", ["SPECENV_A", "1"]], [ENV.key?("SPECENV_C"), ENV.has_key?("SPECENV_Z"), ENV.value?("4"), ENV.key("4"), ENV.assoc("SPECENV_A")]
+      assert_equal [true, false, true, "SPECENV_D", %w[SPECENV_A 1]], [ENV.key?("SPECENV_C"), ENV.has_key?("SPECENV_Z"), ENV.value?("4"), ENV.key("4"), ENV.assoc("SPECENV_A")]
       assert_equal [["4"], true, false], [ENV.filter_map { |k, v| v if k == "SPECENV_D" }, ENV.map { |k, _v| k }.include?("SPECENV_A"), ENV.empty?]
       assert_equal [%w[SPECENV_A SPECENV_B SPECENV_C SPECENV_D], false, true], [ENV.reject { |k, _v| !k.start_with?("SPECENV_") }.keys.sort, ENV.except("SPECENV_A").key?("SPECENV_A"), ENV.to_a.size == ENV.size]
       ENV.delete_if { |k, _v| k == "SPECENV_A" }
@@ -1673,11 +1673,11 @@ module StdlibTests
       Dir.mktmpdir do |d|
         a = File.join(d, "a")
         b = File.join(d, "b")
-        assert_equal [4, "x\ny\n", ["x\n", "y\n"]], [IO.write(a, "x\ny\n"), IO.read(a), IO.readlines(a)]
+        assert_equal [4, "x\ny\n", %W[x\n y\n]], [IO.write(a, "x\ny\n"), IO.read(a), IO.readlines(a)]
         assert_equal [1, "z", 4, "x\ny\n"], [IO.binwrite(b, "z"), IO.binread(b), IO.copy_stream(a, b), IO.read(b)]
         lines = [] #: Array[String]
         IO.foreach(a) { |l| lines << l }
-        assert_equal ["x\n", "y\n"], lines
+        assert_equal %W[x\n y\n], lines
       end
     end
   end
@@ -1866,11 +1866,11 @@ module StdlibTests
     end
 
     def test_popen
-      assert_equal "hi\n", IO.popen(["echo", "hi"]) { |io| io.read }
+      assert_equal "hi\n", IO.popen(%w[echo hi]) { |io| io.read }
       assert_equal true, $?&.success?
       assert_equal "a\n", IO.popen("echo a; exit 3") { |io| io.gets }
       assert_equal 3, $?&.exitstatus
-      assert_equal ["1\n", "2\n"], IO.popen("printf '1\\n2\\n'") { |io| io.readlines }
+      assert_equal %W[1\n 2\n], IO.popen("printf '1\\n2\\n'") { |io| io.readlines }
     end
   end
 

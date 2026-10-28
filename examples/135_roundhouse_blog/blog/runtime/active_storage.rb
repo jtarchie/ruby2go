@@ -86,7 +86,7 @@ module ActiveStorage
     f = format.downcase
     if f == "png"
       "image/png"
-    elsif ["jpg", "jpeg"].include?(f)
+    elsif %w[jpg jpeg].include?(f)
       "image/jpeg"
     elsif f == "gif"
       "image/gif"

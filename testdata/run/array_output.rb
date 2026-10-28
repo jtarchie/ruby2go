@@ -34,7 +34,7 @@ print [[1], [2, [3]]], "\n"
 
 # puts and print take a rest param of mixed values (was array_splat.rb)
 puts 1, 2
-puts "a", ["b", "c"], nil, 3
+puts "a", %w[b c], nil, 3
 puts
 print "x", "y", "\n"
 print

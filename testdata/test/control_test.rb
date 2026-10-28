@@ -663,7 +663,7 @@ def control_label(out, n)
 end
 
 #: () -> Array[String]
-def parts = ["x", "y", "z"]
+def parts = %w[x y z]
 
 #: (Array[Integer?]) -> Integer
 def total_until_nil(xs)
@@ -1884,9 +1884,9 @@ end
       e, f = one
       assert_equal [1, "a", 1, ["a"], 7, nil], [a, b, c, d, e, f]
       rows = [] #: Array[untyped]
-      rows << ["k", "v"] << 3 << nil
+      rows << %w[k v] << 3 << nil
       seen = rows.map { |k, v| [k, v] }
-      assert_equal [["k", "v"], [3, nil], [nil, nil]], seen
+      assert_equal [%w[k v], [3, nil], [nil, nil]], seen
       assert_equal([["k", ["v"]], [3, []]], rows.first(2).map { |k, *v| [k, v] })
       nested = [] #: Array[untyped]
       nested << [[1, 2], 3]
@@ -1938,7 +1938,7 @@ end
       pairs.reject! { |name,| name == "a" }
       assert_equal [["b", false]], pairs
       assert_equal([1, 3], [[1, 2], [3, 4]].map { |x,| x })
-      assert_equal(["k", "j"], { "k" => 1, "j" => 2 }.map { |k,| k })
+      assert_equal(%w[k j], { "k" => 1, "j" => 2 }.map { |k,| k })
       assert_equal([10, 20], [1, 2].map { |x,| x * 10 })
     end
 
@@ -2007,7 +2007,7 @@ end
       y = "y"
       z = "z"
       x, y, z = y, z, x
-      assert_equal ["y", "z", "x"], [x, y, z]
+      assert_equal %w[y z x], [x, y, z]
       f0 = 0
       f1 = 1
       10.times { f0, f1 = f1, f0 + f1 }
@@ -2055,13 +2055,13 @@ end
       r3 = tb(log, "e", true) && tb(log, "f", false)
       r4 = tb(log, "g", false) || tb(log, "h", false)
       assert_equal [false, true, false, false], [r1, r2, r3, r4]
-      assert_equal ["a", "c", "e", "f", "g", "h"], log
+      assert_equal %w[a c e f g h], log
       log.clear
       r5 = (tb(log, "i", true) and tb(log, "j", true))
       r6 = (tb(log, "k", false) or tb(log, "l", true))
       r7 = !tb(log, "m", true)
       assert_equal [true, true, false], [r5, r6, r7]
-      assert_equal ["i", "j", "k", "l", "m"], log
+      assert_equal %w[i j k l m], log
       none = nil #: Integer?
       some = 3 #: Integer?
       assert_equal 10, (none || 10)
@@ -2235,7 +2235,7 @@ end
           
         end
       end
-      assert_equal ["1-10", "2-10", "2-20", "3-10", "3-20", "3-30"], found
+      assert_equal %w[1-10 2-10 2-20 3-10 3-20 3-30], found
     end
 
     def test_next_and_break_in_while
@@ -2273,7 +2273,7 @@ end
           res << "#{s}#{t}"
         end
       end
-      assert_equal ["a1", "b0", "c0", "c1"], res
+      assert_equal %w[a1 b0 c0 c1], res
 
       hh = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
       assert_equal "b", key_for(hh, 2)
@@ -2509,7 +2509,7 @@ end
       assert_equal "odd", unless_else(3)
       assert_equal "even", unless_else(0)
       assert_equal "even", unless_else(-4)
-      assert_equal(["neg", "digit", "digit", "tens", "tens", "big", "big"], [-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) })
+      assert_equal(%w[neg digit digit tens tens big big], [-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) })
       x = 3
       assert_equal "big", (x > 2 ? "big" : "small")
       assert_equal 2, (x.even? ? 1 : 2)
@@ -2535,7 +2535,7 @@ end
       mods << "mod-if never" if x == 4
       mods << "mod-unless" unless x == 4
       mods << "mod-unless never" unless x == 3
-      assert_equal ["mod-if", "mod-unless"], mods
+      assert_equal %w[mod-if mod-unless], mods
       # Ruby 4: a line starting with && / || continues the condition
       teen = x >= 13
         || x == 3
@@ -2665,7 +2665,7 @@ end
       assert_equal "no", vs_const(1)
       assert_equal ["text s", "text y", "num 2", "num 2.5", "nil", "?"], [multi("s"), multi(:y), multi(2), multi(2.5), multi(nil), multi([1])]
       assert_equal ["empty", "empty", "val 3"], [nil_or_zero(nil), nil_or_zero(0), nil_or_zero(3)]
-      assert_equal ["zero", "other", "nil"], [zero_first(0), zero_first(5), zero_first(nil)]
+      assert_equal %w[zero other nil], [zero_first(0), zero_first(5), zero_first(nil)]
       assert_equal "A", str_first("a")
       assert_equal "other nil", str_first(nil)
     end
@@ -2679,7 +2679,7 @@ end
         else "many"
         end
       end
-      assert_equal ["one", "five", "many"], words
+      assert_equal %w[one five many], words
       labels = [1, 5].map { |n| "big" if n > 2 }
       assert_equal [nil, "big"], labels
     end
@@ -2702,7 +2702,7 @@ end
     end
 
     def test_early_returns_and_modifiers
-      assert_equal ["neg", "zero", "small", "big"], [early(-1), early(0), early(5), early(50)]
+      assert_equal %w[neg zero small big], [early(-1), early(0), early(5), early(50)]
       assert_equal 4, abs_val(-4)
       assert_equal 4, abs_val(4)
       c = 0
@@ -2745,7 +2745,7 @@ end
         seen << "body"
 
       
-      assert_equal ["three", "body"], seen
+      assert_equal %w[three body], seen
       x = if i > 5 then end #: Integer?
       assert_nil x
       assert_equal 3, i
@@ -2828,11 +2828,11 @@ end
       assert_equal [2, 4], out2
       out3 = [] #: Array[String]
       ensured(out3)
-      assert_equal ["body", "10"], out3
+      assert_equal %w[body 10], out3
       out4 = [] #: Array[String]
       narrowed(out4, true)
       narrowed(out4, false)
-      assert_equal ["6", "8", "4", "nil"], out4
+      assert_equal %w[6 8 4 nil], out4
     end
 
     def test_branch_locals_in_blocks_and_loops
@@ -2954,8 +2954,8 @@ end
       assert_equal "ArgumentError", ArgumentError.new.to_s
       assert_equal "RuntimeError", "#{RuntimeError.new}"
       list = [ArgumentError.new("a1"), TypeError.new("t1")] #: Array[StandardError]
-      assert_equal ["a1", "t1"], list.map(&:message)
-      assert_equal(["ArgumentError", "TypeError"], list.map { |l| l.class.name })
+      assert_equal %w[a1 t1], list.map(&:message)
+      assert_equal(%w[ArgumentError TypeError], list.map { |l| l.class.name })
       assert_equal "[#<ArgumentError: a1>, #<TypeError: t1>]", list.inspect
       assert_equal "#<ControlTests::EdgesApp::Missing: x>", EdgesApp::Missing.new("x").inspect
       assert_equal "ControlTests::EdgesApp::Missing", EdgesApp::Missing.new.message
@@ -2992,7 +2992,7 @@ end
       assert_equal "done 3", tail_while(3)
       out = [] #: Array[String]
       void_while(out)
-      assert_equal ["k0", "k1"], out
+      assert_equal %w[k0 k1], out
       ws = [] #: Array[Integer]
       [1].each do |z|
         w = 0
@@ -3236,7 +3236,7 @@ end
     def test_value_whens_on_untyped_and_optional
       assert_equal ["one", "a or b", "a or b", "nil", "float", "other", "other"],
                    [control_classify(1), control_classify("a"), control_classify(:b), control_classify(nil), control_classify(2.5), control_classify([1]), control_classify(false)]
-      assert_equal ["nil", "xy", "other"], [opt_str(nil), opt_str("y"), opt_str("z")]
+      assert_equal %w[nil xy other], [opt_str(nil), opt_str("y"), opt_str("z")]
     end
 
     # rescue/ensure in inherited, overriding (super inside rescue) and mixed-in methods
@@ -3396,7 +3396,7 @@ end
       out = [] #: Array[String]
       void_ensure_return(out, false)
       void_ensure_return(out, true)
-      assert_equal ["body", "ensure", "body", "ensure"], out
+      assert_equal %w[body ensure body ensure], out
       out = [] #: Array[String]
       assert_equal "body", rescue_then_ensure_return(out, 0)
       assert_equal "rescue", rescue_then_ensure_return(out, 1)
@@ -3407,7 +3407,7 @@ end
       assert_equal 30, first_ok(out, [-1, -2, 3, 4])
       assert_equal(-1, first_ok(out, [-5]))
       assert_equal ["skip bad -1", "skip bad -2", "skip bad -5"], out
-      assert_equal ["zero", "pos", "rescued"], [case_tail(0), case_tail(3), case_tail(-3)]
+      assert_equal %w[zero pos rescued], [case_tail(0), case_tail(3), case_tail(-3)]
     end
 
     def test_rescue_values_in_ivars_and_blocks
@@ -3421,10 +3421,10 @@ end
         err.message.size
       end
       assert_equal 3, got
-      assert_equal ["p1", "p2"], labels([1, 2])
+      assert_equal %w[p1 p2], labels([1, 2])
       e = assert_raises(ArgumentError) { labels([1, -2]) }
       assert_equal "bad -2", e.message
-      assert_equal ["one", "one"], names([1, 1])
+      assert_equal %w[one one], names([1, 1])
       e = assert_raises(ArgumentError) { names([1, 2]) }
       assert_equal "unknown 2", e.message
       e2 = assert_raises(ZeroDivisionError) { divs([1, 0]) }
@@ -3612,7 +3612,7 @@ end
     def test_rescue_ensure_ordering_and_values
       out = [] #: Array[String]
       assert_equal [1, 2], [ordered(out, false), ordered(out, true)]
-      assert_equal ["body", "ensure", "body", "rescue", "ensure"], out
+      assert_equal %w[body ensure body rescue ensure], out
       assert_equal "body value", ensure_value
       assert_equal "pos", value_if(1)
       assert_equal "rescued nonpositive", value_if(0)
@@ -3872,7 +3872,7 @@ end
           grid << cell
         end
       end
-      assert_equal ["1x3", "1x4", "2x3", "2x4"], grid
+      assert_equal %w[1x3 1x4 2x3 2x4], grid
       assert_equal [1, 3, 6, 0], running([1, 2, 3, -6])
       assert_equal [], running([])
       assert_equal 7, control_bump(4)
@@ -4119,7 +4119,7 @@ end
         end
         a += 1
       end
-      assert_equal ["11", "21"], out
+      assert_equal %w[11 21], out
       xs = [3, 1, 2] #: Array[Integer]
       popped = [] #: Array[Integer]
       until xs.empty?
@@ -4153,7 +4153,7 @@ end
       1.upto(0) { |u| steps << 100 + u }
       -1.upto(1) { |u| steps << u }
       assert_equal [5, 4, 2, 1, -1, 0, 1], steps
-      words = ["a", "b", "c", "d"] #: Array[String]
+      words = %w[a b c d] #: Array[String]
       got = [] #: Array[String]
       words.each_with_index do |s, idx|
         next if idx.zero?
@@ -4209,7 +4209,7 @@ end
       out = [] #: Array[String]
       assert_equal 200, find_neg(out, [-2])
       assert_nil find_neg(out, [])
-      assert_equal ["cleanup", "cleanup"], out
+      assert_equal %w[cleanup cleanup], out
       out = [] #: Array[String]
       loops_countdown(5) do |c|
         next if c == 4
@@ -4237,7 +4237,7 @@ end
         else kinds << "v#{v}"
         end
       end
-      assert_equal ["v1", "v3", "last"], kinds
+      assert_equal %w[v1 v3 last], kinds
       assert_equal "string s", first_string([1, nil, "s", "t"])
       assert_equal "no string", first_string([nil])
       assert_equal "no string", first_string([])
@@ -4262,8 +4262,8 @@ end
         seen = v * 10 if v.odd?
         seen.inspect
       end
-      assert_equal ["10", "nil", "30"], out
-      assert_equal ["ruby: \"long\"", "go: nil", "rust: \"long\"", "c: nil"], control_tags(["ruby", "go", "rust", "c"])
+      assert_equal %w[10 nil 30], out
+      assert_equal ["ruby: \"long\"", "go: nil", "rust: \"long\"", "c: nil"], control_tags(%w[ruby go rust c])
     end
 
     # a block param shadows an outer local of the same name without assigning it
@@ -4277,7 +4277,7 @@ end
       assert_equal [3, 6], ys
       assert_equal 10, x
       out = [] #: Array[String]
-      assert_equal "none", last_seen(out, ["a", "b"])
+      assert_equal "none", last_seen(out, %w[a b])
       assert_equal ["item a", "item b"], out
     end
 
@@ -4456,12 +4456,12 @@ end
         w = "s#{z}"
         got << w
       end
-      names = ["ann", "bo"] #: Array[String]
+      names = %w[ann bo] #: Array[String]
       names.each { |n| s = n.upcase
  got << s }
       [4, 5].each { |c| s = c * 2
  got << s.to_s }
-      assert_equal ["2", "4", "s3", "ANN", "BO", "8", "10"], got
+      assert_equal %w[2 4 s3 ANN BO 8 10], got
       out = [] #: Array[String]
       later_outer(out)
       assert_equal ["[\"1\", \"2\"]", "6"], out
@@ -4494,7 +4494,7 @@ end
 
         got << item.to_s
       end
-      assert_equal ["1", "2", "3"], got
+      assert_equal %w[1 2 3], got
       assert_equal [], queue
       assert_equal 3, guard
 
@@ -4507,7 +4507,7 @@ end
 
         shifted << q_while.shift.inspect
       end
-      assert_equal ["1", "2"], shifted
+      assert_equal %w[1 2], shifted
       assert_equal 2, guard
 
       stack = [4, 0] #: Array[Integer]
@@ -4519,7 +4519,7 @@ end
 
         popped << top.to_s
       end
-      assert_equal ["0", "4"], popped
+      assert_equal %w[0 4], popped
       assert_equal 2, guard
     end
 
@@ -4772,7 +4772,7 @@ end
         end
         log << "x#{x}"
       end while x && x < 3
-      assert_equal [[1, 3, 5], 5, 3, ["x1", "x3"]], [odd, i, j, log]
+      assert_equal [[1, 3, 5], 5, 3, %w[x1 x3]], [odd, i, j, log]
     end
 
     # #52: redo in a block compiled as a closure reruns it with the same arguments
@@ -4820,7 +4820,7 @@ end
 
         out << "#{k}end"
       end until k > 9
-      assert_equal ["1w1", "1w3", "1e2", "3w1", "3w3", "3e2", "3end", "4w1", "4w3", "4e2"], out
+      assert_equal %w[1w1 1w3 1e2 3w1 3w3 3e2 3end 4w1 4w3 4e2], out
       assert_equal [4, 6, true], [k, tries, redone]
     end
 
@@ -5257,7 +5257,7 @@ end
     def test_optional_block
       assert_equal [nil, 20], [control_safe(1), control_safe(2) { |v| v * 10 }]
       assert_equal [3, 4], [control_guarded(3), control_guarded(3) { |v| v + 1 }]
-      assert_equal ["none", "some"], [control_either, control_either { "some" }]
+      assert_equal %w[none some], [control_either, control_either { "some" }]
       assert_equal [false, true], [control_given, control_given { "x" }]
     end
   end
@@ -5356,8 +5356,8 @@ end
   class ControlRestBlockTest < Minitest::Test
     def test_named_params_bind_from_rest
       got = [] #: Array[untyped]
-      ControlRestRouter.new(["7", "x"]).each_capture { |id, rest| got << [id, rest] }
-      assert_equal [["7", "x"], [1, "7"]], got
+      ControlRestRouter.new(%w[7 x]).each_capture { |id, rest| got << [id, rest] }
+      assert_equal [%w[7 x], [1, "7"]], got
     end
 
     def test_rest_param_collects
@@ -5431,7 +5431,7 @@ end
 
     def test_match_sets_last_match
       m = "k=v".match(/(\w)=(\w)/)
-      assert_equal ["k", "v", "k"], [::Regexp.last_match(1), ::Regexp.last_match(2), m&.[](1)]
+      assert_equal %w[k v k], [::Regexp.last_match(1), ::Regexp.last_match(2), m&.[](1)]
     end
   end
 
@@ -5459,7 +5459,7 @@ end
     end
 
     def test_narrowed_parameter_reassigned
-      assert_equal ["x", "ax"], [control_refill, control_refill("a")]
+      assert_equal %w[x ax], [control_refill, control_refill("a")]
     end
 
     def test_include_untyped_nil
@@ -5522,7 +5522,7 @@ end
         out = control_die
         control_show(out)
       end
-      assert_equal ["died", "k", "died"], [a.message, b.message, c.message]
+      assert_equal %w[died k died], [a.message, b.message, c.message]
     end
   end
 
@@ -5636,7 +5636,7 @@ end
     def control_splats(s, sym, pair) = [[*s, "z"], [:x, *sym], [0, *pair]]
 
     def test_splat_non_array
-      assert_equal [["u", "z"], [:x], [0, 1, 2]], control_splats("u", nil, [1, 2])
+      assert_equal [%w[u z], [:x], [0, 1, 2]], control_splats("u", nil, [1, 2])
       assert_equal %i[x y], control_splats("u", :y, [1, 2])[1]
       m = "ab".match(/(a)(c)?/)
       assert_equal [["a", "a", nil], [], [["k", 1]], [1, 2]], [[*m], [*"zz".match(/q/)], [*{ "k" => 1 }], [*1..2]]
@@ -5765,7 +5765,7 @@ end
     def control_pick(n)
       case n
       when 0 then "s"
-      when 1 then ["a", "b"]
+      when 1 then %w[a b]
       when 2 then ["c", nil]
       end
     end
@@ -5790,7 +5790,7 @@ end
         path, base = control_pick(i)
         [path, base]
       end
-      assert_equal [["s", nil], ["a", "b"], ["c", nil], [nil, nil]], got
+      assert_equal [["s", nil], %w[a b], ["c", nil], [nil, nil]], got
       tok, num, = control_trip(1)
       first, = control_trip(0)
       assert_equal ["t", 1, nil], [tok, num, first]
@@ -6005,7 +6005,7 @@ module ControlTests
       y.each_pair_rest { |a, b, c| got << [a, b, c] }
       y.each_pair_rest { |a, b, *r| got << [a, b, r] }
       y.each_pair_rest { |a, *r| got << [a, r] }
-      assert_equal [[1, "a"], [1, "a", "b"], [1, "a", ["b"]], [1, ["a", "b"]]], got
+      assert_equal [[1, "a"], [1, "a", "b"], [1, "a", ["b"]], [1, %w[a b]]], got
     end
   end
 end
@@ -6088,7 +6088,7 @@ module ControlTests
   class ExceptionArityTest < Minitest::Test
     def test_two_argument_constructors
       e = NameError.new("msg", "name")
-      assert_equal ["name", "msg"], [e.name, e.message]
+      assert_equal %w[name msg], [e.name, e.message]
     end
   end
 end

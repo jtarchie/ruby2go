@@ -63,8 +63,8 @@ module YamlTests
   class StructureTest < Minitest::Test
     def test_collections_keep_order
       h = YAML.load("z: 1\na:\n  - b: 1\n    c: [x, 'y', \"z\"]\n  - d\nm: {k: v}") #: Hash[String, untyped]
-      assert_equal ["z", "a", "m"], h.keys
-      assert_equal({ "z" => 1, "a" => [{ "b" => 1, "c" => ["x", "y", "z"] }, "d"], "m" => { "k" => "v" } }, h)
+      assert_equal %w[z a m], h.keys
+      assert_equal({ "z" => 1, "a" => [{ "b" => 1, "c" => %w[x y z] }, "d"], "m" => { "k" => "v" } }, h)
     end
 
     def test_mixed_keys

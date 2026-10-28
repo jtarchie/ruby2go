@@ -38,7 +38,7 @@ data = <<~CSV
 CSV
 inv = Inventory.new(data)
 report = CSV.generate do |csv|
-  csv << ["category", "total"]
+  csv << %w[category total]
   inv.totals.each { |k, v| csv << [k, v] }
 end
 puts report
@@ -47,7 +47,7 @@ p CSV.parse(data).last
 p CSV.parse_line("1;2;;\"x;y\"", col_sep: ";"), CSV.parse_line(""), "a,\"\",b".parse_csv
 p CSV.parse("a,b\r\nc,d\r\n")
 p CSV.generate_line(["a", nil, "", "b,c", "q\"t", 1, 2.5, " sp", "nl\n"])
-p ["x", "y"].to_csv, [1, nil, :sym].to_csv, CSV.generate_line(["a", "b\tc"], col_sep: "\t")
+p %w[x y].to_csv, [1, nil, :sym].to_csv, CSV.generate_line(%W[a b\tc], col_sep: "\t")
 puts CSV.generate(col_sep: "|") { |c| c << ["a|b", "c"] }
 begin
   CSV.parse("ok\n\"abc")

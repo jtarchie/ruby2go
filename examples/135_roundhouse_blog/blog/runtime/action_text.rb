@@ -164,9 +164,9 @@ module ActionText
     #
     # A real CONSTANT, unlike `tag_name` above, because the app reads it
     # as one (`... + ActionText::Attachment::ATTRIBUTES`).
-    ATTRIBUTES = [
-      "sgid", "content-type", "url", "href", "filename", "filesize",
-      "width", "height", "previewable", "presentation", "caption", "content"
+    ATTRIBUTES = %w[
+      sgid content-type url href filename filesize
+      width height previewable presentation caption content
     ]
 
     def initialize(attributes)
@@ -513,7 +513,7 @@ module ActionText
     end
 
     def self.void_element(name)
-      ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"].include?(name)
+      %w[area base br col embed hr img input link meta param source track wbr].include?(name)
     end
 
     # ---- selectors ----------------------------------------------------
@@ -810,7 +810,7 @@ module ActionText
             elsif !close && name == skipping
               skip_depth += 1
             end
-          elsif ["script", "style"].include?(name)
+          elsif %w[script style].include?(name)
             unless close || void
               skipping = name
               skip_depth = 1
@@ -826,7 +826,7 @@ module ActionText
                 names.pop
                 starts.pop
                 segment = out[start, out.length - start].to_s
-                if ["ul", "ol"].include?(name)
+                if %w[ul ol].include?(name)
                   list_names.pop
                   list_counts.pop
                 end
@@ -835,7 +835,7 @@ module ActionText
               end
             elsif !void
               list_counts[list_counts.length - 1] = list_counts[list_counts.length - 1] + 1 if name == "li" && list_counts.length > 0
-              if ["ul", "ol"].include?(name)
+              if %w[ul ol].include?(name)
                 list_names << name
                 list_counts << 0
               end
@@ -867,7 +867,7 @@ module ActionText
     # not an omission: PlainTextConversion aliases the block rule to
     # `h1` and `p` ONLY, and defines separate rules for the five below.
     def self.scoped_element(name)
-      ["p", "h1", "div", "blockquote", "figcaption", "li", "ul", "ol"].include?(name)
+      %w[p h1 div blockquote figcaption li ul ol].include?(name)
     end
 
     # `segment` is the element's own accumulated text; the return value
@@ -876,11 +876,11 @@ module ActionText
     # off them, for `<li>` its own list is still on top.
     def self.close_scoped(name, segment, list_names, list_counts)
       inner = chomp_newlines(segment)
-      return inner + "\n\n" if ["p", "h1"].include?(name)
+      return inner + "\n\n" if %w[p h1].include?(name)
       return inner + "\n" if name == "div"
       return "[" + inner + "]" if name == "figcaption"
       return quote_wrap(inner + "\n\n") if name == "blockquote"
-      if ["ul", "ol"].include?(name)
+      if %w[ul ol].include?(name)
         # `break_if_nested_list` — a list inside another list starts on
         # its own line.
         return list_names.length > 0 ? "\n" + inner + "\n\n" : inner + "\n\n"

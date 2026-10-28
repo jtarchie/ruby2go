@@ -69,7 +69,7 @@ class UserAgent
 
   DEFAULT_USER_AGENT = "Mozilla/4.0 (compatible)"
 
-  GECKO_BROWSERS = ["PaleMoon", "Firefox", "Camino", "Iceweasel", "Seamonkey"]
+  GECKO_BROWSERS = %w[PaleMoon Firefox Camino Iceweasel Seamonkey]
 
   # `Browsers::Webkit::BuildVersions` — the WebKit build → Safari
   # version table for the releases before Safari 3, which shipped no
@@ -348,7 +348,7 @@ class UserAgent
       return "" if app.comment.empty?
 
       first = app.comment[0]
-      return "" if ["compatible", "Mobile"].include?(first)
+      return "" if %w[compatible Mobile].include?(first)
       return "Windows" if !first.nil? && first.match?(/\AWindows /)
 
       first.nil? ? "" : first

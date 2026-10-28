@@ -452,7 +452,7 @@ module RxjsonTests
       res = [/a/, /b/i, /c/m] #: Array[Regexp]
       assert_equal "[/a/, /b/i, /c/m]", res.inspect
       assert_equal "[/a/, /b/i, /c/m]", res.to_s
-      assert_equal(["a", "b", "c"], res.map { |r| r.source })
+      assert_equal(%w[a b c], res.map { |r| r.source })
       assert_equal([false, true, false], res.map { |r| r.match?("ABC") })
       assert_equal 2, res.select { |r| r.match?("bab") }.size
       assert_equal "if-match", ("cat" =~ /a/ ? "if-match" : "")
@@ -549,13 +549,13 @@ module RxjsonTests
       assert_equal "[/1+/, /2+/]", res.inspect
       assert_equal([false, true], res.map { |r| r.match?("22") })
       words = %w[apple Banana cherry avocado]
-      assert_equal(["apple", "avocado"], words.select { |w| w.match?(/\Aa/i) })
-      assert_equal(["apple", "cherry", "avocado"], words.reject { |w| w.match?(/an/) })
+      assert_equal(%w[apple avocado], words.select { |w| w.match?(/\Aa/i) })
+      assert_equal(%w[apple cherry avocado], words.reject { |w| w.match?(/an/) })
       assert_equal 2, words.select { |w| w.match?(/e/) }.size
       assert_equal("cherry", words.find { |w| w.match?(/rr/) })
-      assert_equal(["Banana", "apple", "cherry", "avocado"], words.sort_by { |w| w.match?(/\A[A-Z]/) ? 0 : 1 })
+      assert_equal(%w[Banana apple cherry avocado], words.sort_by { |w| w.match?(/\A[A-Z]/) ? 0 : 1 })
       assert_equal "{false => [\"apple\", \"cherry\", \"avocado\"], true => [\"Banana\"]}", words.group_by { |w| w.match?(/an/) }.inspect
-      assert_equal(["apple", "Banana", "avocado"], words.select { |w| /a/ === w })
+      assert_equal(%w[apple Banana avocado], words.select { |w| /a/ === w })
       assert_equal(false, words.any? { |w| w.match?(/z/) })
       assert_equal(true, words.all? { |w| w.match?(/\w/) })
       assert_equal "eayo", words.map { |w| w.match(/(.)\z/).to_s }.join
@@ -564,14 +564,14 @@ module RxjsonTests
     # `when` with a Regexp held in a constant or a local is still Regexp#===.
     def test_when_with_constant_or_local_regexp
       re = /b/
-      got = ["abc", "a1", "zz"].map do |s|
+      got = %w[abc a1 zz].map do |s|
         case s
         when DIG then "const"
         when re then "local"
         else "none"
         end
       end
-      assert_equal ["local", "const", "none"], got
+      assert_equal %w[local const none], got
       assert_equal true, re === "b"
       assert_equal true, DIG === "5"
       assert_equal false, re.===("x")
@@ -584,7 +584,7 @@ module RxjsonTests
         hit = pats.find { |re2, v| re2.match?(s) && v != "" }
         hit ? hit[1] : "none"
       end
-      assert_equal ["int", "word", "none"], got
+      assert_equal %w[int word none], got
       assert_equal ["\\A\\d+\\z", "\\A[a-z]+\\z"], pats.keys.map(&:source)
       assert_equal "{/\\A\\d+\\z/ => \"int\", /\\A[a-z]+\\z/ => \"word\"}", pats.inspect
     end
@@ -640,7 +640,7 @@ module RxjsonTests
       if (m = line.match(/(\w+)=(\w+)/))
         got = [m[1].to_s, m[2].to_s]
       end
-      assert_equal ["name", "bob"], got
+      assert_equal %w[name bob], got
       m2 = "x".match(/(y)?x/)
       assert_equal "default", (m2 ? m2[1] || "default" : "")
       m3 = "k=".match(/(\w)=(\w)?/)
@@ -650,8 +650,8 @@ module RxjsonTests
         assert_equal(["\"k\"", "nil"], m3.captures.map { |c| c.inspect })
       end
       p1 = /(\d+)/
-      assert_equal(["1", "22", ""], ["a1", "b22", "c"].map { |s| (mm = p1.match(s)) ? mm[1].to_s : "" })
-      assert_equal [1, 3], ["1", "x", "3"].select { |s| s.match?(/\A\d+\z/) }.map(&:to_i)
+      assert_equal(["1", "22", ""], %w[a1 b22 c].map { |s| (mm = p1.match(s)) ? mm[1].to_s : "" })
+      assert_equal [1, 3], %w[1 x 3].select { |s| s.match?(/\A\d+\z/) }.map(&:to_i)
       cm = "ab".match(/(a)/)
       assert cm
       return unless cm
@@ -706,7 +706,7 @@ module RxjsonTests
       assert_equal 2, emails.select { |e| e.match?(re) }.size
       assert_equal("bad", emails.find { |e| !e.match?(re) })
       assert_equal("a@b.com", emails.min_by { |e| (e =~ /@/) || 99 })
-      assert_equal(["A", "B"], "a-b".match(/(\w)-(\w)/)&.captures&.map { |c| c.to_s.upcase })
+      assert_equal(%w[A B], "a-b".match(/(\w)-(\w)/)&.captures&.map { |c| c.to_s.upcase })
       assert_nil("ab".match(/(\w)-(\w)/)&.captures&.map { |c| c.to_s.upcase })
       assert_equal "K|V", "k=v; x=y".match(/(\w)=(\w)/).to_s.split("=").map(&:upcase).join("|")
       assert_equal "\"A\"", "abc".match(/b/)&.pre_match&.upcase.inspect
@@ -798,9 +798,9 @@ b/
       wre = /#{wv}/i #: Regexp
       rh = { "k" => wre, "j" => /j/ } #: Hash[String, Regexp]
       assert_equal "/w/i", rh["k"].inspect
-      assert_equal ["w", "j"], rh.values.map(&:source)
+      assert_equal %w[w j], rh.values.map(&:source)
       assert_equal "{\"k\" => /w/i, \"j\" => /j/}", rh.inspect
-      assert_equal ["w", "z"], [wre, /z/].map(&:source)
+      assert_equal %w[w z], [wre, /z/].map(&:source)
       ny = "q"
       nm = /(?<n>#{ny})(?<o>y)?/.match("aq")
       assert nm
@@ -877,7 +877,7 @@ b/
         k, v = m2.captures
         assert_equal "\"key\"", k.inspect
         assert_equal "\"value\"", v.inspect
-        assert_equal(["KEY", "VALUE"], m2.captures.map { |c| c.to_s.upcase })
+        assert_equal(%w[KEY VALUE], m2.captures.map { |c| c.to_s.upcase })
       end
       path = "/posts/42.json"
       assert_equal 7, (path =~ /\d+/)
@@ -951,7 +951,7 @@ b/
       assert_equal "c", wgot
       assert_equal "12", num("ab12")
       assert_nil num("ab")
-      ms = ["a1", "b", "c3"].map { |s| s.match(/(\w)(\d)/) }
+      ms = %w[a1 b c3].map { |s| s.match(/(\w)(\d)/) }
       assert_equal ["#<MatchData \"a1\" 1:\"a\" 2:\"1\">", "nil", "#<MatchData \"c3\" 1:\"c\" 2:\"3\">"], ms.map(&:inspect)
       assert_equal 2, ms.reject { |mm| mm.nil? }.size
       assert_equal(["a", "-", "c"], ms.map { |mm| mm ? mm[1] : "-" })
@@ -971,7 +971,7 @@ b/
       assert_equal "{\"a\" => \"1\", \"b\" => \"2\"}", kv.inspect
       mu = "k=v".match(/(\w)=(\w)/) #: untyped
       assert_equal "k", mu[1]
-      assert_equal ["k", "v"], mu.captures
+      assert_equal %w[k v], mu.captures
       assert_equal "", mu.pre_match
       assert_equal "", mu.post_match
       assert_equal "k=v", mu.to_s
@@ -995,7 +995,7 @@ b/
     def test_captures_compact_drops_the_unmatched
       m_compact = /(a)(b)?/.match("a")
       assert_equal 1, (m_compact ? m_compact.captures.compact.size : -1)
-      found = ["a1", "b", "c3"].map { |s| s.match(/\d/) }.compact
+      found = %w[a1 b c3].map { |s| s.match(/\d/) }.compact
       assert_equal 2, found.size
     end
 
@@ -1171,7 +1171,7 @@ b/
 
     # /o interpolates once, on first evaluation
     def test_o_interpolates_once_on_first
-      got = ["a", "b"].map do |x|
+      got = %w[a b].map do |x|
         re = /#{x}/o
         "#{re.source} #{re.match?("b")}"
       end
@@ -1257,14 +1257,14 @@ b/
     def test_when_with_an_untyped_or
       ur = /x/ #: untyped
       opt = /d/ #: Regexp?
-      got = ["xy", "ad", "zz"].map do |s|
+      got = %w[xy ad zz].map do |s|
         case s
         when ur then "untyped"
         when opt then "optional"
         else "none"
         end
       end
-      assert_equal ["untyped", "optional", "none"], got
+      assert_equal %w[untyped optional none], got
     end
 
     # \b uses Unicode word characters
@@ -1297,7 +1297,7 @@ b/
       rs = [/a/] #: Array[Regexp?]
       assert_equal "[\"(?-mix:a)\"]", rs.to_json
       assert_equal "{\"m\":\"a\"}", { "m" => "ab".match(/(a)/) }.to_json
-      assert_equal "[\"1\",null]", ["a1", "b"].map { |word| word.match(/\d/) }.to_json
+      assert_equal "[\"1\",null]", %w[a1 b].map { |word| word.match(/\d/) }.to_json
     end
 
     # matching against invalid UTF-8 raises ArgumentError like MRI
@@ -1356,15 +1356,15 @@ b/
 
     # scan and split with regexps
     def test_scan_and_split
-      assert_equal ["1", "22", "333"], "a1b22c333".scan(/\d+/)
-      assert_equal [["k1", "v1"], ["k2", "v2"]], "k1=v1; k2=v2".scan(/(\w+)=(\w+)/)
+      assert_equal %w[1 22 333], "a1b22c333".scan(/\d+/)
+      assert_equal [%w[k1 v1], %w[k2 v2]], "k1=v1; k2=v2".scan(/(\w+)=(\w+)/)
       assert_equal "[[\"a\", nil], [nil, \"b\"]]", "ab".scan(/(a)|(b)/).inspect
       assert_equal "[]", "none".scan(/\d/).inspect
-      assert_equal ["a", "b", "c", "d"], "a, b,c ,d".split(/\s*,\s*/)
-      assert_equal ["a", "b", "c"], "a1b2c3".split(/\d/)
-      assert_equal ["a", "b", "c"], "abc".split(//)
+      assert_equal %w[a b c d], "a, b,c ,d".split(/\s*,\s*/)
+      assert_equal %w[a b c], "a1b2c3".split(/\d/)
+      assert_equal %w[a b c], "abc".split(//)
       assert_equal ["a", "-", "b", "_", "c"], "a-b_c".split(/([-_])/)
-      assert_equal ["1", "2"], "1,2,,".split(/,/)
+      assert_equal %w[1 2], "1,2,,".split(/,/)
       assert_equal ["", "a"], ",a".split(/,/)
       assert_equal ["one", "", "two"], "one  two".split(/ /)
       assert_equal "1,234,567", 1_234_567.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
@@ -1540,7 +1540,7 @@ b/
       assert_equal "{\"p\":\"Pt(4)\"}", JSON.generate({ "p" => Pt.new(4) })
       assert_equal "{\"id\":1,\"tags\":[\"a\"],\"pt\":\"Pt(1)\"}", Post.new(1, ["a"]).to_json
       assert_equal "{\"id\":null,\"tags\":[],\"pt\":\"Pt(1)\"}", Post.new(nil, []).to_json
-      assert_equal "[{\"id\":2,\"tags\":[\"x\",\"y\"],\"pt\":\"Pt(1)\"}]", [Post.new(2, ["x", "y"])].to_json
+      assert_equal "[{\"id\":2,\"tags\":[\"x\",\"y\"],\"pt\":\"Pt(1)\"}]", [Post.new(2, %w[x y])].to_json
       assert_equal "{\"posts\":[{\"id\":3,\"tags\":[],\"pt\":\"Pt(1)\"}]}", JSON.generate({ "posts" => [Post.new(3, [])] })
       assert_equal "{\"special\":{\"id\":4,\"tags\":[\"s\"],\"pt\":\"Pt(1)\"}}", Special.new(4, ["s"]).to_json
       assert_equal "[{\"special\":{\"id\":5,\"tags\":[],\"pt\":\"Pt(1)\"}}]", [Special.new(5, [])].to_json
@@ -1582,7 +1582,7 @@ b/
       assert_equal "null", JSON.generate(x)
       assert_equal "5", JSON.generate(y)
       assert_equal "[2,4,6]", [1, 2, 3].map { |i| i * 2 }.to_json
-      assert_equal "[\"a\",\"b\"]", ["b", "a"].sort.to_json
+      assert_equal "[\"a\",\"b\"]", %w[b a].sort.to_json
       assert_equal "{\"k\":[\"1\",\"2\"]}", { "k" => [1, 2].map { |i| i.to_s } }.to_json
       assert_equal "[1]", [1].to_json(nil)
       assert_equal "\"s\"", "s".to_json(1, 2)
@@ -1623,7 +1623,7 @@ b/
       assert_equal "\"bad \\\"q\\\"\"", e.to_json
       assert_equal "[\"bad \\\"q\\\"\"]", JSON.generate([e.message])
       assert_equal "[1,[2,\"x\"],{\"k\":null}]", [1, [2, "x"], { "k" => nil }].to_json
-      assert_equal "[[\"x1\",true],[\"y2\",false]]", ["x1", "y2"].map { |s| [s, s.match?(/1/)] }.to_json
+      assert_equal "[[\"x1\",true],[\"y2\",false]]", %w[x1 y2].map { |s| [s, s.match?(/1/)] }.to_json
       assert_equal "1", enc(1)
       assert_equal "\"s\"", enc("s")
       assert_equal "null", enc(nil)
@@ -1764,7 +1764,7 @@ b/
       assert_equal "ruby", Regexp.new("(?<lang>r\\w+)").match("I like ruby")&.[](1)
       assert_equal true, Regexp.new("\\Ahello\\z").match?("hello")
       assert_equal true, Regexp.new("^b$").match?("a\nb\nc")
-      assert_equal ["ab", "AB"], %w[ab AB cd].grep(Regexp.new("ab", "i"))
+      assert_equal %w[ab AB], %w[ab AB cd].grep(Regexp.new("ab", "i"))
       assert_equal Regexp.new("a+"), /a+/
     end
 

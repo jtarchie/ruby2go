@@ -140,7 +140,7 @@ module AssertionTests
         puts "out"
         $stderr.print "err"
       end
-      assert_equal ["out\n", "err"], [out, err]
+      assert_equal %W[out\n err], [out, err]
       assert_equal "In stdout.\nExpected: \"x\"\n  Actual: \"y\"", failure(-> { assert_output("x") { print "y" } })
       assert_equal "In stderr.\nExpected /z/ to match \"\".", failure(-> { assert_output(nil, /z/) { nil } })
       assert_equal 2, counted(-> { assert_output("", "") { nil } })

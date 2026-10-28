@@ -320,7 +320,7 @@ module SorbetTests
     def test_enum
       assert_equal "desc", Args.field_kind(Field::Desc)
       assert_equal "name", Args.field_kind(Field::Name)
-      assert_equal ["name", "description"], [Field::Name.serialize, Field::Desc.serialize]
+      assert_equal %w[name description], [Field::Name.serialize, Field::Desc.serialize]
       assert_equal "#<SorbetTests::Field::Desc>", Field::Desc.inspect
       assert_equal "NAME", Field::Name.label
     end
@@ -330,7 +330,7 @@ module SorbetTests
       assert_equal(-1, Args.maybe_yield)
       assert_equal(31, Args.alias_yield { |x| x + 1 })
       assert_equal 3, Args.typed_yield(Integer) { 3 }
-      assert_equal ["none", "block"], [Args.maybe_untyped_block, Args.maybe_untyped_block { 1 }]
+      assert_equal %w[none block], [Args.maybe_untyped_block, Args.maybe_untyped_block { 1 }]
       assert_equal(-1, Args.alias_yield)
       assert_equal "block true", Args.loose_block(true) { 1 }
       assert_equal "none false", Args.loose_block(false)

@@ -34,7 +34,7 @@ module StdlibHardeningTests
     end
 
     def test_parse_still_takes_a_multi_character_col_sep
-      assert_equal [["a", "b"]], CSV.parse("a::b", col_sep: "::")
+      assert_equal [%w[a b]], CSV.parse("a::b", col_sep: "::")
     end
 
     # the generator never raises: an empty col_sep joins the fields, an empty quote_char quotes nothing
@@ -145,7 +145,7 @@ module StdlibHardeningTests
       assert_equal 4, f.pos
       assert_equal "two\n", f.gets
       f.rewind
-      assert_equal ["one\n", "two\n"], f.readlines
+      assert_equal %W[one\n two\n], f.readlines
       assert_equal true, f.eof?
       f.close!
     end
@@ -311,7 +311,7 @@ module StdlibHardeningTests
         assert_equal ["IOError", "IOError", 0], [StdlibHardeningTests.raised { w.lineno }, StdlibHardeningTests.raised { w.lineno = 2 }, w.write("")]
         w.close
         r, pw = IO.pipe
-        assert_equal ["ArgumentError", "ArgumentError"], [StdlibHardeningTests.raised { r.readpartial(-1) }, StdlibHardeningTests.raised { r.read_nonblock(-1) }]
+        assert_equal %w[ArgumentError ArgumentError], [StdlibHardeningTests.raised { r.readpartial(-1) }, StdlibHardeningTests.raised { r.read_nonblock(-1) }]
         r.close
         pw.close
         e = begin; IO.read(path, -1, -1); rescue ArgumentError => x; x.message; end
@@ -407,7 +407,7 @@ module StdlibHardeningTests
         StdlibHardeningTests.raised { Process.spawn({}, "true", unsetenv_others: 1) }
       ]
       assert_equal ["Errno::EINVAL"] * 3 + ["none"] + ["ArgumentError"] * 3 + ["Errno::ENOENT", "ArgumentError"], got
-      assert_equal ["ENV", "TypeError"], [ENV.to_s, StdlibHardeningTests.raised { ENV.dup }]
+      assert_equal %w[ENV TypeError], [ENV.to_s, StdlibHardeningTests.raised { ENV.dup }]
     end
   end
 end

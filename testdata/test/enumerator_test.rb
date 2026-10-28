@@ -82,7 +82,7 @@ module EnumeratorTests
       assert_equal [0, 1, 2], [t.next, t.next, t.next]
       assert_equal 3, t.size
       c = "héy".each_char
-      assert_equal ["h", "é"], [c.next, c.next]
+      assert_equal %w[h é], [c.next, c.next]
       assert_equal 3, c.size
       l = "a\nb\n".each_line
       assert_equal "a\n", l.next
@@ -125,7 +125,7 @@ module EnumeratorTests
       assert_equal(%w[a0 b1], %w[a b].each_with_index.map { |x, i| "#{x}#{i}" })
       assert_equal [3, 6], [1, 2].each.with_object([]) { |x, acc| acc << x * 3 }
       assert_equal [3, 3], [1, 2, 3].each_slice(2).map(&:sum)
-      assert_equal(["h", "ee"], "he".each_char.with_index.map { |ch, i| ch * (i + 1) })
+      assert_equal(%w[h ee], "he".each_char.with_index.map { |ch, i| ch * (i + 1) })
       assert_equal [[3, 1], ["x"]], [Basket.new("3", "1").each_slice(2).first.map(&:to_i), Basket.new("x").to_a]
       assert_equal [["a", 0], ["b", 1]], Basket.new("a", "b").each_with_index.to_a
     end

@@ -164,7 +164,7 @@ module InferTests
     def test_untyped_fallbacks
       r = InferTests::FallbackBlock.new
       sorted = [3, 1, 2].map { |i| InferTests::FallbackCmp.send(:new, i) }.sort.map(&:n)
-      assert_equal(["a", "a"], InferTests::FallbackFeed.new.each { "a" })
+      assert_equal(%w[a a], InferTests::FallbackFeed.new.each { "a" })
       assert_equal [3, 10, :none, [2, 4], [1, 2, 3]], [r.run { |a, b| a + b }, r.maybe { |x| x * 2 }, r.maybe, InferTests::FallbackKid.new.map { |x| x * 2 }, sorted]
     end
 

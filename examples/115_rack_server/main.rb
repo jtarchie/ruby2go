@@ -40,7 +40,7 @@ class App
     elsif path == "/countdown"
       [200, text, Countdown.new(3)]
     else
-      [404, text.merge("x-list" => ["a", "b"]), ["no route for #{method} #{path}"]]
+      [404, text.merge("x-list" => %w[a b]), ["no route for #{method} #{path}"]]
     end
   end
 end

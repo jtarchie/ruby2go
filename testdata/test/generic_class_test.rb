@@ -304,7 +304,7 @@ module GenericClassTests
       ints.push(1).push(2)
       strs.push("x").push("y")
       assert_equal [2, 1], ints.to_a
-      assert_equal ["y", "x"], strs.to_a
+      assert_equal %w[y x], strs.to_a
       assert_equal 3, ints.to_a.sum
     end
 
@@ -413,7 +413,7 @@ module GenericClassTests
       s = nil
       assert_equal "none", s ? s.name : "none"
       shapes = [NilSquare.new, nil, NilShape.new] #: Array[NilShape?]
-      assert_equal ["square", "shape"], shapes.compact.map(&:name)
+      assert_equal %w[square shape], shapes.compact.map(&:name)
       assert_equal 1, shapes.count(&:nil?)
     end
 

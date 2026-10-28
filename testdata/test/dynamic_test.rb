@@ -1586,7 +1586,7 @@ module DynamicTests
 
     def test_send_may_call_private_methods_unlike_public_send
       send_v = VaultSend.new
-      assert_equal(["open", "shh"], ["open", "secret"].map { |meth| send_v.send(meth) })
+      assert_equal(%w[open shh], %w[open secret].map { |meth| send_v.send(meth) })
       assert_equal "shh", ident_send(send_v).send(:secret)
     end
 
@@ -1787,7 +1787,7 @@ module DynamicTests
         got << w.size.to_s if w
         got << "none" unless w
       end
-      assert_equal ["2", "2", "0", "none"], got
+      assert_equal %w[2 2 0 none], got
     end
 
     def test_narrowing_holds_inside_a_block_in_the_branch
@@ -1804,7 +1804,7 @@ module DynamicTests
 
         got << w.upcase
       end
-      assert_equal ["W", "WWW"], got
+      assert_equal %w[W WWW], got
     end
 
     def test_guards_inside_blocks_and_and_chains
@@ -2057,7 +2057,7 @@ module DynamicTests
       assert_equal 3, maybes.size
       assert_equal 1, maybes.select { |m| m.nil? }.size
       assert_equal([false, true, false], maybes.map { |m| m.nil? })
-      assert_equal(["1", "nil", "2"], maybes.map { |m| m.inspect })
+      assert_equal(%w[1 nil 2], maybes.map { |m| m.inspect })
       assert_equal(["1", "", "2"], maybes.map { |m| m.to_s })
       assert_equal([10, 0, 20], maybes.map { |m| (m || 0) * 10 })
     end
@@ -2089,7 +2089,7 @@ module DynamicTests
         w2 = x
         got << w2&.+(1).inspect
       end
-      assert_equal ["2", "nil", "4"], got
+      assert_equal %w[2 nil 4], got
     end
 
     def test_nilable_struct_equality_uses_the_class_equals
@@ -2315,7 +2315,7 @@ module DynamicTests
       assert_equal "true", g.flip(false).inspect
       assert_equal "-0.5:sym", g.mixed(-0.5, :sym)
       assert_equal "1.0e+20:a b", g.mixed(1e20, :"a b")
-      assert_equal 3, g.count_words(["a", "b", "c"])
+      assert_equal 3, g.count_words(%w[a b c])
       assert_equal 1, g.count_words(["ü"])
     end
 
@@ -2374,13 +2374,13 @@ module DynamicTests
       assert_equal "yo, ada", g.send(:greet, "yo")
       assert_equal "ada", g.public_send(:name)
       assert_equal "(m)", g.send(:wrap, "m", "(", ")")
-      assert_equal(["\"hello, ada\"", "\"\"", "\"ada\"", "nil"], ["greet", "shout", "name", "lucky"].map { |m| g.send(m).inspect })
+      assert_equal(["\"hello, ada\"", "\"\"", "\"ada\"", "nil"], %w[greet shout name lucky].map { |m| g.send(m).inspect })
       assert_equal(["\"hello, ada\"", "\"ada\""], %i[greet name].map { |m| g.public_send(m).inspect })
       assert_equal "3", g.send("sum", 1, 2).inspect
       assert_equal "\"ghost glide(1)\"", ghost.send("glide", 1).inspect
       assert_equal "\"ghost anything()\"", ghost.send(:anything).inspect
       assert_equal([true, false, true, false, true, false], ["name", "fly", :greet, "secret", "to_s", "gone"].map { |m| g.respond_to?(m) })
-      assert_equal([true, false], ["glow", "fly"].map { |m| ghost.respond_to?(m) })
+      assert_equal([true, false], %w[glow fly].map { |m| ghost.respond_to?(m) })
     end
 
     def test_method_missing_receives_unknown_names_and_their_arguments
@@ -2851,7 +2851,7 @@ module DynamicTests
       assert_equal "nil", h["zz"].inspect
       assert_equal "\"bee\"", h.fetch("b", 0).inspect
       assert_equal "0", h.fetch("zz", 0).inspect
-      assert_equal ["a", "b", "c"], h.keys
+      assert_equal %w[a b c], h.keys
       got = [] #: Array[String]
       h.each { |k, v| got << "#{k}=#{v.inspect} #{truth(v)}" }
       assert_equal ["a=1 truthy", "b=\"bee\" truthy", "c=nil falsy"], got
@@ -2868,7 +2868,7 @@ module DynamicTests
     end
 
     def test_symbol_keyed_untyped_hash_as_configuration
-      cfg = { port: 8080, host: "localhost", tags: ["a", "b"] } #: Hash[Symbol, untyped]
+      cfg = { port: 8080, host: "localhost", tags: %w[a b] } #: Hash[Symbol, untyped]
       assert_equal 8081, (cfg[:port] || 80) + 1
       assert_equal "LOCALHOST", cfg[:host].upcase
       assert_equal 2, cfg[:tags].size
@@ -2945,7 +2945,7 @@ module DynamicTests
   class DynamicOverloadAndProcTest < Minitest::Test
     def test_arity_overload_on_untyped
       io = StringIO.new("abcdef") #: untyped
-      assert_equal ["ab", "cdef"], [io.read(2), io.read]
+      assert_equal %w[ab cdef], [io.read(2), io.read]
     end
 
     def test_proc_call_on_untyped
@@ -3001,7 +3001,7 @@ module DynamicTests
   class DynamicContainerTest < Minitest::Test
     def test_untyped_container_methods
       h = { "a" => 1, "b" => 2 } #: untyped
-      assert_equal [["a", "b"], [1, 2], [["a", 1], ["b", 2]]], [h.keys, h.values, h.to_a]
+      assert_equal [%w[a b], [1, 2], [["a", 1], ["b", 2]]], [h.keys, h.values, h.to_a]
     end
 
     # Kernel's methods on typed containers held untyped: one class-ID arm for every element type (#96).
@@ -3027,7 +3027,7 @@ module DynamicTests
       assert_equal [1, 2, 3], a
       w = ["b", nil, "a"] #: Array[String?]
       y = w #: untyped
-      assert_equal [["b", "a"], "ba"], [y.compact, y.compact.join]
+      assert_equal [%w[b a], "ba"], [y.compact, y.compact.join]
       n = [[1, [2]], 3] #: Array[untyped]
       assert_equal "1,2,3", n.join(",")
       e = [] #: Array[Integer]
@@ -3323,7 +3323,7 @@ module DynamicTests
   class DynGenPrivateKeyTest < Minitest::Test
     def test_public_underscore_and_private_plain_name_on_generic_receiver
       x = [1] #: untyped
-      assert_equal ["pub", "both"], [x._dyngen_pub, x._dyngen_both]
+      assert_equal %w[pub both], [x._dyngen_pub, x._dyngen_both]
       assert_equal "priv", x.send(:dyngen_both)
       assert_equal "priv2", x.send(:dyngen_priv)
       ok = begin

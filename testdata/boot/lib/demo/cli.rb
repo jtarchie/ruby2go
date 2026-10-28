@@ -874,7 +874,7 @@ class DemoOwnerDsl
   extend T::Sig
 
   sig { returns(T::Array[String]) }
-  def name = ["a", "b"]
+  def name = %w[a b]
 
   sig { returns(String) }
   def token = "tok"

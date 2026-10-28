@@ -240,8 +240,8 @@ module StringFrozenTests
     # sorting and min/max go through <=>
     def test_sorting_and_min_max_go
       assert_equal ["", "C", "a", "aa", "b"], ["b", "a", "C", "", "aa"].sort
-      assert_equal "b", ["b", "a"].max
-      assert_equal "a", ["b", "a"].min
+      assert_equal "b", %w[b a].max
+      assert_equal "a", %w[b a].min
     end
 
     # strings as hash keys compare by value
@@ -282,17 +282,17 @@ module StringFrozenTests
 
     # Strings stored in collections and passed through blocks, &:sym and chained calls.
     def test_strings_stored_in_collections_and
-      assert_equal ["PEAR", "APPLE", "FIG", "BANANA", "KIWI"], words.map(&:upcase)
+      assert_equal %w[PEAR APPLE FIG BANANA KIWI], words.map(&:upcase)
       assert_equal(["fig"], words.select { |w| w.start_with?("f") })
-      assert_equal ["fig", "pear", "kiwi", "Apple", "banana"], words.sort_by(&:size)
+      assert_equal %w[fig pear kiwi Apple banana], words.sort_by(&:size)
       assert_equal "banana", words.max_by(&:length)
       assert_equal("Apple", words.min_by { |w| w.downcase })
-      assert_equal({ 4 => ["pear", "kiwi"], 5 => ["Apple"], 3 => ["fig"], 6 => ["banana"] }, words.group_by(&:size))
-      assert_equal ["Apple", "banana", "fig", "kiwi", "pear"], words.sort
-      assert_equal ["Apple", "banana", "fig", "kiwi", "pear"], words.sort_by(&:downcase)
+      assert_equal({ 4 => %w[pear kiwi], 5 => ["Apple"], 3 => ["fig"], 6 => ["banana"] }, words.group_by(&:size))
+      assert_equal %w[Apple banana fig kiwi pear], words.sort
+      assert_equal %w[Apple banana fig kiwi pear], words.sort_by(&:downcase)
       assert_equal "pear, Apple, fig, banana, kiwi", words.join(", ")
-      assert_equal(["p", "A", "f", "b", "k"], words.map { |w| w[0] })
-      assert_equal ["Raep", "Elppa", "Gif", "Ananab", "Iwik"], words.map(&:reverse).map(&:capitalize)
+      assert_equal(%w[p A f b k], words.map { |w| w[0] })
+      assert_equal %w[Raep Elppa Gif Ananab Iwik], words.map(&:reverse).map(&:capitalize)
       assert_equal true, words.include?("kiwi")
       assert_equal false, words.include?("Kiwi")
       assert_equal true, words.include?("ki" + "wi")
@@ -359,15 +359,15 @@ module StringFrozenTests
       lens = {} #: Hash[String, Integer]
       words.each { |w| lens[w.downcase] = w.size }
       assert_equal({ "pear" => 4, "apple" => 5, "fig" => 3, "banana" => 6, "kiwi" => 4 }, lens)
-      assert_equal ["PEAR", "APPLE", "FIG", "BANANA", "KIWI"], lens.keys.map(&:upcase)
+      assert_equal %w[PEAR APPLE FIG BANANA KIWI], lens.keys.map(&:upcase)
       assert_equal "pear=4&apple=5&fig=3&banana=6&kiwi=4", lens.map { |k, v| "#{k}=#{v}" }.join("&")
       vowels = [] #: Array[String]
       each_vowel("education") { |v| vowels << v.upcase }
       assert_equal %w[E U A I O], vowels
       assert_equal("  xxx  ", "x".then { |s| s * 3 }.then { |s| s.center(7) })
-      nested = [["b", "a"], ["d", "c"]] #: Array[Array[String]]
-      assert_equal(["ab", "cd"], nested.map { |pair| pair.sort.join })
-      assert_equal(["b", "d"], nested.map { |pair| pair[0] })
+      nested = [%w[b a], %w[d c]] #: Array[Array[String]]
+      assert_equal(%w[ab cd], nested.map { |pair| pair.sort.join })
+      assert_equal(%w[b d], nested.map { |pair| pair[0] })
     end
 
     # split into multiple assignment (a missing part is nil), line-oriented chains, tuple sort keys.
@@ -380,16 +380,16 @@ module StringFrozenTests
       assert_nil rest
       text = "  one \n two\n\n three  \n"
       assert_equal ["  one ", " two", "", " three  "], text.lines.map(&:chomp)
-      assert_equal ["one", "two", "three"], text.split("\n").map(&:strip).reject(&:empty?)
-      assert_equal(["banana", "Apple", "kiwi", "pear", "fig"], words.sort_by { |w| [-w.size, w] })
-      assert_equal(["g", "b", "fig", "banana", "g"], words.map { |w| w.clamp("b", "g") })
-      assert_equal(["fig", "banana"], words.select { |w| w.between?("b", "g") })
+      assert_equal %w[one two three], text.split("\n").map(&:strip).reject(&:empty?)
+      assert_equal(%w[banana Apple kiwi pear fig], words.sort_by { |w| [-w.size, w] })
+      assert_equal(%w[g b fig banana g], words.map { |w| w.clamp("b", "g") })
+      assert_equal(%w[fig banana], words.select { |w| w.between?("b", "g") })
       fields = "name: Ann, age: 30".split(", ").map { |f| f.split(": ") }
-      assert_equal [["name", "Ann"], ["age", "30"]], fields
-      assert_equal(["Ann", "30"], fields.map { |f| f[1] })
+      assert_equal [%w[name Ann], %w[age 30]], fields
+      assert_equal(%w[Ann 30], fields.map { |f| f[1] })
       parts = [] #: Array[String]
       "a,b;c".split(";").each { |part| part.split(",").each { |x| parts << x.upcase } }
-      assert_equal ["A", "B", "C"], parts
+      assert_equal %w[A B C], parts
       out = ""
       "ab".chars.each_with_index { |ch, i| out += ch * (i + 1) + " " }
       assert_equal "a bb ", out
@@ -430,10 +430,10 @@ module StringFrozenTests
       assert_equal true, ("v" == kv["k"])
       assert_equal true, (kv["k"] == "v")
       assert_equal false, (kv["zz"] == "v")
-      built = ["a", "b"].map { |ch| ch + "" }
+      built = %w[a b].map { |ch| ch + "" }
       assert_equal true, built.include?("a")
       assert_equal true, (built[0] == "a")
-      assert_equal true, (built == ["a", "b"])
+      assert_equal true, (built == %w[a b])
     end
   end
 
@@ -444,7 +444,7 @@ module StringFrozenTests
       assert_equal "hi fast", "#{GREETING} #{MODE}"
       assert_equal :fast, MODE
       assert_equal "ann, bob", NAMES.join(SEP)
-      assert_equal ["Ann", "Bob"], NAMES.map(&:capitalize)
+      assert_equal %w[Ann Bob], NAMES.map(&:capitalize)
       said = "h" + "i"
       matched = case said
                 when GREETING then "matched const"

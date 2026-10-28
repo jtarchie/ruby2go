@@ -20,5 +20,5 @@ count = 0
 puts count
 puts "ab".ord, 97.chr
 puts "Ruby".capitalize, "rUBY".capitalize
-puts ["x", "y"].join(", "), [1, [2, 3]].inspect, [].inspect
+puts %w[x y].join(", "), [1, [2, 3]].inspect, [].inspect
 puts "abc" <=> "abd", "b" > "a", "a".clamp("b", "c")

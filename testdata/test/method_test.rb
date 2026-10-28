@@ -99,12 +99,12 @@ module MethodTests
       assert_equal 6, [[1, 2], [3]].sum { |xs| xs.sum(&method(:method_neg)) } * -1
       assert_equal [11, 12], [1, 2].map(&method(:method_opt))
       d = Dog.new
-      assert_equal ["woof a", "woof b"], ["a", "b"].map(&d.method(:greet))
+      assert_equal ["woof a", "woof b"], %w[a b].map(&d.method(:greet))
     end
 
     def test_block_argument_iterator
-      ["x", "y"].each(&method(:method_log))
-      assert_equal ["x", "y"], LOG.last(2)
+      %w[x y].each(&method(:method_log))
+      assert_equal %w[x y], LOG.last(2)
       c = Counter.new
       c.add_all([1, 2, 3])
       assert_equal 6, c.total

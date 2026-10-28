@@ -42,7 +42,7 @@ module SocketTests
       client.print("c", "d")
       client << "e" << "f"
       client.puts "g"
-      client.puts ["h", "i"]
+      client.puts %w[h i]
       client.close_write
       assert_equal "abc", peer.read(3)
       assert_equal "defg\n", peer.gets
@@ -66,7 +66,7 @@ module SocketTests
       assert_equal "tw", peer.readpartial(2)
       lines = [] #: Array[String]
       peer.each_line { |l| lines << l }
-      assert_equal ["o\n", "three"], lines
+      assert_equal %W[o\n three], lines
       assert_nil peer.recv(10)
       [server, client, peer].each(&:close)
     end
@@ -75,7 +75,7 @@ module SocketTests
       server, client, peer = tcp_trio
       assert_equal 3, client.send("a\nb", 0)
       client.close_write
-      assert_equal ["a\n", "b"], peer.readlines
+      assert_equal %W[a\n b], peer.readlines
       [server, client, peer].each(&:close)
     end
 

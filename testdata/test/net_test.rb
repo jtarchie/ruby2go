@@ -76,7 +76,7 @@ module NetTests
 
       lines = [] #: Array[String]
       got = URI.open("#{base}/hello") do |f|
-        assert_equal ["200", "OK"], f.status
+        assert_equal %w[200 OK], f.status
         assert_equal "text/plain", f.content_type
         assert_equal "utf-8", f.charset
         assert_equal "/hello", f.base_uri&.path
@@ -84,7 +84,7 @@ module NetTests
         f.each_line { |l| lines << l }
         assert_equal true, f.eof?
         f.rewind
-        assert_equal ["hello\n", "world\n"], f.readlines
+        assert_equal %W[hello\n world\n], f.readlines
         "done"
       end
       assert_equal "done", got
@@ -116,10 +116,10 @@ module NetTests
       assert_equal "Ruby|t4", URI.open("#{base}/echo", { "X-Token" => "t4", redirect: true }).read
       assert_equal "Ruby|", URI.open("#{base}/echo", ssl_verify_mode: OpenSSL::SSL::VERIFY_NONE).read
 
-      assert_equal "welcome", URI.open("#{base}/auth", http_basic_authentication: ["alice", "secret"]).read
+      assert_equal "welcome", URI.open("#{base}/auth", http_basic_authentication: %w[alice secret]).read
       # dropped on redirect, as MRI does
       begin
-        URI.open("#{base}/auth-redirect", http_basic_authentication: ["alice", "secret"])
+        URI.open("#{base}/auth-redirect", http_basic_authentication: %w[alice secret])
         flunk "no error"
       rescue OpenURI::HTTPError => e
         assert_equal "401 Unauthorized", e.message
@@ -195,7 +195,7 @@ module NetTests
 
       URI.open("#{base}/moved") do |f|
         assert_equal "/hello", f.base_uri&.path
-        assert_equal ["200", "OK"], f.status
+        assert_equal %w[200 OK], f.status
         assert_equal "hello\nworld\n", f.read
       end
 
@@ -205,7 +205,7 @@ module NetTests
       rescue OpenURI::HTTPRedirect => redir
         assert_equal "302 Found", redir.message
         assert_equal "/hello", redir.uri.path
-        assert_equal ["302", "Found"], redir.io.status
+        assert_equal %w[302 Found], redir.io.status
         assert_equal true, redir.is_a?(OpenURI::HTTPError)
       end
 
@@ -214,7 +214,7 @@ module NetTests
         flunk "no error"
       rescue OpenURI::TooManyRedirects => many
         assert_equal "Too many redirects", many.message
-        assert_equal ["302", "Found"], many.io.status
+        assert_equal %w[302 Found], many.io.status
       end
 
       begin
@@ -311,7 +311,7 @@ module NetTests
       app = lambda do |env|
         case env["PATH_INFO"]
         when "/boom" then raise "boom"
-        when "/rack" then [204, { "rack.hidden" => "x", "x-multi" => ["a", "b"] }, []]
+        when "/rack" then [204, { "rack.hidden" => "x", "x-multi" => %w[a b] }, []]
         else [418, { "set-cookie" => ["a=1", "b=2"], "content-length" => "2" }, ["hi"]]
         end
       end #: ^(Hash[String, untyped]) -> untyped

@@ -13,7 +13,7 @@ module SingleOnly
   def_delegator :LIMIT, :succ
 
   #: () -> Array[String]
-  def self.names = ["a", "b"]
+  def self.names = %w[a b]
 end
 
 p SingleOnly.size, SingleOnly.first, SingleOnly.succ

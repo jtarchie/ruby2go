@@ -14,7 +14,7 @@ class Point
   def to_s = "(#{x}, #{y})"
 end
 
-words = ["a", "b"]
+words = %w[a b]
 
 puts "hello"
 puts "no double newline\n"

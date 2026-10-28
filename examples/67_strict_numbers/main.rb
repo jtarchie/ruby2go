@@ -15,7 +15,7 @@ TEXT
 
 #: (String, String) -> String
 def parse_value(key, raw)
-  ["ratio", "scale"].include?(key) ? Float(raw).inspect : Integer(raw).inspect
+  %w[ratio scale].include?(key) ? Float(raw).inspect : Integer(raw).inspect
 end
 
 CONFIG.each_line do |line|

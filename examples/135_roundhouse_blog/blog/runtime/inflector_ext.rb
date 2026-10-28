@@ -37,16 +37,16 @@ module Inflector
     last = word[n - 1, 1]
     if last == "y" && n > 1
       prev = word[n - 2, 1]
-      if ["a", "e", "i", "o", "u"].include?(prev)
+      if %w[a e i o u].include?(prev)
         word + "s"
       else
         word[0, n - 1] + "ies"
       end
     elsif last == "s"
       word
-    elsif ["x", "z"].include?(last)
+    elsif %w[x z].include?(last)
       word + "es"
-    elsif n > 1 && ["ch", "sh"].include?(word[n - 2, 2])
+    elsif n > 1 && %w[ch sh].include?(word[n - 2, 2])
       word + "es"
     else
       word + "s"

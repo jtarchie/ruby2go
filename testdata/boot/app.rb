@@ -141,7 +141,7 @@ div.add_observer { |x| x * 2 }
 div.with_observer { |x| x + 1 }
 p div.demo_notify(10)
 lines = [] #: Array[untyped]
-DemoLineSource.new.each_line_from(["a", "b"]) { |t, l| lines << [t, l] }
+DemoLineSource.new.each_line_from(%w[a b]) { |t, l| lines << [t, l] }
 p lines
 nlog = [] #: Array[String]
 p Demo::Lenient.first_over([1, 5, 20, 30], 10, nlog), Demo::Lenient.first_over([1], 10, nlog), nlog

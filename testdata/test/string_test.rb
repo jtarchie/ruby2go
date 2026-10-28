@@ -251,7 +251,7 @@ module StringTests
       assert_equal "ang", %(ang)
       assert_equal "bar", %(bar)
       assert_equal "br {n} 1", %(br {n} #{1})
-      assert_equal ["a", "b", "c"], %w[a b c]
+      assert_equal %w[a b c], %w[a b c]
       assert_equal %i[a b c], %i[a b c]
       assert_equal [], %w[]
     end
@@ -344,7 +344,7 @@ continued"
       assert_equal "[2, 4]", "#{[1, 2].map { |x| x * 2 }}"
       assert_equal "pos", "#{n > 0 ? "pos" : "neg"}"
       assert_equal "few", "#{case n when 1 then "one" when 4, 5 then "few" else "many" end}"
-      assert_equal ["a5", "b", "strc"], %W[a#{n} b #{s}c]
+      assert_equal %w[a5 b strc], %W[a#{n} b #{s}c]
       assert_equal 1, %W[#{n}].size
       maybe = "abc"[5]
       assert_equal "maybe=[] [b]", "maybe=[#{maybe}] [#{"abc"[1]}]"
@@ -363,7 +363,7 @@ continued"
     def test_interpolation_builds_a_fresh_string
       parts = [] #: Array[String]
       3.times { |i| parts << "p#{i}" }
-      assert_equal ["p0", "p1", "p2"], parts
+      assert_equal %w[p0 p1 p2], parts
       assert_equal true, "a#{1}b" == "a1b"
     end
   end
@@ -460,11 +460,11 @@ continued"
       assert_equal ["a", "b,c,d"], "a,b,c,d".split(",", 2)
       assert_equal ["a", "b  c"], "a b  c".split(" ", 2)
       assert_equal ["a", "b", "", ""], "a,b,,".split(",", -1)
-      assert_equal ["a", "b", "c"], "abc".each_char.to_a
-      assert_equal ["a\n", "b\n"], "a\nb\n".each_line.to_a
+      assert_equal %w[a b c], "abc".each_char.to_a
+      assert_equal %W[a\n b\n], "a\nb\n".each_line.to_a
       each_lines = [] #: Array[String]
       "x\ny".each_line { |l| each_lines << l }
-      assert_equal ["x\n", "y"], each_lines
+      assert_equal %W[x\n y], each_lines
       assert_equal "ello", "hello"[1..]
       assert_equal "ell", "hello".slice(1, 3)
       assert_equal "ababab", "ab" * 3
@@ -486,7 +486,7 @@ continued"
       assert_equal 2, "ab".chars.size
       out = [] #: Array[String]
       "añb".each_char { |c| out << c.upcase }
-      assert_equal ["A", "Ñ", "B"], out
+      assert_equal %w[A Ñ B], out
     end
 
     # each_char is an iterator: break and next are plain loop control.
@@ -505,10 +505,10 @@ continued"
 
     # lines keeps the separator and never yields a trailing empty line.
     def test_lines_keeps_the_separator_and
-      assert_equal ["a\n", "b\n"], "a\nb\n".lines
-      assert_equal ["a\n", "b"], "a\nb".lines
+      assert_equal %W[a\n b\n], "a\nb\n".lines
+      assert_equal %W[a\n b], "a\nb".lines
       assert_equal [], "".lines
-      assert_equal ["\n", "\n"], "\n\n".lines
+      assert_equal %W[\n \n], "\n\n".lines
       assert_equal ["a\r\n", "b"], "a\r\nb".lines
       assert_equal ["no newline"], "no newline".lines
       assert_equal 3, "x\n\ny".lines.size
@@ -516,12 +516,12 @@ continued"
 
     # split with no separator (or nil) splits on runs of ASCII whitespace.
     def test_split_with_no_separator_or
-      assert_equal ["one", "two", "three"], "one two  three".split
-      assert_equal ["lead", "and", "trail"], "  lead and trail  ".split
-      assert_equal ["tabs", "and", "newlines"], "tabs\tand\nnewlines".split
+      assert_equal %w[one two three], "one two  three".split
+      assert_equal %w[lead and trail], "  lead and trail  ".split
+      assert_equal %w[tabs and newlines], "tabs\tand\nnewlines".split
       assert_equal [], "".split
       assert_equal [], "   ".split
-      assert_equal ["a", "b"], "a b".split(nil)
+      assert_equal %w[a b], "a b".split(nil)
       assert_equal ["solo"], "solo".split
     end
 
@@ -531,7 +531,7 @@ continued"
       assert_equal ["", "a"], ",a".split(",")
       assert_equal [], "".split(",")
       assert_equal [], ",,,".split(",")
-      assert_equal ["a", "b"], "a--b--".split("--")
+      assert_equal %w[a b], "a--b--".split("--")
       assert_equal ["abc"], "abc".split("x")
       assert_equal 2, "a,b".split(",").size
       whole = "whole"
@@ -540,9 +540,9 @@ continued"
 
     # split("") yields characters.
     def test_split_yields_characters
-      assert_equal ["a", "b", "c"], "abc".split("")
+      assert_equal %w[a b c], "abc".split("")
       assert_equal [], "".split("")
-      assert_equal ["h", "é", "l", "l", "o"], "héllo".split("")
+      assert_equal %w[h é l l o], "héllo".split("")
     end
 
     # Round trips through Array methods.
@@ -616,7 +616,7 @@ continued"
       assert_equal %i[a b c], %i[b a c].sort
       assert_equal :b, %i[b a].max
       assert_equal :a, %i[b a].min
-      assert_equal ["x", "y"], %i[x y].map(&:to_s)
+      assert_equal %w[x y], %i[x y].map(&:to_s)
       assert_equal %i[p q], %w[p q].map(&:to_sym)
       assert_equal [2, 4], %i[up down].map(&:size)
     end
@@ -665,7 +665,7 @@ continued"
       assert_equal [:x, :"y z"], by_name.values
       ss = %i[b a c]
       assert_equal %i[c b a], ss.sort.reverse
-      assert_equal ["B", "A", "C"], ss.map(&:to_s).map(&:upcase)
+      assert_equal %w[B A C], ss.map(&:to_s).map(&:upcase)
       assert_equal :a, ss.min_by(&:to_s)
       assert_equal true, ss.include?(:a)
       assert_equal(%i[a b c], ss.sort_by { |x| x.to_s })
@@ -1047,8 +1047,8 @@ continued"
 
     # split(" ") is awk-style whitespace splitting
     def test_split_is_awk_style_whitespace
-      assert_equal ["a", "b"], "a  b ".split(" ")
-      assert_equal ["a", "b"], " a b".split(" ")
+      assert_equal %w[a b], "a  b ".split(" ")
+      assert_equal %w[a b], " a b".split(" ")
     end
 
     # awk-style split only breaks on ASCII whitespace
@@ -1189,7 +1189,7 @@ continued"
       assert_equal %i[AB ab Ab aB b ba], [:ab.upcase, :AB.downcase, :ab.capitalize, :Ab.swapcase, :a.succ, :az.next]
       assert_equal [0, 1, true], [:a.casecmp(:A), :b.casecmp(:a), :a.casecmp?(:A)]
       assert_equal [true, false, true], [:abc.start_with?("a"), :abc.start_with?("b"), :abc.end_with?("bc")]
-      assert_equal ["a", "b", "bc", "ab"], [:a.id2name, :abc[1], :abc[1, 2], :abc[0..1]]
+      assert_equal %w[a b bc ab], [:a.id2name, :abc[1], :abc[1, 2], :abc[0..1]]
       assert_nil :abc[5]
     end
   end
@@ -1260,7 +1260,7 @@ continued"
   class StringRubySpecRegexpSyntaxTest < Minitest::Test
     def test_extended_regexp
       m = "on 2024-03-09 ok".match(STRING_DATE_RE)
-      assert_equal ["2024", "09"], [m&.[](1), m&.[](3)]
+      assert_equal %w[2024 09], [m&.[](1), m&.[](3)]
       assert_equal [true, 2], [STRING_DATE_RE.source.include?("year"), STRING_DATE_RE.options]
       assert_equal [0, 0, 0, 0], ["a b" =~ /a\ b/x, "a#b" =~ /a\#b/x, "a b" =~ /a[ ]b/x, "ab" =~ /a b/xi]
     end
@@ -1296,7 +1296,7 @@ continued"
     end
 
     def test_unpack_strings
-      assert_equal [["hello", "world"], ["hi"], ["hi", "there"], ["ab", "c"], [104, 233]],
+      assert_equal [%w[hello world], ["hi"], %w[hi there], %w[ab c], [104, 233]],
                    ["hello world".unpack("a5 x a*"), "hi  \0".unpack("A*"), "hi\0there".unpack("Z*a*"), "abc".unpack("a2a"), "hé".unpack("U*")]
       assert_equal [["4142"], ["1424"], ["0100000101000010"], ["1000001001000010"], ["414"]],
                    ["AB".unpack("H*"), "AB".unpack("h*"), "AB".unpack("B*"), "AB".unpack("b*"), "AB".unpack("H3")]
@@ -1434,7 +1434,7 @@ continued"
   class RegexpUnionTest < Minitest::Test
     def test_union
       assert_equal(/a\.b|(?i-mx:c+)/, Regexp.union("a.b", /c+/i))
-      assert_equal(/x|y/, Regexp.union(["x", "y"]))
+      assert_equal(/x|y/, Regexp.union(%w[x y]))
       assert_equal(/z/, Regexp.union(/z/))
       assert_equal 1, "x/y" =~ Regexp.union(*["/", nil].compact)
     end
@@ -1471,7 +1471,7 @@ continued"
     end
 
     def test_chomp_suffix
-      assert_equal ["ab", "abc", "a"], ["abc".chomp("c"), "abc".chomp("x"), "a\n\n".chomp("")]
+      assert_equal %w[ab abc a], ["abc".chomp("c"), "abc".chomp("x"), "a\n\n".chomp("")]
     end
   end
 
@@ -1572,7 +1572,7 @@ continued"
         $/ = old
       end
       assert_equal "z", d
-      assert_equal ["ab", "ab\n", "ab\n", "a"], [a, b, c, "a\n".chomp]
+      assert_equal %W[ab ab\n ab\n a], [a, b, c, "a\n".chomp]
     end
   end
 
@@ -1638,7 +1638,7 @@ continued"
       re = %r{\A(?<user>[\w-]+)/(?<repo>[\w-]+)/(?<name>[\w+.@-]+)\z}
       ref = "homebrew/core/wget"
       uref = ref #: untyped
-      assert_equal ["wget", "core", "homebrew", "wget"], [ref[re, :name], ref[re, "repo"], ref[re, 1], uref[re, :name]]
+      assert_equal %w[wget core homebrew wget], [ref[re, :name], ref[re, "repo"], ref[re, 1], uref[re, :name]]
     end
   end
 
@@ -1734,8 +1734,8 @@ continued"
       assert_equal [4, [98, 97, 254, 255]], [bin.each_char.size, bin.reverse.bytes]
       assert_equal [[255, 254, 88, 98], [255, 254, 98]], [bin.tr("a", "X").bytes, bin.delete("a").bytes]
       assert_equal [[[255]], "Xa", "[255]a"], ["\xffa".b.scan(/[\x80-\xff]/n).map(&:bytes), "\xffa".b.gsub(/\xff/n, "X"), "\xffa".b.sub(/\xff/n) { |m| m.bytes.inspect }]
-      assert_equal [["a", "b"], true, 4], ["a\xffb".b.split(/\xff/n), "\xffa".b.start_with?(/\xff/n), bin.scan(/./).size]
-      assert_equal [["h", "é", "x"], "xéh"], ["héx".chars, "héx".reverse]
+      assert_equal [%w[a b], true, 4], ["a\xffb".b.split(/\xff/n), "\xffa".b.start_with?(/\xff/n), bin.scan(/./).size]
+      assert_equal [%w[h é x], "xéh"], ["héx".chars, "héx".reverse]
     end
 
     # A String known binary at compile time matches bytes even when they are valid UTF-8 (decision 352).
@@ -1838,7 +1838,7 @@ continued"
         e.class
       end
       assert_equal [Encoding::CompatibilityError] * 3, errors
-      assert_equal [nil, 1, 0, ["a", "é"]], ["ab".b =~ /é/, "é".b =~ /\xa9/n, "é" =~ /[\xc3\xa9]/, "aé".scan(/\xc3\xa9|a/)]
+      assert_equal [nil, 1, 0, %w[a é]], ["ab".b =~ /é/, "é".b =~ /\xa9/n, "é" =~ /[\xc3\xa9]/, "aé".scan(/\xc3\xa9|a/)]
     end
   end
 end
@@ -1852,7 +1852,7 @@ module StringTests
       b = a + "2"
       c = a + "3"
       d = b + "4"
-      assert_equal ["x12", "x13", "124"], [b[-3, 3], c[-3, 3], d[-3, 3]]
+      assert_equal %w[x12 x13 124], [b[-3, 3], c[-3, 3], d[-3, 3]]
       refute a.equal?(b)
       acc = ""
       2000.times { |i| acc += "row #{i}," }
@@ -1987,7 +1987,7 @@ module StringTests
   class StringCoreGapsTest < Minitest::Test
     def test_tr_s
       assert_equal ["hero", "ifmp", "*e*o", "x"], ["hello".tr_s("l", "r"), "hello".tr_s("a-y", "b-z"), "hello".tr_s("^aeiou", "*"), "this".tr_s("this", "x")]
-      assert_equal ["helo", "h-o", "cc", "bbb"], ["hello".tr_s("l", "l"), "hello".tr_s("el", "-"), "aabbcc".tr_s("ab", ""), "aabb".tr_s("a", "b")]
+      assert_equal %w[helo h-o cc bbb], ["hello".tr_s("l", "l"), "hello".tr_s("el", "-"), "aabbcc".tr_s("ab", ""), "aabb".tr_s("a", "b")]
     end
 
     def test_rindex_with_pos
@@ -1996,9 +1996,9 @@ module StringTests
     end
 
     def test_case_options
-      assert_equal ["AßET", "Arço", "AbC", "ÄBÇ", "ÄbÇ"], ["aßet".upcase(:ascii), "garçon"[1...-1].to_s.capitalize(:ascii), "aBc".swapcase(:ascii), "ÄbÇ".swapcase(:ascii), "ÄBÇ".downcase(:ascii)]
-      assert_equal ["İ", "ı", "i", "I", "İı", "İjk"], ["i".upcase(:turkic), "I".downcase(:turkic), "İ".downcase(:turkic), "ı".upcase(:turkic), "iI".swapcase(:turkic), "ijk".capitalize(:turkic)]
-      assert_equal ["SS", "äb", "ss"], ["ß".upcase(:lithuanian), "ÄB".downcase(:fold), "ß".downcase(:fold)]
+      assert_equal %w[AßET Arço AbC ÄBÇ ÄbÇ], ["aßet".upcase(:ascii), "garçon"[1...-1].to_s.capitalize(:ascii), "aBc".swapcase(:ascii), "ÄbÇ".swapcase(:ascii), "ÄBÇ".downcase(:ascii)]
+      assert_equal %w[İ ı i I İı İjk], ["i".upcase(:turkic), "I".downcase(:turkic), "İ".downcase(:turkic), "ı".upcase(:turkic), "iI".swapcase(:turkic), "ijk".capitalize(:turkic)]
+      assert_equal %w[SS äb ss], ["ß".upcase(:lithuanian), "ÄB".downcase(:fold), "ß".downcase(:fold)]
       assert_equal ArgumentError, (begin; "a".upcase(:fold); rescue ArgumentError => e; e.class; end)
       assert_equal ArgumentError, (begin; "a".swapcase(:bogus); rescue ArgumentError => e; e.class; end)
     end

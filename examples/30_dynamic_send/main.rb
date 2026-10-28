@@ -38,8 +38,8 @@ end
 
 greeter = things.fetch(0)
 puts greeter.send(:greet, "yo"), greeter.public_send(:name), greeter.lucky.inspect
-["greet", "shout", "name"].each { |m| puts greeter.send(m) }
-puts ["name", "fly"].map { |m| greeter.respond_to?(m) }.inspect
+%w[greet shout name].each { |m| puts greeter.send(m) }
+puts %w[name fly].map { |m| greeter.respond_to?(m) }.inspect
 
 class_name = "Greeter"
 klass = Object.const_get(class_name)

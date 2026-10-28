@@ -41,8 +41,8 @@ module Sqlite3Tests
       assert_equal [[3, "c"]], db.execute("select id, name from t where name = :n", { n: "c" })
       assert_equal [[4_611_686_018_427_387_904, 1.0e300, "é"]], db.execute("select ?, ?, ?", [2**62, 1e300, "é"])
       assert_equal [["a\0b"]], db.execute("select ?", ["a\0b"])
-      assert_equal [["blob", "text"]], db.execute("select typeof(?), typeof(?)", [SQLite3::Blob.new("ab"), "ab"])
-      assert_equal [["blob", "text"]], db.execute("select typeof(:b), typeof(:t)", { "b" => SQLite3::Blob.new("ab"), "t" => "ab" })
+      assert_equal [%w[blob text]], db.execute("select typeof(?), typeof(?)", [SQLite3::Blob.new("ab"), "ab"])
+      assert_equal [%w[blob text]], db.execute("select typeof(:b), typeof(:t)", { "b" => SQLite3::Blob.new("ab"), "t" => "ab" })
       assert_equal "ab", SQLite3::Blob.new("ab").to_s
       assert_equal 2, SQLite3::Blob.new("ab").bytesize
       assert_equal [["blob"]], db.execute("select typeof(?)", ["ab".to_blob])
@@ -54,7 +54,7 @@ module Sqlite3Tests
 
     def test_execute2_first_row_first_value
       db = seeded
-      assert_equal [["id", "name"], [1, "a"], [2, "b"]], db.execute2("select id, name from t where id < 3")
+      assert_equal [%w[id name], [1, "a"], [2, "b"]], db.execute2("select id, name from t where id < 3")
       seen = [] #: Array[untyped]
       db.execute2("select name from t where id < 3") { |r| seen << r }
       assert_equal [["name"], ["a"], ["b"]], seen
@@ -111,7 +111,7 @@ module Sqlite3Tests
       assert_equal " select 2", db.prepare("select 1; select 2").remainder
       assert_equal [[1]], db.execute("select 1; select 2")
       s = db.prepare("select 1 as n, 2")
-      assert_equal [["n", "2"], [nil, nil]], [s.columns, s.types]
+      assert_equal [%w[n 2], [nil, nil]], [s.columns, s.types]
       assert_equal "n", s.column_name(0)
       assert_nil s.column_decltype(0)
       s.close

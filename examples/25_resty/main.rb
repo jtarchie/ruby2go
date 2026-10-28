@@ -125,7 +125,7 @@ module Resty
     def self.find_by_request(request)
       match = request.path.match(%r{^/\w+/([\w-]+)/?})
       id = match ? match[1] : nil
-      id = nil if ["edit", "new"].include?(id)
+      id = nil if %w[edit new].include?(id)
       new(id)
     end
   end

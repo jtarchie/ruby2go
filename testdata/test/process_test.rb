@@ -49,7 +49,7 @@ module ProcessTests
         File.write(src, "inherited")
         File.open(src) do |f|
           opts = { 9 => f, out: out } #: Hash[untyped, untyped]
-          Process.wait(Process.spawn({}, ["sh", "sh"], "-c", "cat <&9", opts))
+          Process.wait(Process.spawn({}, %w[sh sh], "-c", "cat <&9", opts))
         end
         assert_equal "inherited", File.read(out)
       end
