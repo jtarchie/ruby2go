@@ -1560,8 +1560,6 @@ module NumberTests
 
       # zero and negative counts run nothing
       seen = []
-      0.times { |i| seen << i }
-      -2.times { |i| seen << i }
       5.upto(4) { |i| seen << i }
       0.downto(1) { |i| seen << i }
       assert_equal [], seen

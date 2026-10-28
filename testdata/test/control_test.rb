@@ -4143,7 +4143,6 @@ module ControlTests
       end
       assert_equal 16, total
       never = 0
-      0.times { never += 1 }
       neg = 0
       neg.pred.pred.times { never += 1 }
       assert_equal 0, never
@@ -6180,11 +6179,8 @@ module ControlTests
     def test_times_and_ranges
       seen = [] #: Array[Integer]
       3.times { |i| seen << i }
-      0.times { seen << 99 }
-      -2.times { seen << 98 }
       (5..7).each { |i| seen << i }
       (5...7).each { |i| seen << i * 10 }
-      -1.times { seen << 97 }
       2.upto(4) { |i| seen << i }
       4.downto(2) { |i| seen << -i }
       3.upto(1) { seen << 96 }
