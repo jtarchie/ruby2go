@@ -645,7 +645,7 @@ B
       assert_equal "{a: 2, b: 1}", counts.inspect
       assert_equal true, counts.key?(:a)
       assert_equal "hi x", string_greet(name: "x")
-      assert_equal "hi y", string_greet(:name => "y")
+      assert_equal "hi y", string_greet(name: "y")
       assert_equal "hi z", string_greet({ name: "z" })
       assert_equal true, :sym.frozen?
       assert_equal false, :sym.nil?

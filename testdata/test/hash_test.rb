@@ -859,7 +859,7 @@ module HashTests
 
     # symbol keys print as labels only when MRI's would
     def test_symbol_keys_print_as_labels
-      emo = { :"😀" => 2, :"a😀" => 3, :"😀?" => 23, :"٣" => 25 } #: Hash[Symbol, Integer]
+      emo = { "😀": 2, "a😀": 3, "😀?": 23, "٣": 25 } #: Hash[Symbol, Integer]
       assert_equal "{😀: 2, a😀: 3, 😀?: 23, ٣: 25}", (emo).inspect
       mix = { é: 1, "@iv": 1, "$g": 1, "a=": 1, A: 1, a?: 1, "+": 1, "[]": 1, "1a": 1, "a b": 1, "`": 1 } #: Hash[Symbol, Integer]
       assert_equal "{é: 1, \"@iv\": 1, \"$g\": 1, \"a=\": 1, A: 1, a?: 1, \"+\": 1, \"[]\": 1, \"1a\": 1, \"a b\": 1, \"`\": 1}", (mix).inspect
@@ -1293,7 +1293,7 @@ module HashTests
     def test_values_keep_their_own_inspect
       h = { "b" => 20, "c" => 30 } #: Hash[String, Integer]
       assert_equal "{a: :\"b c\", b: :+, c: :\"9\", d: :ok?}", (({ a: :"b c", b: :+, c: :"9", d: :ok? })).inspect
-      assert_equal "{\"a\\\"b\": 1, \"\\\\\": 2, \"a'b\": 3}", (({ :"a\"b" => 1, :"\\" => 2, :"a'b" => 3 })).inspect
+      assert_equal "{\"a\\\"b\": 1, \"\\\\\": 2, \"a'b\": 3}", (({ "a\"b": 1, "\\": 2, "a'b": 3 })).inspect
       assert_equal "{\"x\" => nil}", (({ "x" => nil })).inspect
       assert_equal "{nil => nil}", (({ nil => nil })).inspect
       assert_equal "{\"t\" => [1, \"a\", :s, nil, 1.5, true]}", (({ "t" => [1, "a", :s, nil, 1.5, true] })).inspect
