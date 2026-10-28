@@ -162,7 +162,7 @@ module Surfguard
   # the connection layer will use.
   def self.resolve(host)
     literal = ip_literal(host)
-    return [ literal ] unless literal.nil?
+    return [literal] unless literal.nil?
 
     begin
       out = []

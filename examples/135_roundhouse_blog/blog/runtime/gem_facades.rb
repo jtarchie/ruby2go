@@ -429,24 +429,24 @@ module WebPush
   # test helper clears in setup and verifies in teardown — a count that
   # was not met raises there, which the autorun shim charges to the test
   # that filed it, exactly where `mocha_verify` would.
-  STUB_ON = [ false ]
-  STUB_VALUE = [ "" ]
-  CALLS = [ 0 ]
-  EXPECTED = [ -1 ]
+  STUB_ON = [false]
+  STUB_VALUE = [""]
+  CALLS = [0]
+  EXPECTED = [-1]
 
   # `expects(:payload_send).with(has_entry(endpoint_ip: ip))` — the
   # count is filed against calls carrying that option, and a call that
   # does not is mocha's "unexpected invocation": it raises. Only the
   # String-valued options are matchable; the entry travels as Strings.
-  EXPECT_KEY = [ "" ]
-  EXPECT_VALUE = [ "" ]
+  EXPECT_KEY = [""]
+  EXPECT_VALUE = [""]
 
   # `expects(:payload_send).times(n).raises(e)` — every counted call
   # raises. Held as the exception's CLASS NAME (the Resolv slot's idiom)
   # and re-raised from the hierarchy above, since the app rescues by
   # class: campfire's `WebPush::Pool#deliver` drops the subscription on
   # `ExpiredSubscription`, and its suite raises one to prove it.
-  EXPECT_RAISE_NAME = [ "" ]
+  EXPECT_RAISE_NAME = [""]
 
   def self.stub_payload_send
     STUB_ON[0] = true

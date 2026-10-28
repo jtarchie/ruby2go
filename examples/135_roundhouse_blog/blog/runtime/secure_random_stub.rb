@@ -22,10 +22,10 @@
 require "securerandom"
 
 module SecureRandom
-  STUB_ALPHANUMERIC_ON = [ false ]
-  STUB_ALPHANUMERIC = [ "" ]
-  STUB_UUID_ON = [ false ]
-  STUB_UUID = [ "" ]
+  STUB_ALPHANUMERIC_ON = [false]
+  STUB_ALPHANUMERIC = [""]
+  STUB_UUID_ON = [false]
+  STUB_UUID = [""]
 
   def self.stub_alphanumeric(value)
     STUB_ALPHANUMERIC_ON[0] = true

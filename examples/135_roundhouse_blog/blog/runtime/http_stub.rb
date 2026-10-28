@@ -29,10 +29,10 @@ require "uri"
 require "json"
 
 module HttpStub
-  STUB_VERBS = [ "" ]
-  STUB_URLS = [ "" ]
-  STUB_STATUSES = [ 0 ]
-  STUB_BODIES = [ "" ]
+  STUB_VERBS = [""]
+  STUB_URLS = [""]
+  STUB_STATUSES = [0]
+  STUB_BODIES = [""]
   # Headers as ONE String per stub — `name:value\n` lines, the shape
   # `read_response` parses off the wire — and not as a Hash. An
   # `Array[Hash[String, String]]` element read anywhere in the program
@@ -40,13 +40,13 @@ module HttpStub
   # (23s -> 241s on user_bot_test, measured 2026-09-10, whichever way the
   # element was read: passed, bound to a local, or iterated). Four
   # parallel String arrays are what the table is; this keeps it so.
-  STUB_HEADER_LINES = [ "" ]
+  STUB_HEADER_LINES = [""]
   # A request-body matcher per stub — `.with(body: hash_including(h))`
   # — as the JSON text of `h`, or `""` for a stub that matches any body.
   # Text for the same reason the headers are: one more String column
   # keeps the table's element types flat. Both sides are parsed back to
   # objects at match time (`subset?`).
-  STUB_MATCHER_JSON = [ "" ]
+  STUB_MATCHER_JSON = [""]
 
   # One spelling for a URL, whichever side wrote it. WebMock treats
   # `https://www.example.com/` and `https://www.example.com:443/` as the

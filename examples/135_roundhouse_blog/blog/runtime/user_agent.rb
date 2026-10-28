@@ -69,7 +69,7 @@ class UserAgent
 
   DEFAULT_USER_AGENT = "Mozilla/4.0 (compatible)"
 
-  GECKO_BROWSERS = [ "PaleMoon", "Firefox", "Camino", "Iceweasel", "Seamonkey" ]
+  GECKO_BROWSERS = ["PaleMoon", "Firefox", "Camino", "Iceweasel", "Seamonkey"]
 
   # `Browsers::Webkit::BuildVersions` — the WebKit build → Safari
   # version table for the releases before Safari 3, which shipped no

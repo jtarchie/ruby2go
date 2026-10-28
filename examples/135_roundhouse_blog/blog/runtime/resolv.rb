@@ -59,8 +59,8 @@ class Resolv
   # from, and the whole table lands behind unresolved-call gates. `""`
   # is the seed because no real lookup asks for the empty host, so the
   # sentinel can never match.
-  STUB_HOSTS = [ "" ]
-  STUB_ADDRS = [ [ "" ] ]
+  STUB_HOSTS = [""]
+  STUB_ADDRS = [[""]]
 
   # The catch-all form, `stubs(:getaddresses).returns(v)` with no
   # `.with` — campfire's `stub_dns_resolution(*ips)` helper writes it,
@@ -72,8 +72,8 @@ class Resolv
   # holder is the `Broadcasts::TRANSPORTS` idiom; the value slot is
   # seeded for the element-type reason the note above gives, and the
   # flag is what actually says whether it counts.
-  STUB_ANY = [ [ "" ] ]
-  STUB_ANY_ON = [ false ]
+  STUB_ANY = [[""]]
+  STUB_ANY_ON = [false]
 
   # `stubs(:getaddresses).raises(error)` — campfire's `stub_dns_failure`,
   # a host that resolves to nothing. The class is the helper's own
@@ -85,7 +85,7 @@ class Resolv
   # unconditional matchers, so whichever was installed LAST shadows the
   # other — mocha consults the newest expectation first — and each
   # install turns the other off.
-  STUB_RAISE_NAME = [ "" ]
+  STUB_RAISE_NAME = [""]
 
   # `stubs(:getaddresses).with { |*| … }.returns(addrs)` — a predicate
   # over the host, consulted before every other stub because it was
@@ -93,13 +93,13 @@ class Resolv
   # campfire counts resolver calls with it. `lower::mocha` hands the
   # block over as a one-parameter lambda; an empty list is "none".
   STUB_WHERE = []
-  STUB_WHERE_ADDRS = [ [ "" ] ]
+  STUB_WHERE_ADDRS = [[""]]
   # `.returns(a, b)` — a sequence per host: consecutive calls answer
   # consecutive values and the last repeats, which is mocha's contract
   # and what campfire's DNS-rebinding tests lean on (the second answer
   # is the private address a re-resolve would have connected to).
-  STUB_SEQ_HOSTS = [ "" ]
-  STUB_SEQ_ADDRS = [ [ [ "" ] ] ]
+  STUB_SEQ_HOSTS = [""]
+  STUB_SEQ_ADDRS = [[[""]]]
 
   # Install or REPLACE one host's answer. Replacement matters: a single
   # test re-stubs the same host with a second value
@@ -163,11 +163,11 @@ class Resolv
     STUB_HOSTS.clear
     STUB_ADDRS.clear
     STUB_HOSTS << ""
-    STUB_ADDRS << [ "" ]
+    STUB_ADDRS << [""]
     STUB_SEQ_HOSTS.clear
     STUB_SEQ_ADDRS.clear
     STUB_SEQ_HOSTS << ""
-    STUB_SEQ_ADDRS << [ [ "" ] ]
+    STUB_SEQ_ADDRS << [[""]]
     STUB_ANY_ON[0] = false
     STUB_RAISE_NAME[0] = ""
     STUB_WHERE.clear
@@ -205,6 +205,6 @@ class Resolv
   # raises).
   def self.resolve(host)
     GemFacade.fail!("Resolv.getaddresses")
-    [ host ]
+    [host]
   end
 end

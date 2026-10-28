@@ -177,10 +177,10 @@ module Turbo
     # a test that expects the broadcast does not also read the log. The
     # emitted helper clears in setup and verifies in teardown; an unmet
     # count raises there, charged to the test that filed it.
-    REPLACE_CALLS = [ 0 ]
-    REMOVE_CALLS = [ 0 ]
-    REPLACE_EXPECTED = [ -1 ]
-    REMOVE_EXPECTED = [ -1 ]
+    REPLACE_CALLS = [0]
+    REMOVE_CALLS = [0]
+    REPLACE_EXPECTED = [-1]
+    REMOVE_EXPECTED = [-1]
 
     def self.expect_broadcast_replace_to(count)
       REPLACE_EXPECTED[0] = count

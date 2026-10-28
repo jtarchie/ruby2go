@@ -65,14 +65,14 @@ module Zlib
   # no error case to answer.
   def self.utf8_bytes(cp)
     if cp < 0x80
-      [ cp ]
+      [cp]
     elsif cp < 0x800
-      [ 0xC0 | (cp >> 6), 0x80 | (cp & 0x3F) ]
+      [0xC0 | (cp >> 6), 0x80 | (cp & 0x3F)]
     elsif cp < 0x10000
-      [ 0xE0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F) ]
+      [0xE0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F)]
     else
-      [ 0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3F),
-        0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F) ]
+      [0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3F),
+        0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F)]
     end
   end
 end

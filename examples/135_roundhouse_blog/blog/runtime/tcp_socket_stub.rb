@@ -37,9 +37,9 @@ module TcpSocketStub
   # Per expectation, at index i + 1 (slot 0 is the seed): the count a
   # counting expectation files (-1 for a throwing one), the tag to
   # throw ("" for a counting one), and the calls seen.
-  EXPECT_COUNTS = [ 0 ]
-  EXPECT_THROWS = [ "" ]
-  EXPECT_CALLS = [ 0 ]
+  EXPECT_COUNTS = [0]
+  EXPECT_THROWS = [""]
+  EXPECT_CALLS = [0]
 
   # `expects(:open).with { … }.never` / `.once` / `.times(n)`.
   def self.expect_open_where(count, pred)
