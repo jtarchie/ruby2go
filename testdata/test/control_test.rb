@@ -4558,9 +4558,10 @@ module ControlTests
   class ControlRubySpecLanguageTest < Minitest::Test
     #: (Integer) -> String
     def control_size_of(x)
-      case
-      when x > 100, x < -100 then "huge"
-      when x > 10 then "big"
+      if x > 100 || x < -100
+ "huge"
+      elsif x > 10
+ "big"
       else "small"
       end
     end
@@ -4568,8 +4569,8 @@ module ControlTests
     def test_case_without_subject
       assert_equal %w[huge huge big small], [control_size_of(500), control_size_of(-500), control_size_of(50), control_size_of(1)]
       y = nil #: Integer?
-      r = case
-          when y.nil? then "none"
+      r = if y.nil?
+ "none"
           end
       assert_equal "none", r
     end

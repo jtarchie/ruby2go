@@ -14,9 +14,10 @@ class Thermostat
 
   #: () -> String
   def describe
-    case
-    when reading > 30, reading < -10 then "extreme"
-    when reading > 20 then "warm"
+    if reading > 30 || reading < -10
+ "extreme"
+    elsif reading > 20
+ "warm"
     else "mild"
     end
   end
