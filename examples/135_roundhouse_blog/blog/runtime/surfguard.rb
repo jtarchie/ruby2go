@@ -132,7 +132,7 @@ module Surfguard
   def self.blocked_address?(ip)
 
     blocked_ipaddr?(IPAddr.new(ip))
-rescue IPAddr::InvalidAddressError
+  rescue IPAddr::InvalidAddressError
   true
 
   end
@@ -177,7 +177,7 @@ rescue IPAddr::InvalidAddressError
   def self.ip_literal(host)
 
     IPAddr.new(host)
-rescue IPAddr::InvalidAddressError
+  rescue IPAddr::InvalidAddressError
   nil
 
   end

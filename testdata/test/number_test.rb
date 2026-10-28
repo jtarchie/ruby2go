@@ -2586,7 +2586,7 @@ end
       zd = [-> { 1.0 % 0 }, -> { 1.0 % 0.0 }, -> { 10 % 0.0 }, -> { 1.0.divmod(0.0) }, -> { 10.divmod(0.0) }, -> { 1.0.modulo(0.0) }].map do |f|
         f.call
         nil
-    rescue ZeroDivisionError => e
+      rescue ZeroDivisionError => e
       e.class
       end
       assert_equal [ZeroDivisionError] * 6, zd

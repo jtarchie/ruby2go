@@ -1255,7 +1255,7 @@ end
       assert_equal "KeyError: key not found: :zz", "#{ie.class}: #{ie.message}"
       x = begin
         u.fetch("zz")
-  rescue StandardError
+      rescue StandardError
     -1
       end
       assert_equal(-1, x)

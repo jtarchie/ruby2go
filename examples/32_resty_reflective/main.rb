@@ -85,7 +85,7 @@ module Resty
     def self.exists_on_request?(request)
 
       request.path.match(%r{^/(\w+)(\.\w+)?/?$})[1]
-  rescue StandardError
+    rescue StandardError
     nil
 
     end
@@ -114,7 +114,7 @@ module Resty
     def self.find_by_request(request)
       id = begin
         request.path.dup.match(%r{^/\w+/([\w-]+)/?})[1]
- rescue StandardError
+      rescue StandardError
    nil
       end
       id = nil if %w[edit new].include?(id) # rugaroo: was ["edit", "new"].include?(id)

@@ -93,7 +93,7 @@ def ens_ret2
   x = 0
   [1, 2, 3].each do |v|
     x += v
-ensure
+  ensure
   return x if v == 2
   end
   x
@@ -990,7 +990,7 @@ end
 def first_big(out, list)
   list.each do |x|
     return x if x > 10
-ensure
+  ensure
   out << "checked #{x}"
   end
   -1
@@ -2149,10 +2149,10 @@ module ControlTests
           break if v == 2
 
           out << "#{v} #{w}"
-      ensure
+        ensure
         out << "e #{v} #{w}"
         end
-    ensure
+      ensure
       out << "outer e #{v}"
       end
       assert_equal ["e 1 10", "1 20", "e 1 20", "outer e 1", "e 2 10", "e 2 20", "outer e 2", "e 3 10", "3 20", "e 3 20", "outer e 3"], out
@@ -2780,7 +2780,7 @@ end)
       p = 7
       v = begin
         collide_risky(-1)
-  rescue StandardError
+      rescue StandardError
     p
       end
       assert_equal 7, v
@@ -2887,20 +2887,20 @@ end)
       v = begin
         begin
           edges_risky(-1)
-          rescue StandardError
+        rescue StandardError
             edges_risky(-2)
         end
-  rescue StandardError
+      rescue StandardError
     3
       end
       assert_equal 3, v
       v2 = begin
         begin
           edges_risky(-1)
-          rescue StandardError
+        rescue StandardError
             edges_risky(4)
         end
- rescue StandardError
+      rescue StandardError
    3
       end
       assert_equal 4, v2
@@ -2923,7 +2923,7 @@ end)
       kinds = [] #: Array[String]
       [KeyError.new("k"), ArgumentError.new("a"), IOError.new("io")].each do |ex|
         raise ex
-    rescue StandardError => e
+      rescue StandardError => e
       kind = case e
              when KeyError then "key"
              when ArgumentError then "arg"
@@ -3209,12 +3209,12 @@ end)
       assert_equal ["cond ok", "f"], out
       rx = begin
         edges_risky(2)
- rescue StandardError
+      rescue StandardError
    nil
       end || 9
       ry = begin
         edges_risky(-2)
- rescue StandardError
+      rescue StandardError
    nil
       end || 9
       assert_equal 2, rx
@@ -3265,7 +3265,7 @@ end)
       out = [] #: Array[String]
       e = assert_raises(KeyError) do
         raise ArgumentError, "first"
-    ensure
+      ensure
       out << "ensure raising"
       raise KeyError, "from ensure"
       end
@@ -3366,7 +3366,7 @@ end)
       out = [] #: Array[String]
       outer = assert_raises(KeyError) do
         raise KeyError, "orig"
-    rescue KeyError => e
+      rescue KeyError => e
       out << "logging #{e.message}"
       raise e
       end
@@ -3438,9 +3438,9 @@ end)
       out = [] #: Array[String]
       [1, 2].each do |i|
         raise "odd" if i.odd?
-    rescue StandardError
+      rescue StandardError
       out << "rescued #{i}"
-    ensure
+      ensure
       out << "ensure #{i}"
       end
       assert_equal ["rescued 1", "ensure 1", "ensure 2"], out
@@ -3459,7 +3459,7 @@ end)
     def test_cause
       outer = assert_raises(TypeError) do
         raise "inner"
-    rescue RuntimeError
+      rescue RuntimeError
       raise TypeError, "outer"
       end
       cause = outer.cause
@@ -3471,14 +3471,14 @@ end)
       # re-raising the handled exception itself does not make it its own cause
       same = assert_raises(ArgumentError) do
         raise ArgumentError, "once"
-    rescue ArgumentError => e
+      rescue ArgumentError => e
       raise e
       end
       assert_nil same.cause
       # an exception that already has a cause keeps it
       kept = assert_raises(ArgumentError) do
         raise "first"
-    rescue RuntimeError
+      rescue RuntimeError
       begin
         raise ArgumentError, "second"
       rescue ArgumentError => e
@@ -3537,7 +3537,7 @@ end)
       assert_equal "outer caught ControlTests::Fatal deep", outer
       se = assert_raises(ScriptError) do
         raise NotImplementedError, "nie"
-    rescue StandardError
+      rescue StandardError
       got << "never"
       end
       assert_equal "script: NotImplementedError nie false", "script: #{se.class} #{se.message} #{se.is_a?(StandardError)}"
@@ -3615,9 +3615,9 @@ end)
       end
       ae = assert_raises(AppError) do
         raise "first"
-    rescue StandardError => e1
+      rescue StandardError => e1
       raise AppError, "second from #{e1.message}"
-    ensure
+      ensure
       out << "inner ensure"
       end
       assert_equal "second from first", ae.message
@@ -3667,7 +3667,7 @@ end)
       out = [] #: Array[String]
       [0, 3, -3].each do |d|
         out << (10 / d).to_s << (10 % d).to_s << (-7 / d).to_s
-    rescue ZeroDivisionError => e
+      rescue ZeroDivisionError => e
       out << "zde #{e.message} #{e.class}"
       end
       assert_equal ["zde divided by 0 ZeroDivisionError", "3", "1", "-3", "-4", "-2", "2"], out
@@ -3704,31 +3704,31 @@ end)
     def test_rescue_modifiers
       a = begin
         risky_int(2)
-  rescue StandardError
+      rescue StandardError
     0
       end
       b = begin
         risky_int(-1)
-  rescue StandardError
+      rescue StandardError
     0
       end
       assert_equal 4, a
       assert_equal 0, b
       c = begin
         risky_int(-5)
-  rescue StandardError
+      rescue StandardError
     nil
       end
       assert_nil c
       d = begin
         risky_int(-1)
-  rescue StandardError
+      rescue StandardError
     "failed"
       end
       assert_equal "failed", d
       e2 = begin
         risky_int(3)
- rescue StandardError
+      rescue StandardError
    "failed"
       end
       assert_equal 6, e2
@@ -3740,12 +3740,12 @@ end)
       hits = [] #: Array[String]
       f = begin
         risky_int(1)
-  rescue StandardError
+      rescue StandardError
     hits.push("f").size
       end
       f2 = begin
         risky_int(-1)
- rescue StandardError
+      rescue StandardError
    hits.push("f2").size
       end
       assert_equal 2, f
@@ -3754,7 +3754,7 @@ end)
       ex = assert_raises(NotImplementedError) do
         g = begin
           risky_int(99)
-    rescue StandardError
+        rescue StandardError
       -1
         end
         flunk "got #{g}"
@@ -4593,9 +4593,9 @@ end
       v = catch(:outer) do
         catch(:inner) do
           throw :outer, "deep"
-      rescue Exception
+        rescue Exception
         log << "rescued"
-      ensure
+        ensure
         log << "ensure"
         end
         "not reached"
@@ -4835,7 +4835,7 @@ end
       assert_equal ["body,else,ensure", "body,rescue,ensure", "early"], [control_flow(0), control_flow(1), control_flow(2)]
       e = assert_raises(ArgumentError) do
         1
-    rescue StandardError
+      rescue StandardError
       2
     else
       raise ArgumentError, "from else"
@@ -5018,9 +5018,9 @@ end
         raise ArgumentError, "arg" if i == 2
 
         raise TypeError, "type"
-    rescue *CONTROL_NET_ERRORS => e
+      rescue *CONTROL_NET_ERRORS => e
       seen << [:net, e.message]
-    rescue TypeError, *[KeyError] => e
+      rescue TypeError, *[KeyError] => e
       seen << [:other, e.message]
       end
       assert_equal [[:net, "io"], [:net, "arg"], [:other, "type"]], seen
@@ -5067,7 +5067,7 @@ end
     def test_full_message_cause
       e = assert_raises(IOError) do
         raise "inner"
-    rescue StandardError => inner
+      rescue StandardError => inner
       inner.set_backtrace(["i.rb:1:in 'x'"])
       raise IOError, "outer"
       end

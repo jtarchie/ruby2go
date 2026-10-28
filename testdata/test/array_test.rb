@@ -59,7 +59,7 @@ end
 def safe_each(nums, log)
   nums.each do |n|
     yield n
-rescue ZeroDivisionError => e
+  rescue ZeroDivisionError => e
   log << "rescued #{e.message}"
   end
 end
@@ -463,7 +463,7 @@ module ArrayTests
     def each
       [1, 2].each do |x|
         yield x
-    rescue ZeroDivisionError
+      rescue ZeroDivisionError
       @log << "rescued"
       end
     end
@@ -2638,7 +2638,7 @@ module ArrayTests
       got = begin
         a.shuffle!
         :none
-             rescue FrozenError => e
+      rescue FrozenError => e
                e.class
       end
       assert_equal [FrozenError, nil, []], [got, a.delete(5), [].insert(10)]
@@ -2848,14 +2848,14 @@ module ArrayTests
       err = begin
         frozen[0] = 5
         ""
-             rescue FrozenError => e
+      rescue FrozenError => e
                e.message
       end
       assert_equal "can't modify frozen Array: [1, 2]", err
       low = begin
         a[-99] = 1
         ""
-             rescue IndexError => e
+      rescue IndexError => e
                e.message
       end
       assert_equal "index -99 too small for array; minimum: -6", low
