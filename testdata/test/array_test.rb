@@ -2976,7 +2976,7 @@ module ArrayTests
       else
         out << a.shift
       end
-      if a.empty? then out << -1 else out << a.shift end
+      a.empty? ? out << -1 : out << a.shift
       assert_equal [1, 3, 2, -1], out
     end
 

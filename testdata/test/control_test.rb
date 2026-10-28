@@ -914,7 +914,7 @@ end
 
 #: (Integer) -> String
 def value_if(n)
-  if n > 0 then "pos" else raise ArgumentError, "nonpositive" end
+  n > 0 ? "pos" : (raise ArgumentError, "nonpositive")
 rescue ArgumentError => e
   "rescued #{e.message}"
 end
@@ -2466,9 +2466,9 @@ module ControlTests
       x = 3
       assert_equal "big", (x > 2 ? "big" : "small")
       assert_equal 2, (x.even? ? 1 : 2)
-      z = if x == 3 then 30 else 0 end
+      z = x == 3 ? 30 : 0
       assert_equal 30, z
-      w = if x == 3 then 2 else 1 end
+      w = x == 3 ? 2 : 1
       assert_equal 2, w
       v = x > 100 ? nil : x * 2
       assert_equal 6, v
@@ -2476,7 +2476,7 @@ module ControlTests
       assert_nil v2
       nested = x > 1 ? (x > 2 ? "gt2" : "eq2") : "le1"
       assert_equal "gt2", nested
-      assert_equal "arg if", (if x > 1 then "arg if" else "arg else" end)
+      assert_equal "arg if", (x > 1 ? "arg if" : "arg else")
       s = "a" + (x.odd? ? "odd" : "even") + "z"
       assert_equal "aoddz", s
       mods = [] #: Array[String]
