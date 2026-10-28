@@ -1439,7 +1439,7 @@ B
     end
 
     def test_freeze
-      r = /a/.freeze
+      r = /a/
       assert r.frozen?
       assert_equal 1, r =~ "ba"
     end

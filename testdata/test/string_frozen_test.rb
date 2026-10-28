@@ -226,8 +226,8 @@ module StringFrozenTests
       assert_equal false, ("a" + "b").equal?("a" + "b")
       assert_equal true, ("a" + "b") == "ab"
       assert_equal true, "lit".frozen?
-      assert_equal "x", "x".freeze
-      assert_equal true, "x".freeze.equal?("x")
+      assert_equal "x", "x"
+      assert_equal true, "x".equal?("x")
       assert_equal false, "hi".nil?
     end
 

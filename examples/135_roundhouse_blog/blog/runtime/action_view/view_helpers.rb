@@ -117,7 +117,7 @@ module ActionView
       "'" => "&#39;",
     }.freeze
   
-    HTML_ESCAPE_PATTERN = /[&<>"']/.freeze
+    HTML_ESCAPE_PATTERN = /[&<>"']/
   
     # Monomorphic: param typed String. Callers handle nil/non-String
     # coercion explicitly. Contracts the dispatch surface so every
@@ -174,7 +174,7 @@ module ActionView
       "}" => "%7D",
     }.freeze
 
-    URL_ESCAPE_PATTERN = /[ !"\#$%&'()*+,\/:;<=>?@\[\\\]^`{|}]/.freeze
+    URL_ESCAPE_PATTERN = /[ !"\#$%&'()*+,\/:;<=>?@\[\\\]^`{|}]/
 
     # Monomorphic: param typed String, like `html_escape`.
     def self.url_encode(s)
@@ -250,7 +250,7 @@ module ActionView
     # and a two-string `gsub` is not a shape the strict emitters lower
     # (C# reads `x.gsub(a, b)` as the regex+table form and emits
     # `"+".Replace(x, …)`, which compiles nowhere).
-    MAILTO_ESCAPE_PATTERN = /[ !"\#$%&'()*+,\/:;<=>?\[\\\]^`{|}]/.freeze
+    MAILTO_ESCAPE_PATTERN = /[ !"\#$%&'()*+,\/:;<=>?\[\\\]^`{|}]/
 
     # Monomorphic, like `url_encode`.
     def self.url_encode_component(s)

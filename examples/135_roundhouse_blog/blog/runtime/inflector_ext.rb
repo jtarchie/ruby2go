@@ -4,9 +4,9 @@
 # the strict-target transpilers never see the gsub-with-Regexp bodies.
 # Promote to inflector.rb only with per-target regex-replace support.
 module Inflector
-  PARAMETERIZE_SQUASH = /[^a-z0-9\-_]+/.freeze
-  PARAMETERIZE_RUNS = /-{2,}/.freeze
-  PARAMETERIZE_EDGES = /\A-|-\z/.freeze
+  PARAMETERIZE_SQUASH = /[^a-z0-9\-_]+/
+  PARAMETERIZE_RUNS = /-{2,}/
+  PARAMETERIZE_EDGES = /\A-|-\z/
 
   # AS `String#parameterize`, default separator: downcase, squash
   # non-alphanumerics to "-", collapse runs, trim edges. (No

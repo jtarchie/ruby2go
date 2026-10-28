@@ -5,7 +5,7 @@ require "minitest/autorun"
 module RegexpTests
   # gsub/sub/scan/split apply Onigmo's ^ and \b readings (decision 24), not only match/=~.
   CVE_PATTERN = /CVE-?(\d{4})-(\d{4,})/i
-  PAIR_PATTERN = /(\w)=(\w)/.freeze
+  PAIR_PATTERN = /(\w)=(\w)/
 
   class RegexpFindAllTest < Minitest::Test
     # scan through a constant holding a literal with groups yields the groups, as the literal would (Homebrew's
