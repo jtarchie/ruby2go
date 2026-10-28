@@ -65,7 +65,7 @@ class UserAgent
   # `useragent`'s own MATCHER, with its `^` written `\A` (a user-agent
   # header is one line) and the outer alternation made non-capturing so
   # the comment is group 3.
-  MATCHER = /\A['"]*([^\/\s]+)\/?([^\s,]*)(?:\s\(([^\)]*)\)|,gzip\(gfe\))?/
+  MATCHER = %r{\A['"]*([^/\s]+)/?([^\s,]*)(?:\s\(([^\)]*)\)|,gzip\(gfe\))?}
 
   DEFAULT_USER_AGENT = "Mozilla/4.0 (compatible)"
 
@@ -186,7 +186,7 @@ class UserAgent
       return true if t.product.match?(/\AAppleWebKit\z/i)
 
       t.comment.each do |c|
-        return true if c.match?(/\A(AppleWebKit)\/([\d\.]+)/i)
+        return true if c.match?(%r{\A(AppleWebKit)/([\d\.]+)}i)
       end
     end
     false
@@ -309,7 +309,7 @@ class UserAgent
 
     @tokens.each do |tok|
       tok.comment.each do |c|
-        v = c[/\A(AppleWebKit)\/([\d\.]+)/i, 2].to_s
+        v = c[%r{\A(AppleWebKit)/([\d\.]+)}i, 2].to_s
         return v unless v.empty?
       end
     end

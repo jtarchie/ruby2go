@@ -352,8 +352,8 @@ module RxjsonTests
       ], got
       assert_equal "/a/mi", /a/im.inspect
       assert_equal "(?m-ix:y)|(?-mix:z)", "#{/y/m}|#{/z/}"
-      assert_equal "/\\d+/", %r{\d+}.inspect
-      assert_equal "\\d+", %r{\d+}.source
+      assert_equal "/\\d+/", /\d+/.inspect
+      assert_equal "\\d+", /\d+/.source
       assert_equal true, (/ab/ == /ab/)
       assert_equal false, (/ab/ == /ab/i)
       assert_equal true, (/ab/i == /ab/i)
@@ -486,7 +486,7 @@ module RxjsonTests
     def test_escaped_punctuation_and_control_escapes
       assert_equal true, /a\-b/.match?("a-b")
       assert_equal true, /a\#b/.match?("a#b")
-      assert_equal true, /\//.match?("/")
+      assert_equal true, %r{/}.match?("/")
       assert_equal true, /\:/.match?(":")
       assert_equal true, /a\_b/.match?("a_b")
       assert_equal true, /a\ b/.match?("a b")
@@ -510,10 +510,10 @@ module RxjsonTests
       assert_equal "/(a|b)*c/ =~ \"xababc\": 1", rxjson_show(/(a|b)*c/, "xababc")
       assert_equal "/a+?/ =~ \"aaa\": 0", rxjson_show(/a+?/, "aaa")
       assert_equal "/a??b/ =~ \"ab\": 0", rxjson_show(/a??b/, "ab")
-      assert_equal "/a/i", %r{a}i.inspect
+      assert_equal "/a/i", /a/i.inspect
       assert_equal "x/y", %r{x/y}.source
-      assert_equal "/q/", %r{q}.inspect
-      assert_equal "(?m-ix:\\d+)", %r{\d+}m.to_s
+      assert_equal "/q/", /q/.inspect
+      assert_equal "(?m-ix:\\d+)", /\d+/m.to_s
     end
 
     # \d, \w and \s are ASCII-only in Ruby, as in RE2.
@@ -1226,7 +1226,7 @@ b/
     # source/inspect/to_s escape / as the literal form does
     def test_source_inspect_to_s_escape
       x_slash = "b/c"
-      assert_equal "a/b", /a\/b/.source
+      assert_equal "a/b", %r{a/b}.source
       assert_equal "/a\\/b/", %r{a/b}.inspect
       assert_equal "(?-mix:a\\/b)", %r{a/b}.to_s
       assert_equal "a/b", %r{a/b}.source
@@ -1235,8 +1235,8 @@ b/
       assert_equal "ab/c", /a#{x_slash}/.source
       w_slash = "w"
       assert_equal "/w\\/x/", %r{#{w_slash}/x}.inspect
-      assert_equal "w/", /#{w_slash}\//.source
-      assert_equal "/w\\//", /#{w_slash}\//.inspect
+      assert_equal "w/", %r{#{w_slash}/}.source
+      assert_equal "/w\\//", %r{#{w_slash}/}.inspect
     end
 
     # \s includes \v

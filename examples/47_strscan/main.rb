@@ -20,7 +20,7 @@ class Lexer
         out << [:num, t]
       elsif (t = @ss.scan(/[a-z_]\w*/))
         out << [:ident, t]
-      elsif (t = @ss.scan(/\*\*|[-+*\/()=]/))
+      elsif (t = @ss.scan(%r{\*\*|[-+*/()=]}))
         out << [:op, t]
       else
         raise ArgumentError, "unexpected #{@ss.peek(1).inspect} at #{@ss.pos}"

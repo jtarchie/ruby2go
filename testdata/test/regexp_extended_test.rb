@@ -161,7 +161,7 @@ module RegexpTests
       s = "ab12 é日9 x=1/y?z"
       assert_equal "ab23 é日0 x=2/y?z", s.gsub(/\d/) { |d| ((d.to_i + 1) % 10).to_s }
       assert_equal ["12", "9", "1"], s.scan(/\d+/)
-      assert_equal ["ab12", "é日9", "x", "1", "y", "z"], s.split(/[\s\/?=]+/)
+      assert_equal ["ab12", "é日9", "x", "1", "y", "z"], s.split(%r{[\s/?=]+})
       assert_equal 2, s =~ /\d/
       assert_equal 10, s =~ /=1/ # a character index, not a byte offset
       assert s.match?(/日9/)
