@@ -54,34 +54,34 @@ module NilCheckTests
     end
 
     def test_string
-      assert_equal [TypeError, "no implicit conversion of nil into String"], error_of { "x" + str(0) }
-      assert_equal [ArgumentError, "comparison of String with nil failed"], error_of { "a" < str(0) }
-      assert_equal [TypeError, "no implicit conversion from nil to integer"], error_of { "ab" * int(0) }
-      assert_equal [TypeError, "no implicit conversion from nil to integer"], error_of { "abc"[int(0)] }
+      assert_equal([TypeError, "no implicit conversion of nil into String"], error_of { "x" + str(0) })
+      assert_equal([ArgumentError, "comparison of String with nil failed"], error_of { "a" < str(0) })
+      assert_equal([TypeError, "no implicit conversion from nil to integer"], error_of { "ab" * int(0) })
+      assert_equal([TypeError, "no implicit conversion from nil to integer"], error_of { "abc"[int(0)] })
     end
 
     def test_integer
-      assert_equal [TypeError, "nil can't be coerced into Integer"], error_of { 1 + int(0) }
-      assert_equal [TypeError, "nil can't be coerced into Integer"], error_of { 1 - int(0) }
-      assert_equal [TypeError, "nil can't be coerced into Integer"], error_of { 3 * int(0) }
-      assert_equal [TypeError, "nil can't be coerced into Integer"], error_of { 3 / int(0) }
-      assert_equal [TypeError, "nil can't be coerced into Integer"], error_of { 3 % int(0) }
-      assert_equal [TypeError, "nil can't be coerced into Integer"], error_of { 1 + flt(0) }
-      assert_equal [ArgumentError, "comparison of Integer with nil failed"], error_of { 3 < int(0) }
-      assert_equal [ArgumentError, "comparison of Integer with nil failed"], error_of { 3 >= int(0) }
-      assert_equal [ArgumentError, "comparison of Integer with nil failed"], error_of { 5.between?(1, int(0)) }
-      assert_equal [TypeError, "no implicit conversion of nil into Integer"], error_of { 1 << int(0) }
+      assert_equal([TypeError, "nil can't be coerced into Integer"], error_of { 1 + int(0) })
+      assert_equal([TypeError, "nil can't be coerced into Integer"], error_of { 1 - int(0) })
+      assert_equal([TypeError, "nil can't be coerced into Integer"], error_of { 3 * int(0) })
+      assert_equal([TypeError, "nil can't be coerced into Integer"], error_of { 3 / int(0) })
+      assert_equal([TypeError, "nil can't be coerced into Integer"], error_of { 3 % int(0) })
+      assert_equal([TypeError, "nil can't be coerced into Integer"], error_of { 1 + flt(0) })
+      assert_equal([ArgumentError, "comparison of Integer with nil failed"], error_of { 3 < int(0) })
+      assert_equal([ArgumentError, "comparison of Integer with nil failed"], error_of { 3 >= int(0) })
+      assert_equal([ArgumentError, "comparison of Integer with nil failed"], error_of { 5.between?(1, int(0)) })
+      assert_equal([TypeError, "no implicit conversion of nil into Integer"], error_of { 1 << int(0) })
     end
 
     def test_float
-      assert_equal [TypeError, "nil can't be coerced into Float"], error_of { 1.5 + flt(0) }
-      assert_equal [TypeError, "nil can't be coerced into Float"], error_of { 1.5 * flt(0) }
-      assert_equal [TypeError, "nil can't be coerced into Float"], error_of { 1.5 + int(0) }
-      assert_equal [ArgumentError, "comparison of Float with nil failed"], error_of { 1.5 < flt(0) }
+      assert_equal([TypeError, "nil can't be coerced into Float"], error_of { 1.5 + flt(0) })
+      assert_equal([TypeError, "nil can't be coerced into Float"], error_of { 1.5 * flt(0) })
+      assert_equal([TypeError, "nil can't be coerced into Float"], error_of { 1.5 + int(0) })
+      assert_equal([ArgumentError, "comparison of Float with nil failed"], error_of { 1.5 < flt(0) })
     end
 
     def test_index
-      assert_equal [TypeError, "no implicit conversion from nil to integer"], error_of { [1, 2, 3][int(0)] }
+      assert_equal([TypeError, "no implicit conversion from nil to integer"], error_of { [1, 2, 3][int(0)] })
     end
 
     def test_equality_answers
@@ -128,9 +128,9 @@ module NilCheckTests
     end
 
     def test_nil_raises
-      assert raised? { twice(int(0)) }
-      assert raised? { leaf_value(leaf(0)) }
-      assert raised? { base_name(base(0)) }
+      assert(raised? { twice(int(0)) })
+      assert(raised? { leaf_value(leaf(0)) })
+      assert(raised? { base_name(base(0)) })
     end
   end
 end

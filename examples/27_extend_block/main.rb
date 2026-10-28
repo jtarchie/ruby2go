@@ -65,4 +65,4 @@ puts "user_sessions".camelize, "posts".camelize
 registry = Registry.new.add("a").add("b")
 registry.each { |name| puts name }
 puts registry.transform { |name| name.upcase }.inspect
-puts registry.first_transformed { |name| name * 3 }
+puts(registry.first_transformed { |name| name * 3 })

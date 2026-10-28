@@ -100,7 +100,7 @@ module EnumeratorTests
       assert_equal 2, k.size
       m = [4, 5].map
       assert_equal 4, m.next
-      assert_equal [8, 10], m.with_index { |x, i| x * 2 + i * 0 }
+      assert_equal([8, 10], m.with_index { |x, i| x * 2 + i * 0 })
       u = 1.upto(3)
       assert_equal [1, 2], [u.next, u.next]
       assert_equal 3, u.size
@@ -112,7 +112,7 @@ module EnumeratorTests
       assert_equal [1, 2], [r.next, r.next]
       h = { a: 1, b: 2 }.each
       assert_equal [:a, 1], h.next
-      assert_equal [[:a, 0]], { a: 1 }.each_with_index.map { |(k, _v), i| [k, i] }
+      assert_equal([[:a, 0]], { a: 1 }.each_with_index.map { |(k, _v), i| [k, i] })
       assert_equal 97, "abc".each_byte.next
       assert_equal [2, 1], [1, 2].reverse_each.to_a
     end
@@ -122,10 +122,10 @@ module EnumeratorTests
       got = []
       [1, 2].each.with_index(1) { |x, i| got << x * i }
       assert_equal [1, 4], got
-      assert_equal %w[a0 b1], %w[a b].each_with_index.map { |x, i| "#{x}#{i}" }
+      assert_equal(%w[a0 b1], %w[a b].each_with_index.map { |x, i| "#{x}#{i}" })
       assert_equal [3, 6], [1, 2].each.with_object([]) { |x, acc| acc << x * 3 }
       assert_equal [3, 3], [1, 2, 3].each_slice(2).map(&:sum)
-      assert_equal ["h", "ee"], "he".each_char.with_index.map { |ch, i| ch * (i + 1) }
+      assert_equal(["h", "ee"], "he".each_char.with_index.map { |ch, i| ch * (i + 1) })
       assert_equal [[3, 1], ["x"]], [Basket.new("3", "1").each_slice(2).first.map(&:to_i), Basket.new("x").to_a]
       assert_equal [["a", 0], ["b", 1]], Basket.new("a", "b").each_with_index.to_a
     end
@@ -144,7 +144,7 @@ module EnumeratorTests
         raise StopIteration if n == 3
       end
       assert_equal 3, n
-      assert_equal [5, 6], Drained.new([4, 5]).map { |x| x + 1 }
+      assert_equal([5, 6], Drained.new([4, 5]).map { |x| x + 1 })
       src = [1, 2, 3].each
       doubled = Enumerator.new do |y|
         loop { y << src.next * 2 }
@@ -205,7 +205,7 @@ module EnumeratorTests
         [1, 2, 3].each { |x| y.yield x * x }
       end
       assert_equal [1, 4, 9], squares.to_a
-      assert_equal [2, 5, 10], squares.map { |x| x + 1 }
+      assert_equal([2, 5, 10], squares.map { |x| x + 1 })
       assert squares.include?(4)
       assert_equal [4], squares.select(&:even?)
       assert_equal 14, squares.sum
@@ -476,9 +476,9 @@ module EnumeratorTests
     def test_grep_is_lazy_and_returns_lazy
       assert_kind_of Enumerator::Lazy, (1..3).lazy.grep(1)
       assert_kind_of Enumerator::Lazy, (1..3).lazy.grep_v(1)
-      assert_kind_of Enumerator::Lazy, (1..3).lazy.find_all { |x| x > 1 }
-      assert_kind_of Enumerator::Lazy, (1..3).lazy.collect_concat { |x| [x] }
-      assert_kind_of Enumerator::Lazy, (1..3).lazy.collect { |x| x }
+      assert_kind_of(Enumerator::Lazy, (1..3).lazy.find_all { |x| x > 1 })
+      assert_kind_of(Enumerator::Lazy, (1..3).lazy.collect_concat { |x| [x] })
+      assert_kind_of(Enumerator::Lazy, (1..3).lazy.collect { |x| x })
       pulled = []
       first = (1..).lazy.map { |x| pulled << x
  x }.grep(Integer).first(2)
@@ -540,7 +540,7 @@ module EnumeratorTests
       assert_equal 1.step(10, 3), s
       assert_equal 7, (1...10).step(3).last
       assert_equal [10, 7, 4, 1], 10.step(1, -3).to_a
-      assert_equal [2, 8, 14, 20], (1..10).step(3).map { |x| x * 2 }
+      assert_equal([2, 8, 14, 20], (1..10).step(3).map { |x| x * 2 })
       assert_equal [1, 3, 5], (1..).step(2).first(3)
       assert_equal [1.0, 1.5, 2.0], 1.0.step(2.0, 0.5).to_a
       assert_equal [10, 40], ((1..10) % 3).lazy.map { |x| x * 10 }.first(2)
@@ -624,8 +624,8 @@ module EnumeratorTests
       f = Forwarded.new
       f.add("a")
       f.add("b")
-      assert_equal %w[a b], Forwarded.new(f).map { |s| s }
-      assert_equal %w[b], f.select { |s| s > "a" }
+      assert_equal(%w[a b], Forwarded.new(f).map { |s| s })
+      assert_equal(%w[b], f.select { |s| s > "a" })
     end
   end
 end
@@ -682,7 +682,7 @@ module EnumeratorTests
     def test_large_and_small_sizes
       assert_equal [[1, 2]], [1, 2].each_slice(10**9).to_a
       assert_equal [], [1, 2].each_cons(5).to_a
-      assert_equal 4_998, (1..5_000).each_cons(3).count { |w| w.sum.positive? }
+      assert_equal(4_998, (1..5_000).each_cons(3).count { |w| w.sum.positive? })
       assert_equal 1_667, (1..5_000).each_slice(3).count
     end
 
@@ -698,10 +698,10 @@ module EnumeratorTests
   class EnumWindowReuseTest < Minitest::Test
     def test_reading_blocks
       src = (1..10).to_a
-      assert_equal 1, src.each_cons(3).count { |w| w.sum % 5 == 0 }
-      assert_equal 15, src.each_slice(4).sum { |s| s.first.to_i }
-      assert_equal [3, 5, 7, 9, 11, 13, 15, 17, 19], src.each_cons(2).map { |w| w.sum }
-      assert_equal [10, 26, 19], src.each_slice(4).map { |s| s.sum }
+      assert_equal(1, src.each_cons(3).count { |w| w.sum % 5 == 0 })
+      assert_equal(15, src.each_slice(4).sum { |s| s.first.to_i })
+      assert_equal([3, 5, 7, 9, 11, 13, 15, 17, 19], src.each_cons(2).map { |w| w.sum })
+      assert_equal([10, 26, 19], src.each_slice(4).map { |s| s.sum })
       assert(src.each_cons(4).all? { |w| w.last.to_i - w.first.to_i == 3 })
       total = 0
       src.each_cons(3) { |w| total += w.max.to_i * w.size }
@@ -821,18 +821,18 @@ module EnumeratorTests
     def test_chained_consumers
       a = [1, 2, 3, 4]
       b = [10, 20, 30]
-      assert_equal 140, a.zip(b).sum { |x, y| x * (y || 0) }
-      assert_equal [11, 22, 33, 4], a.zip(b).map { |x, y| x + (y || 0) }
-      assert_equal 1, a.zip(b).count { |_x, y| y.nil? }
-      assert_equal [[3, 30], [4, nil]], a.zip(b).select { |x, _y| x > 2 }
-      assert_equal [[1, 10]], a.zip(b).reject { |x, _y| x > 1 }
+      assert_equal(140, a.zip(b).sum { |x, y| x * (y || 0) })
+      assert_equal([11, 22, 33, 4], a.zip(b).map { |x, y| x + (y || 0) })
+      assert_equal(1, a.zip(b).count { |_x, y| y.nil? })
+      assert_equal([[3, 30], [4, nil]], a.zip(b).select { |x, _y| x > 2 })
+      assert_equal([[1, 10]], a.zip(b).reject { |x, _y| x > 1 })
       assert(a.zip(b).any? { |x, y| y.nil? && x == 4 })
       assert(a.zip(b).all? { |x, _y| x.positive? })
       assert(a.zip(b).none? { |x, y| x == y })
-      assert_equal [10, 40, 90], a.zip(b).filter_map { |x, y| y && x * y }
-      assert_equal [1, 10, 2, 20, 3, 30, 4], a.zip(b).flat_map { |x, y| y ? [x, y] : [x] }
+      assert_equal([10, 40, 90], a.zip(b).filter_map { |x, y| y && x * y })
+      assert_equal([1, 10, 2, 20, 3, 30, 4], a.zip(b).flat_map { |x, y| y ? [x, y] : [x] })
       words = %w[a b]
-      assert_equal %w[a1 b2], words.zip([1, 2, 3]).map { |w, n| "#{w}#{n}" }
+      assert_equal(%w[a1 b2], words.zip([1, 2, 3]).map { |w, n| "#{w}#{n}" })
     end
 
     def test_chain_reads_arrays_before_the_block
@@ -882,7 +882,7 @@ module EnumeratorTests
       b = [4, 5]
       c = [7, 8, 9]
       assert_equal [[1, 4, 7], [2, 5, 8], [3, nil, 9]], a.zip(b, c)
-      assert_equal [12, 15, 12], a.zip(b, c).map { |x, y, z| x + (y || 0) + (z || 0) }
+      assert_equal([12, 15, 12], a.zip(b, c).map { |x, y, z| x + (y || 0) + (z || 0) })
     end
   end
 end

@@ -12,7 +12,7 @@ total = 0
 scores.zip(bonus).each { |s, b| total += s + (b || 0) }
 puts "total with bonus: #{total}"
 
-puts names.zip(scores).count { |_n, s| s && s > 80 }
+puts(names.zip(scores).count { |_n, s| s && s > 80 })
 puts names.zip(scores).map { |n, s| "#{n.upcase}=#{s.to_i}" }.join(" ")
-puts scores.zip(bonus).sum { |s, b| s * (b || 1) }
+puts(scores.zip(bonus).sum { |s, b| s * (b || 1) })
 p names.zip(scores, bonus)

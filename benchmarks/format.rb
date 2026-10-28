@@ -23,4 +23,4 @@ end
 puts acc
 
 puts (1..100_000).map { |i| "%.2f" % (i / 3.0) }.join(",").length
-puts (1..100_000).sum { |i| i.to_s.sum + i.digits.sum }
+puts((1..100_000).sum { |i| i.to_s.sum + i.digits.sum })

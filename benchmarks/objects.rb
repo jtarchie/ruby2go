@@ -105,4 +105,4 @@ shapes = [] #: Array[Shape]
 end
 puts shapes.sum(&:area).round(2)
 puts shapes.max&.area
-puts shapes.count { |s| s > shapes.fetch(1) }
+puts(shapes.count { |s| s > shapes.fetch(1) })

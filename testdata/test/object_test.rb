@@ -2629,7 +2629,7 @@ module ObjectTests
       assert_equal "sam:0", s.summary
       accounts = [a, s] #: Array[Account]
       assert_equal [42, 0], accounts.map(&:balance)
-      assert_equal [4, 2], accounts.map { |x| x.history.size }
+      assert_equal([4, 2], accounts.map { |x| x.history.size })
       accounts.each { |x| x.balance = x.balance * 2 }
       assert_equal [84, 0], accounts.map(&:balance)
       big = Account.new("big", 9_223_372_036_854_775_000)
@@ -2856,12 +2856,12 @@ module ObjectTests
       seen = [] #: Array[Integer]
       tb = TapBox.new(4).tap { |b| seen << b.n }
       assert_equal 4, tb.n
-      assert_equal 7, 7.tap { |x| seen << x + 1 }
+      assert_equal(7, 7.tap { |x| seen << x + 1 })
       assert_equal [4, 8], seen
       ups = [] #: Array[String]
       assert_equal 1, "s".tap { |s| ups << s.upcase }.size
       assert_equal ["S"], ups
-      assert_equal [1, 2, 3], [1, 2].tap { |a| a << 3 }
+      assert_equal([1, 2, 3], [1, 2].tap { |a| a << 3 })
       SgConfig.instance.level = 3
       assert_equal ["init"], SG_LOG
       assert_equal 3, SgConfig.instance.level
@@ -2890,13 +2890,13 @@ module ObjectTests
       assert_equal "tiny:ObjectTests::Tiny(1) sides=4", Tiny.new.describe
       assert_equal 1, Tiny.new.size
       klasses = [CmShape, CmSquare, Tri] #: Array[singleton(CmShape)]
-      assert_equal ["shape:ObjectTests::CmShape(7) sides=0", "square:ObjectTests::CmSquare(7) sides=4", "shape:ObjectTests::Tri(7) sides=3"], klasses.map { |k| k.new(7).describe }
+      assert_equal(["shape:ObjectTests::CmShape(7) sides=0", "square:ObjectTests::CmSquare(7) sides=4", "shape:ObjectTests::Tri(7) sides=3"], klasses.map { |k| k.new(7).describe })
       assert_equal ["shape", "square", "shape"], klasses.map(&:kind)
-      assert_equal [0, 4, 3], klasses.map { |k| k.sides }
+      assert_equal([0, 4, 3], klasses.map { |k| k.sides })
       assert_equal ["ObjectTests::CmShape", "ObjectTests::CmSquare", "ObjectTests::Tri"], klasses.map(&:name)
       assert_equal ["ObjectTests::CmShape", "ObjectTests::CmSquare", "ObjectTests::Tri"], klasses.map(&:to_s)
       assert_equal "[ObjectTests::CmShape, ObjectTests::CmSquare, ObjectTests::Tri]", klasses.inspect
-      assert_equal [1, 1, 1], klasses.map { |k| k.build(0).size }
+      assert_equal([1, 1, 1], klasses.map { |k| k.build(0).size })
       k = klasses.fetch(1)
       assert_equal "square", k.kind
       assert_equal "ObjectTests::CmSquare", k.name
@@ -2919,9 +2919,9 @@ module ObjectTests
       assert_equal true, (s.class == CmSquare)
       assert_equal false, (s.class == CmShape)
       shapes = [CmShape.new(1), CmSquare.new(2), Tri.new(3), Tiny.new] #: Array[CmShape]
-      assert_equal ["ObjectTests::CmShape", "ObjectTests::CmSquare", "ObjectTests::Tri", "ObjectTests::Tiny"], shapes.map { |x| x.class.name }
-      assert_equal [0, 4, 3, 4], shapes.map { |x| x.class.sides }
-      assert_equal [false, true, false, false], shapes.map { |x| x.class == CmSquare }
+      assert_equal(["ObjectTests::CmShape", "ObjectTests::CmSquare", "ObjectTests::Tri", "ObjectTests::Tiny"], shapes.map { |x| x.class.name })
+      assert_equal([0, 4, 3, 4], shapes.map { |x| x.class.sides })
+      assert_equal([false, true, false, false], shapes.map { |x| x.class == CmSquare })
       assert_equal "Class", CmShape.class.to_s
       assert_equal "Class", CmSquare.class.to_s
       assert_equal "Class", CmShape.class.class.to_s
@@ -3002,11 +3002,11 @@ module ObjectTests
       assert_equal "made square 2", CmSquare.new(2).maker.made
       assert_equal "made tiny 1", Tiny.new.maker.made
       assert_equal ["shape", "square", "tiny"], HANDLERS.map(&:kind)
-      assert_equal [0, 4, 4], HANDLERS.map { |h| h.me.sides }
+      assert_equal([0, 4, 4], HANDLERS.map { |h| h.me.sides })
       assert_equal "[ObjectTests::CmShape, ObjectTests::CmSquare, ObjectTests::Tiny]", HANDLERS.inspect
       conf = Conf.build { |x| x.port = 8080 }
       assert_equal 8080, conf.port
-      assert_equal "n=2", Conf.fmt { |n| "n=#{n}" }
+      assert_equal("n=2", Conf.fmt { |n| "n=#{n}" })
       assert_equal "1010", Conf.fmt(5) { |n| n.to_s * 2 }
       tmp = CmTemp.new(1)
       assert_equal 0, CmTemp::FREEZING.deg
@@ -3032,7 +3032,7 @@ module ObjectTests
       assert_equal false, Blob.respond_to?(:area)
       assert_equal true, SubBlob.respond_to?(:only_sub)
       assert_equal false, Blob.respond_to?(:only_sub)
-      assert_equal [false, true], blobs.map { |k| k.respond_to?(:only_sub) }
+      assert_equal([false, true], blobs.map { |k| k.respond_to?(:only_sub) })
       assert_equal false, Blob.new.respond_to?(:kind)
       assert_equal true, Blob.respond_to?(:new)
       assert_equal true, Blob.respond_to?(:name)
@@ -3055,7 +3055,7 @@ module ObjectTests
       # klass.new(1) through singleton(NaBase) on Two stays in testdata/run/object_class_new_arity.rb:
       # rugaroo fails there with a Go type-assertion error, not ArgumentError (decision 19).
       ks = [NaBase, Same] #: Array[singleton(NaBase)]
-      assert_equal ["ObjectTests::NaBase: 1", "ObjectTests::Same: 1"], ks.map { |k| "#{k.name}: #{k.new(1).n}" }
+      assert_equal(["ObjectTests::NaBase: 1", "ObjectTests::Same: 1"], ks.map { |k| "#{k.name}: #{k.new(1).n}" })
     end
   end
 
@@ -3096,7 +3096,7 @@ module ObjectTests
       assert_equal 1, rank_of("One")
       assert_equal 2, rank_of("Two")
       assert_equal 0, rank_of("Root")
-      assert_equal [1, 0, 2], Kinds.constants.sort.map { |c| Kinds.const_get(c).rank }
+      assert_equal([1, 0, 2], Kinds.constants.sort.map { |c| Kinds.const_get(c).rank })
       assert_equal "red", CtChild.const_get(:COLOR)
       assert_equal 5, CtChild.const_get(:SIZE)
       assert_equal 99, Object.const_get(:OBJECT_TOP)
@@ -3124,7 +3124,7 @@ module ObjectTests
       assert_equal 5, child_const("SIZE")
       assert_equal "red", child_const("COLOR")
       assert_equal 5, CtChild.const_get("SIZE".downcase.upcase)
-      assert_equal [18, 2], Limits.constants.sort.map { |c| Limits.const_get(c) * 2 }
+      assert_equal([18, 2], Limits.constants.sort.map { |c| Limits.const_get(c) * 2 })
       assert_equal %i[Coord ORIGIN Tag], CtGeo.constants.sort
       assert_equal "#<struct ObjectTests::CtGeo::Tag text=\"t\">", CtGeo.const_get(:Tag).new("t").inspect
       assert_equal %i[lat lng], CtGeo.const_get(:Coord).members
@@ -3181,19 +3181,19 @@ module ObjectTests
       assert_equal "I am ObjectTests::EbGadget", EbGadget.describe
       assert_equal "I am ObjectTests::Tools", Tools.describe
       assert_equal "widget", EbGadget.kind
-      assert_equal ["RED", "GREEN", "BLUE"], EbColors.map { |c| c.upcase }
+      assert_equal(["RED", "GREEN", "BLUE"], EbColors.map { |c| c.upcase })
       assert_equal 3, EbColors.count
       assert_equal ["red", "green", "blue"], EbColors.to_a
-      assert_equal ["red", "green", "blue"], EbColors.select { |c| c.include?("e") }
-      assert_equal "blue", EbColors.find { |c| c.size == 4 }
+      assert_equal(["red", "green", "blue"], EbColors.select { |c| c.include?("e") })
+      assert_equal("blue", EbColors.find { |c| c.size == 4 })
       assert_equal true, EbColors.include?("green")
       assert_equal false, EbColors.include?("pink")
       assert_equal ["red"], EbColors.first(1)
-      assert_equal ["red", "blue", "green"], EbColors.sort_by { |c| c.size }
+      assert_equal(["red", "blue", "green"], EbColors.sort_by { |c| c.size })
       assert_equal "blue", EbColors.min
       assert_equal "red", EbColors.max
       assert_equal "ObjectTests::Handlers::Users", Handlers.detect { |h| h.matches?("/users/1") }.inspect
-      assert_equal ["ObjectTests::Handlers::Base", "ObjectTests::Handlers::Posts", "ObjectTests::Handlers::Users"], Handlers.map { |h| h.name }
+      assert_equal(["ObjectTests::Handlers::Base", "ObjectTests::Handlers::Posts", "ObjectTests::Handlers::Users"], Handlers.map { |h| h.name })
       assert_equal 3, Handlers.count
       assert_equal "[ObjectTests::Handlers::Posts]", Handlers.select { |h| h.matches?("/posts/9") }.inspect
       assert_nil(Handlers.find { |h| h.matches?("/x") })
@@ -3201,9 +3201,9 @@ module ObjectTests
       items = [] #: Array[Integer]
       bag.each { |n| items << n }
       assert_equal [3, 1, 2], items
-      assert_equal [9, 1, 4], bag.transform { |n| n * n }
-      assert_equal [3, 1], bag.keep { |n| n.odd? }
-      assert_equal "first=3", bag.first_as { |n| "first=#{n}" }
+      assert_equal([9, 1, 4], bag.transform { |n| n * n })
+      assert_equal([3, 1], bag.keep { |n| n.odd? })
+      assert_equal("first=3", bag.first_as { |n| "first=#{n}" })
       total = 0
       bag.each_twice { |n| total += n }
       assert_equal 12, total
@@ -3220,7 +3220,7 @@ module ObjectTests
       assert_equal "base", Lever.kind
       knobs = [Knob, BigKnob] #: Array[singleton(Knob)]
       assert_equal ["ObjectTests::Knob:knob", "ObjectTests::BigKnob:big"], knobs.map(&:label)
-      assert_equal ["knob", "big"], knobs.map { |k| k.kind }
+      assert_equal(["knob", "big"], knobs.map { |k| k.kind })
     end
   end
 
@@ -3259,7 +3259,7 @@ module ObjectTests
       assert_equal 7, Root.new.n
       all = [b, m, l, e, f] #: Array[InBase]
       assert_equal ["InBase", "Middle", "InLeaf3", "InBase", "InBase"], all.map(&:name)
-      assert_equal [1, 10, 13, 1, 1], all.map { |x| x.weight }
+      assert_equal([1, 10, 13, 1, 1], all.map { |x| x.weight })
       assert_equal ["b", "m", "l", "e", "fixed"], all.map(&:tag)
       assert_equal 28, all.reduce(0) { |acc, x| acc + x.scale(1) }
       assert_equal true, l.is_a?(InBase)
@@ -3267,7 +3267,7 @@ module ObjectTests
       assert_equal true, l.is_a?(InLeaf)
       assert_equal false, m.is_a?(InLeaf)
       assert_equal false, b.is_a?(Middle)
-      assert_equal [false, true, true, false, false], all.map { |x| x.is_a?(Middle) }
+      assert_equal([false, true, true, false, false], all.map { |x| x.is_a?(Middle) })
       assert_equal true, l.is_a?(Object)
       assert_equal true, l.is_a?(BasicObject)
       assert_equal true, l.is_a?(Kernel)
@@ -3298,7 +3298,7 @@ module ObjectTests
       found = all.find { |x| x.is_a?(Fixed) }
       assert_equal "fixed", (found.tag if found)
       list = [InAnimal.new, InDog.new, Puppy.new, Cat.new] #: Array[InAnimal]
-      assert_equal ["other", "dog woof", "puppy woof", "cat"], list.map { |a| in_kind(a) }
+      assert_equal(["other", "dog woof", "puppy woof", "cat"], list.map { |a| in_kind(a) })
       kc = InKidCalc.new
       assert_equal 12, kc.compute(1)
       assert_equal 4, kc.compute(1, 1)
@@ -3320,7 +3320,7 @@ module ObjectTests
       assert_equal 1, IntBox.new.id
       nodes = [InNode.new, Leafy.new, IntBox.new, StrBox.new] #: Array[InNode]
       assert_equal [1, 2, 1, 9], nodes.map(&:id)
-      assert_equal ["ObjectTests::InNode", "ObjectTests::Leafy", "ObjectTests::IntBox", "ObjectTests::StrBox"], nodes.map { |x| x.class.name }
+      assert_equal(["ObjectTests::InNode", "ObjectTests::Leafy", "ObjectTests::IntBox", "ObjectTests::StrBox"], nodes.map { |x| x.class.name })
       assert_equal 1, nodes.select { |x| x.is_a?(InNamed) }.size
       k1 = nodes.fetch(0)
       k2 = nodes.fetch(1)
@@ -3361,7 +3361,7 @@ module ObjectTests
       assert_equal "<p>a-b-c-d</p>", hx.html
       assert_equal true, hx.equal?(hb)
       builders = [InBuilder.new, InHtmlBuilder.new] #: Array[InBuilder]
-      assert_equal ["z", "z"], builders.map { |x| x.add("z").build }
+      assert_equal(["z", "z"], builders.map { |x| x.add("z").build })
     end
   end
 
@@ -3390,8 +3390,8 @@ module ObjectTests
       assert_equal "red", PathChild::COLOR
       assert_equal "nested", PathChild::Nested.new.hi
       gvs = [MdVec.new(1), MdVec.new(-2), MdVec.new(5)] #: Array[MdVec]
-      assert_equal 8, MdVec.new(4).then { |vb| vb.v * 2 }
-      assert_equal "v=1", MdVec.new(1).then { |vb| "v=#{vb.v}" }
+      assert_equal(8, MdVec.new(4).then { |vb| vb.v * 2 })
+      assert_equal("v=1", MdVec.new(1).then { |vb| "v=#{vb.v}" })
       assert_equal 4, gvs.reduce(MdVec.new(0)) { |acc, vb| acc.plus(vb) }.v
       assert_equal false, gvs.include?(MdVec.new(5))
       klasses = [MdVec, Vec3] #: Array[singleton(MdVec)]
@@ -3449,7 +3449,7 @@ module ObjectTests
       assert_equal "ObjectTests::Bar", Bar.new.kind
       assert_equal "ObjectTests::Bar!", Bar.new.label
       items = [MtDoc.new, MtMemo.new] #: Array[Printable]
-      assert_equal ["doc", "memo"], items.map { |i| i.title }
+      assert_equal(["doc", "memo"], items.map { |i| i.title })
       assert_equal ["P(doc)", "P(memo)"], items.map(&:to_s)
       a = NeVec.new(1)
       assert_equal true, (a == NeVec.new(1))
@@ -3532,14 +3532,14 @@ module ObjectTests
       assert_equal "base", MoC.new.base_only
       assert_equal "[Q]", MoQ.new("q").shout
       assert_equal "[q]", MoQ.new("q").label
-      assert_equal ["ALPHA", "BETA", "GAMMA"], MoRegistry.map { |s| s.upcase }
+      assert_equal(["ALPHA", "BETA", "GAMMA"], MoRegistry.map { |s| s.upcase })
       assert_equal 3, MoRegistry.select { |s| s.include?("a") }.size
-      assert_equal "beta", MoRegistry.find { |s| s.start_with?("b") }
+      assert_equal("beta", MoRegistry.find { |s| s.start_with?("b") })
       assert_equal ["alpha", "beta", "gamma"], MoRegistry.to_a
       assert_equal 3, MoRegistry.count
       assert_equal true, MoRegistry.include?("beta")
       assert_equal ["alpha", "beta"], MoRegistry.first(2)
-      assert_equal ["alpha", "gamma", "beta"], MoRegistry.sort_by { |s| -s.size }
+      assert_equal(["alpha", "gamma", "beta"], MoRegistry.sort_by { |s| -s.size })
       assert_equal 42, Util.double(21)
       assert_equal(-12, Util.quad(-3))
       assert_equal 0, Util.quad(0)
@@ -3575,7 +3575,7 @@ module ObjectTests
       assert_equal "Module", Greeting.class.to_s
       members = [pe, jr] #: Array[Member]
       assert_equal ["hi ann!", "hi jr!"], members.map(&:greet)
-      assert_equal ["ann", "jr"], members.map { |x| x.touch.name }
+      assert_equal(["ann", "jr"], members.map { |x| x.touch.name })
     end
   end
 
@@ -3637,7 +3637,7 @@ module ObjectTests
       assert_equal 80, App::Config::PORT
       exprs = [Expr::Num.new(7), ex] #: Array[Expr]
       assert_equal ["7", "(1 + (2 + 3))"], exprs.map(&:show)
-      assert_equal [false, true], exprs.map { |x| x.is_a?(Expr::Add) }
+      assert_equal([false, true], exprs.map { |x| x.is_a?(Expr::Add) })
       assert_equal "[ObjectTests::Expr::Num, ObjectTests::Expr::Add]", exprs.map(&:class).inspect
       tk = Taker.new
       assert_equal "item", tk.make.hi
@@ -3703,8 +3703,8 @@ module ObjectTests
       assert_equal false, coins.include?(coin(2))
       assert_equal 2, coins.uniq.size
       assert_equal 2, [c1, coin(5)].uniq.size
-      assert_equal 6, list.fetch(1).then { |v| v.x * 2 }
-      assert_equal "c=3", coin(3).then { |c| "c=#{c.cents}" }
+      assert_equal(6, list.fetch(1).then { |v| v.x * 2 })
+      assert_equal("c=3", coin(3).then { |c| "c=#{c.cents}" })
       assert_equal 6, coins.reduce(coin(0)) { |a, c| coin(a.cents + c.cents) }.cents
     end
   end
@@ -4670,7 +4670,7 @@ module ObjectTests
       assert_equal "core", c.tap
       back = c.tap { |k| seen << k.class.name.to_s }
       assert_equal [TapCask, ["ObjectTests::TapCask"]], [back.class, seen]
-      assert_equal [1, 2], [1, 2].tap { |a| seen << a.size.to_s }
+      assert_equal([1, 2], [1, 2].tap { |a| seen << a.size.to_s })
     end
   end
 
@@ -5170,7 +5170,7 @@ module ObjectTests
 
     def test_instance_eval_literal
       r = Router.new { hello }
-      assert_equal "hi", r.instance_eval { hello }
+      assert_equal("hi", r.instance_eval { hello })
     end
 
     def test_class_eval_defines_method
@@ -5705,7 +5705,7 @@ module ObjectTests
     def test_rest_override_and_ignored_param
       xs = [ObjRestBase.new, ObjRestKid.new] #: Array[ObjRestBase]
       assert_equal %w[base0 kidnil], xs.map(&:show)
-      assert_equal %w[base1 kid3], xs.map { |x| x.show(3) }
+      assert_equal(%w[base1 kid3], xs.map { |x| x.show(3) })
       k = ObjRestKid.new #: ObjRestBase
       begin
         k.show(1, 2)
@@ -5916,8 +5916,8 @@ module ObjectTests
   class ObjectModuleIsATest < Minitest::Test
     def test_module_is_a_at_run_time
       xs = [IsABase.new, IsAWithShim.new, 1, "s", nil] #: Array[untyped]
-      assert_equal [false, true, false, false, false], xs.map { |x| x.is_a?(IsAShim) }
-      assert_equal [false, false, true, true, false], xs.map { |x| x.is_a?(Comparable) }
+      assert_equal([false, true, false, false, false], xs.map { |x| x.is_a?(IsAShim) })
+      assert_equal([false, false, true, true, false], xs.map { |x| x.is_a?(Comparable) })
       b = IsAWithShim.new #: IsABase
       assert_equal [true, false], [b.is_a?(IsAShim), IsABase.new.is_a?(IsAShim)]
     end
@@ -6505,8 +6505,8 @@ module ObjectTests
       assert_equal %i[FromStruct Inner LIMIT], AnonBuilder.constants.sort
       assert_equal [], AnonBuilder::Inner.constants
       assert_equal false, AnonBuilder.const_defined?(:A)
-      assert_equal false, AnonBuilder.constants.any? { |c| c.to_s.start_with?("RbAnon") }
-      assert_equal false, Object.constants.any? { |c| c.to_s.start_with?("RbAnon") }
+      assert_equal(false, AnonBuilder.constants.any? { |c| c.to_s.start_with?("RbAnon") })
+      assert_equal(false, Object.constants.any? { |c| c.to_s.start_with?("RbAnon") })
     end
   end
 

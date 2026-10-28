@@ -24,13 +24,13 @@ module StdlibHardeningTests
   class CsvTest < Minitest::Test
     # an empty col_sep made the parser append nil fields forever; an empty quote_char looped in the quoted-field scan
     def test_parse_rejects_an_empty_col_sep
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { CSV.parse("a,b", col_sep: "") }
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { CSV.parse_line("a,b", col_sep: "") }
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { CSV.parse("a,b", col_sep: "") })
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { CSV.parse_line("a,b", col_sep: "") })
     end
 
     def test_parse_rejects_a_quote_char_that_is_not_one_character
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { CSV.parse("a,b", quote_char: "") }
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { CSV.parse("a,b", quote_char: "ab") }
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { CSV.parse("a,b", quote_char: "") })
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { CSV.parse("a,b", quote_char: "ab") })
     end
 
     def test_parse_still_takes_a_multi_character_col_sep
@@ -49,10 +49,10 @@ module StdlibHardeningTests
 
   class SecureRandomTest < Minitest::Test
     def test_negative_sizes_raise_argument_error
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { SecureRandom.hex(-1) }
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { SecureRandom.random_bytes(-1) }
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { SecureRandom.base64(-1) }
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { SecureRandom.urlsafe_base64(-1) }
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { SecureRandom.hex(-1) })
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { SecureRandom.random_bytes(-1) })
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { SecureRandom.base64(-1) })
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { SecureRandom.urlsafe_base64(-1) })
     end
 
     def test_zero_and_negative_alphanumeric_are_empty
@@ -74,8 +74,8 @@ module StdlibHardeningTests
     end
 
     def test_urlsafe_decode_rejects_newlines_but_takes_missing_padding
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { Base64.urlsafe_decode64("YQ==\n") }
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { Base64.urlsafe_decode64("YQ\n") }
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { Base64.urlsafe_decode64("YQ==\n") })
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { Base64.urlsafe_decode64("YQ\n") })
       assert_equal "a", Base64.urlsafe_decode64("YQ")
       assert_equal "a", Base64.urlsafe_decode64("YQ==")
     end
@@ -316,7 +316,7 @@ module StdlibHardeningTests
         pw.close
         e = begin; IO.read(path, -1, -1); rescue ArgumentError => x; x.message; end
         assert_equal "negative offset -1 given", e
-        assert_equal "IOError", StdlibHardeningTests.raised { IO.read(path, mode: "w") }
+        assert_equal("IOError", StdlibHardeningTests.raised { IO.read(path, mode: "w") })
       end
     end
 
@@ -352,7 +352,7 @@ module StdlibHardeningTests
 
     def test_paths
       assert_equal ["usr//bin", "usr/bin", "/", "a/", "/a", ""], [File.join("usr/", "//bin"), File.join("usr//", "/bin"), File.join("", ""), File.join("a", ""), File.join("", "a"), File.join("")]
-      assert_equal "ArgumentError", StdlibHardeningTests.raised { File.join("a\0", "b") }
+      assert_equal("ArgumentError", StdlibHardeningTests.raised { File.join("a\0", "b") })
       assert_equal ["/tmp", "/tmp", "////some/path", "/some/path", "/dir", "/", "/", "/foo"],
                    [File.expand_path("/tmp/"), File.expand_path("/tmp/../../../tmp"), File.expand_path("////some/path"), File.expand_path("/some////path"),
                     File.expand_path("/./dir"), File.expand_path(".", "/"), File.expand_path("///a/../.."), File.dirname("/////foo/bar/")]
@@ -391,9 +391,9 @@ module StdlibHardeningTests
         File.write(File.join(d, ".dotfile"), "")
         File.write(File.join(d, "deeply", "nested", "f"), "")
         Dir.chdir(d) do
-          assert_equal [[], [], %w[. .dotfile .dotsubdir], %w[. .dotfile .dotsubdir], %w[. .dotfile .dotsubdir deeply], %w[deeply/ deeply/nested/], ["deeply//nested/f"]],
-                       ["", "{}", ".*", ".**", "{,.}*", "deeply/**/", "{deeply//**/f}"].map { |pat| Dir.glob(pat).sort }
-          assert_equal "ArgumentError", StdlibHardeningTests.raised { Dir.glob("a\0b") }
+          assert_equal([[], [], %w[. .dotfile .dotsubdir], %w[. .dotfile .dotsubdir], %w[. .dotfile .dotsubdir deeply], %w[deeply/ deeply/nested/], ["deeply//nested/f"]],
+                       ["", "{}", ".*", ".**", "{,.}*", "deeply/**/", "{deeply//**/f}"].map { |pat| Dir.glob(pat).sort })
+          assert_equal("ArgumentError", StdlibHardeningTests.raised { Dir.glob("a\0b") })
         end
       end
     end

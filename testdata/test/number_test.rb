@@ -567,7 +567,7 @@ module NumberTests
       assert_equal true, t.frozen?
       assert_equal true, t.equal?(true)
       assert_equal false, f.equal?(true)
-      assert_equal false, t.then { |b| !b }
+      assert_equal(false, t.then { |b| !b })
 
       # & | ^ always evaluate the right side; && || short-circuit
       log = [] #: Array[String]
@@ -625,9 +625,9 @@ module NumberTests
       assert_equal true, flags.include?(false)
       assert_equal "{true => 2, false => 1}", flags.tally.inspect
       assert_equal [false, true, false], flags.map(&:!)
-      assert_equal false, flags.all? { |x| x }
-      assert_equal true, flags.any? { |x| !x }
-      assert_equal [false], flags.reject { |x| x }
+      assert_equal(false, flags.all? { |x| x })
+      assert_equal(true, flags.any? { |x| !x })
+      assert_equal([false], flags.reject { |x| x })
       bh = { "on" => true, "off" => false } #: Hash[String, bool]
       assert_equal true, bh["on"]
       assert_equal false, bh["off"]
@@ -680,7 +680,7 @@ module NumberTests
       assert_equal "float", kind_eqq(2.5)
       assert_equal "true", kind_eqq(true)
       assert_equal "other", kind_eqq("s")
-      assert_equal ["1", "Fizz", "Buzz", "FizzBuzz"], [1, 3, 5, 15].map { |i| fizz(i) }
+      assert_equal(["1", "Fizz", "Buzz", "FizzBuzz"], [1, 3, 5, 15].map { |i| fizz(i) })
       assert_equal "zero", sized(0)
       assert_equal "int", sized(7)
     end
@@ -1058,7 +1058,7 @@ module NumberTests
       zk = { 0.0 => "zero" } #: Hash[Float, String]
       assert_equal "zero", zk[-0.0]
       ik = { 1 => 10, 2 => 20 } #: Hash[Integer, Integer]
-      assert_equal [10, 40], ik.map { |k, v| k * v }
+      assert_equal([10, 40], ik.map { |k, v| k * v })
       assert_equal "[1.0, 2.0]", ik.keys.map(&:to_f).inspect
       assert_equal 20, ik.values.max
 
@@ -1067,7 +1067,7 @@ module NumberTests
       assert_equal "3.25", floats.reduce(0.0) { |s, v| s + v }.inspect
       assert_equal 120, ints.inject(1) { |s, v| s * v }
       assert_equal "[2.5, 1.5, 4.0, 0.5]", ints.map { |v| v.to_f / 2.0 }.inspect
-      assert_equal [2, -2, 4], floats.map { |v| v.round }
+      assert_equal([2, -2, 4], floats.map { |v| v.round })
       assert_equal [1, -3, 4], floats.map(&:floor)
       assert_equal [2, -2, 4], floats.map(&:ceil)
       assert_equal [8], ints.select(&:even?)
@@ -1138,18 +1138,18 @@ module NumberTests
       assert_equal "-3.25", floats.min.inspect
       assert_equal [10, 3, 3, 0, -1, -20], ints.sort.reverse
       assert_equal "[1.0e+20, 2.5, 1.0, 0.0, -0.5, -3.25]", floats.sort.reverse.inspect
-      assert_equal [10, 3, 3, 0, -1, -20], ints.sort_by { |i| -i }
-      assert_equal 0, ints.min_by { |i| i.abs }
+      assert_equal([10, 3, 3, 0, -1, -20], ints.sort_by { |i| -i })
+      assert_equal(0, ints.min_by { |i| i.abs })
       assert_equal "1.0e+20", floats.max_by { |f| f.abs }.inspect
       assert_equal "[1.0, 2.0]", [2.0, 1.0].sort.inspect
-      assert_equal [0, -1, -1, 1, -1, 0], ints.map { |i| i <=> 3 }
-      assert_equal [1, -1, 0, -1, 1, -1], floats.map { |f| f <=> 1.0 }
+      assert_equal([0, -1, -1, 1, -1, 0], ints.map { |i| i <=> 3 })
+      assert_equal([1, -1, 0, -1, 1, -1], floats.map { |f| f <=> 1.0 })
 
       # mixed-in methods chained, in blocks, and on reopened classes
       assert_equal 6, a.clamp(1, 5).succ
       assert_equal 1, x.clamp(0.0, 1.0).floor
       assert_equal true, a.clamp(1, 9).between?(6, 8)
-      assert_equal [3, 0, 3], ints.select { |i| i.between?(0, 5) }
+      assert_equal([3, 0, 3], ints.select { |i| i.between?(0, 5) })
       assert_equal "[1.0, -0.5, 1.0, -1.0, 1.0, 0.0]", floats.map { |f| f.clamp(-1.0, 1.0) }.inspect
       assert_equal 5, 3.at_least(5)
       assert_equal 7, 7.at_least(5)
@@ -1530,7 +1530,7 @@ module NumberTests
       assert_equal(-14, x)
 
       # Kernel and BasicObject methods on Integer
-      assert_equal 14, a.then { |v| v * 2 }
+      assert_equal(14, a.then { |v| v * 2 })
       assert_equal true, a.equal?(7)
       assert_equal false, a.equal?(8)
       assert_equal true, a.frozen?
@@ -1802,9 +1802,9 @@ module NumberTests
       assert_equal true, 3.finite?
       assert_equal [1, 4, 7, 10], 1.step(10, 3).to_a
       assert_equal [10, 6, 2], 10.step(1, -4).to_a
-      assert_equal [0, 2, 4], 3.times.map { it * 2 }
+      assert_equal([0, 2, 4], 3.times.map { it * 2 })
       assert_equal [1, 2, 3], 1.upto(3).to_a
-      assert_equal [3, 2, 1], 3.downto(1).map { |i| i }
+      assert_equal([3, 2, 1], 3.downto(1).map { |i| i })
       steps = [] #: Array[Integer]
       1.step(7, 2) { |i| steps << i }
       assert_equal [1, 3, 5, 7], steps
@@ -1909,7 +1909,7 @@ module NumberTests
       assert_equal 1, 0.factorial
       assert_equal 120, 5.factorial
       assert_equal 2432902008176640000, 20.factorial
-      assert_equal ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "101st", "111th", "0th"], [1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111, 0].map { |i| i.ordinal }
+      assert_equal(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "101st", "111th", "0th"], [1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111, 0].map { |i| i.ordinal })
       assert_equal true, 4.5.above_zero?
       assert_equal false, -0.5.above_zero?
       assert_equal "1.5", 3.0.half.inspect
@@ -1990,7 +1990,7 @@ module NumberTests
     def test_numbers_through_untyped
       # literals box to their Ruby class under untyped
       vals = [1, -2.5, true, false, nil, "s", 0, 0.0] #: Array[untyped]
-      assert_equal ["Integer 1", "Float -2.5", "other true", "other false", "nil", "String \"s\"", "Integer 0", "Float 0.0"], vals.map { |v| number_kind(v) }
+      assert_equal(["Integer 1", "Float -2.5", "other true", "other false", "nil", "String \"s\"", "Integer 0", "Float 0.0"], vals.map { |v| number_kind(v) })
       assert_equal "[1, -2.5, true, false, nil, \"s\", 0, 0.0]", vals.inspect
       assert_equal "Integer 3", number_kind(3)
       assert_equal "Float -0.0", number_kind(-0.0)
@@ -2000,7 +2000,7 @@ module NumberTests
       assert_equal "Float 3.5", number_kind(7.0 / 2.0)
 
       # only nil and false are falsy; 0 and 0.0 are truthy
-      assert_equal ["truthy", "truthy", "truthy", "falsy", "falsy", "truthy", "truthy", "truthy"], vals.map { |v| truthy(v) }
+      assert_equal(["truthy", "truthy", "truthy", "falsy", "falsy", "truthy", "truthy", "truthy"], vals.map { |v| truthy(v) })
 
       # values round-trip through untyped
       i = number_ident(42) #: Integer
@@ -2306,8 +2306,8 @@ module NumberTests
 
     def test_numeric_case_is_a_and_narrowing
       vs = [1, 1.5, Rational(1, 2), Complex(0, 0), BigDecimal("1"), "1", nil, :x]
-      assert_equal ["int 2", "float 1", "number false", "number true", "number false", "other", "other", "other"], vs.map { |v| number_numeric_kind(v) }
-      assert_equal [true, true, true, true, true, false, false, false], vs.map { |v| v.is_a?(Numeric) }
+      assert_equal(["int 2", "float 1", "number false", "number true", "number false", "other", "other", "other"], vs.map { |v| number_numeric_kind(v) })
+      assert_equal([true, true, true, true, true, false, false, false], vs.map { |v| v.is_a?(Numeric) })
       assert_equal ["number 2", "number 1.5", "other"], [number_only_numeric(-2), number_only_numeric(1.5), number_only_numeric("x")]
       assert_equal [true, false, true, true, true], [2.is_a?(Numeric), "2".is_a?(Numeric), 1.is_a?(Numeric), Complex(1, 2).is_a?(Comparable), BigDecimal("1").is_a?(Comparable)]
       assert_equal ["even true", "nan false", "other false"], [number_narrow(2), number_narrow(1.5), number_narrow(Rational(1, 2))]
@@ -2356,7 +2356,7 @@ module NumberTests
       assert_equal [true, true, true, true, true], zs.map(&:zero?)
       assert_equal [nil, nil, nil, nil, nil], zs.map(&:nonzero?)
       assert_equal [-2, -1.5, Rational(-1, 2), BigDecimal("-2.5")], ns.map(&:nonzero?)
-      assert_equal [[false, true], [false, true], [false, true], [false, true]], ns.map { |x| [x.positive?, x.negative?] }
+      assert_equal([[false, true], [false, true], [false, true], [false, true]], ns.map { |x| [x.positive?, x.negative?] })
       assert_equal [true, false, false, false, false], zs.map(&:integer?)
       assert_equal [true, true, true, true, true], zs.map(&:finite?)
       assert_equal [nil, 1, -1, nil, nil, 1, -1, nil], [3.infinite?, Float::INFINITY.infinite?, (-Float::INFINITY).infinite?, Rational(1, 2).infinite?, Complex(1, 2).infinite?, Complex(Float::INFINITY, 0).infinite?, BigDecimal("-Infinity").infinite?, BigDecimal("1").infinite?]
@@ -2442,13 +2442,13 @@ module NumberTests
 
     def test_range_size_and_count
       assert_equal [MX, MX - 1, 0, 1], [(1..MX).size, (1...MX).size, (MX..MN).size, (MX..MX).count]
-      big_or_range "18446744073709551616", number_big { (MN..MX).size }
-      big_or_range "9223372036854775808", number_big { (0..MX).size }
-      big_or_range "9223372036854775809", number_big { (-1..MX).count }
-      big_or_range "9223372036854775808", number_big { (MN..-1).size }
-      big_or_range "9223372036854775808", number_big { (MN...0).size }
-      big_or_range "9223372036854775809", number_big { (MN..0).size }
-      big_or_range "18446744073709551615", number_big { (-MX..MX).size }
+      big_or_range("18446744073709551616", number_big { (MN..MX).size })
+      big_or_range("9223372036854775808", number_big { (0..MX).size })
+      big_or_range("9223372036854775809", number_big { (-1..MX).count })
+      big_or_range("9223372036854775808", number_big { (MN..-1).size })
+      big_or_range("9223372036854775808", number_big { (MN...0).size })
+      big_or_range("9223372036854775809", number_big { (MN..0).size })
+      big_or_range("18446744073709551615", number_big { (-MX..MX).size })
     end
 
     def test_upto_downto_step_stop_at_the_bound
@@ -2482,22 +2482,22 @@ module NumberTests
 
     def test_upto_downto_size_and_step_enumerators
       assert_equal [1, 1], [MX.upto(MX).size || 0, MN.downto(MN).size || 0]
-      big_or_range "18446744073709551616", number_big { MN.upto(MX).size || 0 }
-      big_or_range "9223372036854775808", number_big { 0.upto(MX).size || 0 }
-      big_or_range "18446744073709551616", number_big { MX.downto(MN).size || 0 }
-      big_or_range "18446744073709551616", number_big { MN.step(MX).size }
+      big_or_range("18446744073709551616", number_big { MN.upto(MX).size || 0 })
+      big_or_range("9223372036854775808", number_big { 0.upto(MX).size || 0 })
+      big_or_range("18446744073709551616", number_big { MX.downto(MN).size || 0 })
+      big_or_range("18446744073709551616", number_big { MN.step(MX).size })
       assert_equal [MX - 3, MX - 1], (MX - 3).step(MX, 2).to_a
       assert_equal [1], 1.step(MX, MX).to_a
     end
 
     def test_gcd_lcm_at_min
       assert_equal [2, 2, 1, 4], [MN.gcd(6), 6.gcd(MN), MN.gcd(MX), MN.gcd(-4)]
-      big_or_range "9223372036854775808", number_big { MN.gcd(0) }
-      big_or_range "9223372036854775808", number_big { 0.gcd(MN) }
-      big_or_range "9223372036854775808", number_big { MN.gcd(MN) }
-      big_or_range "9223372036854775808", number_big { MN.lcm(1) }
-      big_or_range "9223372036854775808", number_big { MN.lcm(MN) }
-      big_or_range "27670116110564327424", number_big { MN.lcm(3) }
+      big_or_range("9223372036854775808", number_big { MN.gcd(0) })
+      big_or_range("9223372036854775808", number_big { 0.gcd(MN) })
+      big_or_range("9223372036854775808", number_big { MN.gcd(MN) })
+      big_or_range("9223372036854775808", number_big { MN.lcm(1) })
+      big_or_range("9223372036854775808", number_big { MN.lcm(MN) })
+      big_or_range("27670116110564327424", number_big { MN.lcm(3) })
     end
 
     def test_shift_by_huge_counts
@@ -2507,8 +2507,8 @@ module NumberTests
 
     def test_range_sum_reverse_each_bsearch_at_the_edge
       assert_equal [MX - 1, 0, 0], [(MX - 1...MX).sum, (MX...MX).sum, (-MX..MX).sum]
-      big_or_range "18446744073709551613", number_big { (MX - 1..MX).sum }
-      big_or_range "42535295865117307928310139910543638528", number_big { (0..MX).sum }
+      big_or_range("18446744073709551613", number_big { (MX - 1..MX).sum })
+      big_or_range("42535295865117307928310139910543638528", number_big { (0..MX).sum })
       a = [] #: Array[Integer]
       (MN..MN + 2).reverse_each { |i| a << i }
       b = [] #: Array[Integer]
@@ -2519,8 +2519,8 @@ module NumberTests
 
     def test_shift_that_still_fits
       assert_equal [MN, MN, MX, -4_611_686_018_427_387_904], [-1 << 63, -2 >> -62, MX >> 0, -1 << 62]
-      big_or_range "9223372036854775808", number_big { 1 << 63 }
-      big_or_range "-18446744073709551616", number_big { -2 << 63 }
+      big_or_range("9223372036854775808", number_big { 1 << 63 })
+      big_or_range("-18446744073709551616", number_big { -2 << 63 })
     end
 
     def test_format_d_of_a_float_past_int64

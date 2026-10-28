@@ -429,8 +429,8 @@ module RxjsonTests
       assert_equal false, (/a/ === 1)
       assert_equal false, (/a/.nil?)
       assert_equal false, (/1/ === 1)
-      assert_equal ["\"12\" int", "\"1.5\" float", "\".5\" float", "\"yes\" bool", "\"NO\" bool", "\"x\\n#c\" comment", "\"\" other", "\"ab\" other"],
-                   ["12", "1.5", ".5", "yes", "NO", "x\n#c", "", "ab"].map { |s| "#{s.inspect} #{rxjson_kind(s)}" }
+      assert_equal(["\"12\" int", "\"1.5\" float", "\".5\" float", "\"yes\" bool", "\"NO\" bool", "\"x\\n#c\" comment", "\"\" other", "\"ab\" other"],
+                   ["12", "1.5", ".5", "yes", "NO", "x\n#c", "", "ab"].map { |s| "#{s.inspect} #{rxjson_kind(s)}" })
       v = 5 #: untyped
       r1 = case v
            when /5/ then "untyped int matched"
@@ -452,8 +452,8 @@ module RxjsonTests
       res = [/a/, /b/i, /c/m] #: Array[Regexp]
       assert_equal "[/a/, /b/i, /c/m]", res.inspect
       assert_equal "[/a/, /b/i, /c/m]", res.to_s
-      assert_equal ["a", "b", "c"], res.map { |r| r.source }
-      assert_equal [false, true, false], res.map { |r| r.match?("ABC") }
+      assert_equal(["a", "b", "c"], res.map { |r| r.source })
+      assert_equal([false, true, false], res.map { |r| r.match?("ABC") })
       assert_equal 2, res.select { |r| r.match?("bab") }.size
       assert_equal "if-match", ("cat" =~ /a/ ? "if-match" : "")
       assert_equal "unless-match", ("cat" =~ /z/ ? "" : "unless-match")
@@ -534,8 +534,8 @@ module RxjsonTests
     # a Regexp constant through a mixed-in method and a subclass override
     def test_regexp_through_module_and_override
       es = [Email.new("a@b.c"), Email.new("bad"), Loose.new("x@@y")] #: Array[Email]
-      assert_equal ["a@b.c true \"a\"", "bad false nil", "x@@y true nil"],
-                   es.map { |e| "#{e.value} #{e.valid?} #{e.first_group.inspect}" }
+      assert_equal(["a@b.c true \"a\"", "bad false nil", "x@@y true nil"],
+                   es.map { |e| "#{e.value} #{e.valid?} #{e.first_group.inspect}" })
       assert_equal false, ok?(" ")
       assert_equal true, ok?("x")
       assert_equal false, ok?("x", /y/)
@@ -547,17 +547,17 @@ module RxjsonTests
     def test_regexps_in_blocks_and_collections
       res = [1, 2].map { |i| /#{i}+/ }
       assert_equal "[/1+/, /2+/]", res.inspect
-      assert_equal [false, true], res.map { |r| r.match?("22") }
+      assert_equal([false, true], res.map { |r| r.match?("22") })
       words = %w[apple Banana cherry avocado]
-      assert_equal ["apple", "avocado"], words.select { |w| w.match?(/\Aa/i) }
-      assert_equal ["apple", "cherry", "avocado"], words.reject { |w| w.match?(/an/) }
+      assert_equal(["apple", "avocado"], words.select { |w| w.match?(/\Aa/i) })
+      assert_equal(["apple", "cherry", "avocado"], words.reject { |w| w.match?(/an/) })
       assert_equal 2, words.select { |w| w.match?(/e/) }.size
-      assert_equal "cherry", words.find { |w| w.match?(/rr/) }
-      assert_equal ["Banana", "apple", "cherry", "avocado"], words.sort_by { |w| w.match?(/\A[A-Z]/) ? 0 : 1 }
+      assert_equal("cherry", words.find { |w| w.match?(/rr/) })
+      assert_equal(["Banana", "apple", "cherry", "avocado"], words.sort_by { |w| w.match?(/\A[A-Z]/) ? 0 : 1 })
       assert_equal "{false => [\"apple\", \"cherry\", \"avocado\"], true => [\"Banana\"]}", words.group_by { |w| w.match?(/an/) }.inspect
-      assert_equal ["apple", "Banana", "avocado"], words.select { |w| /a/ === w }
-      assert_equal false, words.any? { |w| w.match?(/z/) }
-      assert_equal true, words.all? { |w| w.match?(/\w/) }
+      assert_equal(["apple", "Banana", "avocado"], words.select { |w| /a/ === w })
+      assert_equal(false, words.any? { |w| w.match?(/z/) })
+      assert_equal(true, words.all? { |w| w.match?(/\w/) })
       assert_equal "eayo", words.map { |w| w.match(/(.)\z/).to_s }.join
     end
 
@@ -615,7 +615,7 @@ module RxjsonTests
         "#{tok}: #{r ? r.name : "none"}"
       end
       assert_equal ["12: num", "ab: word", "!: none"], got
-      assert_equal ["\\A\\d+\\z", "\\A\\w+\\z"], rules.map { |ru| ru.re.source }
+      assert_equal(["\\A\\d+\\z", "\\A\\w+\\z"], rules.map { |ru| ru.re.source })
       assert_equal "#<struct RxjsonTests::Rule name=\"num\", re=/\\A\\d+\\z/>", rules[0].inspect
       lx = Lexer.new("id")
       assert_equal "\"42\"", lx.scan("id42x").inspect
@@ -626,10 +626,10 @@ module RxjsonTests
       assert_equal "#<MatchData \"id7\" 1:\"7\">", lx.last.inspect
       assert_equal "\"\"", lx.last&.pre_match.inspect
       bs = [Base.new, Child.new] #: Array[Base]
-      assert_equal [false, true], bs.map { |b| b.ok?("CHILD") }
-      assert_equal ["/base/", "/child/i"], bs.map { |b| b.re.inspect }
+      assert_equal([false, true], bs.map { |b| b.ok?("CHILD") })
+      assert_equal(["/base/", "/child/i"], bs.map { |b| b.re.inspect })
       pairs = { "x" => /x+/, "y" => /y/ } #: Hash[String, Regexp]
-      assert_equal ["x true 1", "y false nil"], pairs.map { |k, v| "#{k} #{v.match?("xx")} #{("axx" =~ v).inspect}" }
+      assert_equal(["x true 1", "y false nil"], pairs.map { |k, v| "#{k} #{v.match?("xx")} #{("axx" =~ v).inspect}" })
       assert_equal ["y"], pairs.select { |_k, v| v.match?("y") }.keys
     end
 
@@ -646,11 +646,11 @@ module RxjsonTests
       m3 = "k=".match(/(\w)=(\w)?/)
       assert m3
       if m3
-        assert_equal ["k", ""], m3.captures.map { |c| c.to_s }
-        assert_equal ["\"k\"", "nil"], m3.captures.map { |c| c.inspect }
+        assert_equal(["k", ""], m3.captures.map { |c| c.to_s })
+        assert_equal(["\"k\"", "nil"], m3.captures.map { |c| c.inspect })
       end
       p1 = /(\d+)/
-      assert_equal ["1", "22", ""], ["a1", "b22", "c"].map { |s| (mm = p1.match(s)) ? mm[1].to_s : "" }
+      assert_equal(["1", "22", ""], ["a1", "b22", "c"].map { |s| (mm = p1.match(s)) ? mm[1].to_s : "" })
       assert_equal [1, 3], ["1", "x", "3"].select { |s| s.match?(/\A\d+\z/) }.map(&:to_i)
       cm = "ab".match(/(a)/)
       assert cm
@@ -701,13 +701,13 @@ module RxjsonTests
     def test_collections_of_matches
       re = /(\w+)@(\w+)\.com/
       emails = ["a@b.com", "bad", "c@d.com"]
-      assert_equal ["a", "?", "c"], emails.map { |e| re.match(e) }.map { |mm| mm ? mm[1].to_s : "?" }
-      assert_equal ["\"b\"", "\"d\""], emails.select { |e| re.match?(e) }.map { |e| e.match(re)&.captures&.last.inspect }
+      assert_equal(["a", "?", "c"], emails.map { |e| re.match(e) }.map { |mm| mm ? mm[1].to_s : "?" })
+      assert_equal(["\"b\"", "\"d\""], emails.select { |e| re.match?(e) }.map { |e| e.match(re)&.captures&.last.inspect })
       assert_equal 2, emails.select { |e| e.match?(re) }.size
-      assert_equal "bad", emails.find { |e| !e.match?(re) }
-      assert_equal "a@b.com", emails.min_by { |e| (e =~ /@/) || 99 }
-      assert_equal ["A", "B"], "a-b".match(/(\w)-(\w)/)&.captures&.map { |c| c.to_s.upcase }
-      assert_nil "ab".match(/(\w)-(\w)/)&.captures&.map { |c| c.to_s.upcase }
+      assert_equal("bad", emails.find { |e| !e.match?(re) })
+      assert_equal("a@b.com", emails.min_by { |e| (e =~ /@/) || 99 })
+      assert_equal(["A", "B"], "a-b".match(/(\w)-(\w)/)&.captures&.map { |c| c.to_s.upcase })
+      assert_nil("ab".match(/(\w)-(\w)/)&.captures&.map { |c| c.to_s.upcase })
       assert_equal "K|V", "k=v; x=y".match(/(\w)=(\w)/).to_s.split("=").map(&:upcase).join("|")
       assert_equal "\"A\"", "abc".match(/b/)&.pre_match&.upcase.inspect
       assert_equal "\"2\"", ("abc" =~ /c/)&.to_s.inspect
@@ -776,7 +776,7 @@ b/
       assert_equal true, (/x#{dot}/i == /x./i)
       pats = ["^a", "b$", "c+"].map { |s| /#{s}/ }
       assert_equal "[/^a/, /b$/, /c+/]", pats.inspect
-      assert_equal [true, false, true], pats.map { |r| r.match?("abccc") }
+      assert_equal([true, false, true], pats.map { |r| r.match?("abccc") })
     end
 
     # Any value interpolates through to_s: nil, Float, Array, true, untyped, calls, literals.
@@ -877,7 +877,7 @@ b/
         k, v = m2.captures
         assert_equal "\"key\"", k.inspect
         assert_equal "\"value\"", v.inspect
-        assert_equal ["KEY", "VALUE"], m2.captures.map { |c| c.to_s.upcase }
+        assert_equal(["KEY", "VALUE"], m2.captures.map { |c| c.to_s.upcase })
       end
       path = "/posts/42.json"
       assert_equal 7, (path =~ /\d+/)
@@ -954,7 +954,7 @@ b/
       ms = ["a1", "b", "c3"].map { |s| s.match(/(\w)(\d)/) }
       assert_equal ["#<MatchData \"a1\" 1:\"a\" 2:\"1\">", "nil", "#<MatchData \"c3\" 1:\"c\" 2:\"3\">"], ms.map(&:inspect)
       assert_equal 2, ms.reject { |mm| mm.nil? }.size
-      assert_equal ["a", "-", "c"], ms.map { |mm| mm ? mm[1] : "-" }
+      assert_equal(["a", "-", "c"], ms.map { |mm| mm ? mm[1] : "-" })
       store = {} #: Hash[String, MatchData]
       xm = "xy".match(/x(y)/)
       store["m"] = xm if xm
@@ -1014,7 +1014,7 @@ b/
         assert_equal "a,", c.join(",")
         assert_equal 2, m_nil.captures.join("-").size
       end
-      assert_equal [1, nil], %w[cat dog].map { |w| w =~ /a/ }
+      assert_equal([1, nil], %w[cat dog].map { |w| w =~ /a/ })
     end
 
     # ^ does not match after a string's final newline
@@ -1485,7 +1485,7 @@ b/
         "9.007199254740992e+15 -9.007199254740992e+15", "99999999999999.9 -99999999999999.9", "999999999999999.9 -999999999999999.9", "0.00001234 -0.00001234",
         "12345678.9 -12345678.9", "3.14159 -3.14159", "100.0 -100.0", "12.5 -12.5"
       ]
-      assert_equal each_json, floats.map { |f| "#{f.to_json} #{(-f).to_json}" }
+      assert_equal(each_json, floats.map { |f| "#{f.to_json} #{(-f).to_json}" })
       assert_equal "[1.5e-12,1e-12,1.5e-11,1e-11,1.5e-10,1e-10,0.0000000015,0.000000001,0.000000015,0.00000001,0.00000015,0.0000001,0.0000015,0.000001,0.000015,0.00001,0.00015,0.0001,0.0015,0.001,0.015,0.01,0.15,0.1,1.5,1.0,15.0,10.0,150.0,100.0,1500.0,1000.0,15000.0,10000.0,150000.0,100000.0,1500000.0,1000000.0,15000000.0,10000000.0,150000000.0,100000000.0,1500000000.0,1000000000.0,15000000000.0,10000000000.0,150000000000.0,100000000000.0,1500000000000.0,1000000000000.0,15000000000000.0,10000000000000.0,150000000000000.0,100000000000000.0,1.5e+15,1e+15,1.5e+16,1e+16,1.5e+17,1e+17,1.5e+18,1e+18,1.5e+19,1e+19,1.5e+20,1e+20,1.5e+21,1e+21,1.5e+22,1e+22,1.5e+23,1.5e+24,1e+24,0.00000012345678901234566,123456789012345.67,1.2345678901234568e+16,1.2345678901234568e+22,0.2,123.456,1e+300,1e-300,5e-324,2.2250738585072014e-308,1.7976931348623157e+308,9.007199254740992e+15,99999999999999.9,999999999999999.9,0.00001234,12345678.9,3.14159,100.0,12.5]", floats.to_json
     end
 

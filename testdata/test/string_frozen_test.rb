@@ -233,8 +233,8 @@ module StringFrozenTests
 
     # Kernel#then on a String
     def test_kernel_then_on_a_string
-      assert_equal "hi!", "hi".then { |x| x + "!" }
-      assert_equal 4, "3".then { |x| x.to_i + 1 }
+      assert_equal("hi!", "hi".then { |x| x + "!" })
+      assert_equal(4, "3".then { |x| x.to_i + 1 })
     end
 
     # sorting and min/max go through <=>
@@ -283,15 +283,15 @@ module StringFrozenTests
     # Strings stored in collections and passed through blocks, &:sym and chained calls.
     def test_strings_stored_in_collections_and
       assert_equal ["PEAR", "APPLE", "FIG", "BANANA", "KIWI"], words.map(&:upcase)
-      assert_equal ["fig"], words.select { |w| w.start_with?("f") }
+      assert_equal(["fig"], words.select { |w| w.start_with?("f") })
       assert_equal ["fig", "pear", "kiwi", "Apple", "banana"], words.sort_by(&:size)
       assert_equal "banana", words.max_by(&:length)
-      assert_equal "Apple", words.min_by { |w| w.downcase }
+      assert_equal("Apple", words.min_by { |w| w.downcase })
       assert_equal({ 4 => ["pear", "kiwi"], 5 => ["Apple"], 3 => ["fig"], 6 => ["banana"] }, words.group_by(&:size))
       assert_equal ["Apple", "banana", "fig", "kiwi", "pear"], words.sort
       assert_equal ["Apple", "banana", "fig", "kiwi", "pear"], words.sort_by(&:downcase)
       assert_equal "pear, Apple, fig, banana, kiwi", words.join(", ")
-      assert_equal ["p", "A", "f", "b", "k"], words.map { |w| w[0] }
+      assert_equal(["p", "A", "f", "b", "k"], words.map { |w| w[0] })
       assert_equal ["Raep", "Elppa", "Gif", "Ananab", "Iwik"], words.map(&:reverse).map(&:capitalize)
       assert_equal true, words.include?("kiwi")
       assert_equal false, words.include?("Kiwi")
@@ -299,11 +299,11 @@ module StringFrozenTests
       assert_equal({ "pear" => 1, "Apple" => 1, "fig" => 1, "banana" => 1, "kiwi" => 1 }, words.tally)
       assert_equal 5, words.uniq.size
       assert_equal 5, words.reject(&:empty?).size
-      assert_equal true, words.any? { |w| w.end_with?("i") }
+      assert_equal(true, words.any? { |w| w.end_with?("i") })
       assert_equal "|pear|Apple|fig|banana|kiwi", words.inject("") { |a, b| a + "|" + b }
       assert_equal "pear", words.max
       assert_equal "Apple", words.min
-      assert_equal "fig", words.find { |w| w.size == 3 }
+      assert_equal("fig", words.find { |w| w.size == 3 })
       assert_equal %i[pear Apple fig banana kiwi], words.map(&:to_sym)
       assert_equal "\"pear\" \"Apple\" \"fig\" \"banana\" \"kiwi\"", words.map(&:inspect).join(" ")
       assert_equal 22, words.flat_map(&:chars).size
@@ -364,10 +364,10 @@ module StringFrozenTests
       vowels = [] #: Array[String]
       each_vowel("education") { |v| vowels << v.upcase }
       assert_equal %w[E U A I O], vowels
-      assert_equal "  xxx  ", "x".then { |s| s * 3 }.then { |s| s.center(7) }
+      assert_equal("  xxx  ", "x".then { |s| s * 3 }.then { |s| s.center(7) })
       nested = [["b", "a"], ["d", "c"]] #: Array[Array[String]]
-      assert_equal ["ab", "cd"], nested.map { |pair| pair.sort.join }
-      assert_equal ["b", "d"], nested.map { |pair| pair[0] }
+      assert_equal(["ab", "cd"], nested.map { |pair| pair.sort.join })
+      assert_equal(["b", "d"], nested.map { |pair| pair[0] })
     end
 
     # split into multiple assignment (a missing part is nil), line-oriented chains, tuple sort keys.
@@ -381,12 +381,12 @@ module StringFrozenTests
       text = "  one \n two\n\n three  \n"
       assert_equal ["  one ", " two", "", " three  "], text.lines.map(&:chomp)
       assert_equal ["one", "two", "three"], text.split("\n").map(&:strip).reject(&:empty?)
-      assert_equal ["banana", "Apple", "kiwi", "pear", "fig"], words.sort_by { |w| [-w.size, w] }
-      assert_equal ["g", "b", "fig", "banana", "g"], words.map { |w| w.clamp("b", "g") }
-      assert_equal ["fig", "banana"], words.select { |w| w.between?("b", "g") }
+      assert_equal(["banana", "Apple", "kiwi", "pear", "fig"], words.sort_by { |w| [-w.size, w] })
+      assert_equal(["g", "b", "fig", "banana", "g"], words.map { |w| w.clamp("b", "g") })
+      assert_equal(["fig", "banana"], words.select { |w| w.between?("b", "g") })
       fields = "name: Ann, age: 30".split(", ").map { |f| f.split(": ") }
       assert_equal [["name", "Ann"], ["age", "30"]], fields
-      assert_equal ["Ann", "30"], fields.map { |f| f[1] }
+      assert_equal(["Ann", "30"], fields.map { |f| f[1] })
       parts = [] #: Array[String]
       "a,b;c".split(";").each { |part| part.split(",").each { |x| parts << x.upcase } }
       assert_equal ["A", "B", "C"], parts

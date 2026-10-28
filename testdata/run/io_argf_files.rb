@@ -12,7 +12,7 @@ Dir.mktmpdir do |dir|
   ARGV << b
   p File.basename(ARGF.filename)
   p gets
-  p ARGV.map { |f| File.basename(f) }
+  p(ARGV.map { |f| File.basename(f) })
   p gets, gets
   p File.basename(ARGF.filename)
   p ARGF.eof?

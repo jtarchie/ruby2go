@@ -156,7 +156,7 @@ module NetTests
       URI.open("#{base}/bin") do |f|
         assert_equal "application/octet-stream", f.content_type
         assert_nil f.charset
-        assert_equal "fallback", f.charset { "fallback" }
+        assert_equal("fallback", f.charset { "fallback" })
         assert_equal [], f.content_encoding
         assert_nil f.last_modified
         assert_equal "\x00\x01", f.read

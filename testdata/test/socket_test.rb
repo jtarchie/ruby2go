@@ -368,8 +368,8 @@ module SocketTests
       assert_equal "need AF_UNIX address", e.message
       assert_equal ["#<Addrinfo: 127.0.0.1:80 TCP>", "#<Addrinfo: 127.0.0.1:80 UDP>", "#<Addrinfo: 127.0.0.1:80 SOCK_RAW>"], Addrinfo.getaddrinfo("127.0.0.1", 80).map(&:inspect)
       assert_equal ["#<Addrinfo: 127.0.0.1:80 UDP>"], Addrinfo.getaddrinfo("127.0.0.1", 80, :INET, :DGRAM).map(&:inspect)
-      assert_equal [], Addrinfo.getaddrinfo("localhost", 80, nil, :STREAM).map(&:ip_address).reject { |a| ["127.0.0.1", "::1"].include?(a) }
-      assert Addrinfo.getaddrinfo("localhost", 80, nil, :STREAM).all? { |a| a.inspect.end_with?(" TCP (localhost)>") }
+      assert_equal([], Addrinfo.getaddrinfo("localhost", 80, nil, :STREAM).map(&:ip_address).reject { |a| ["127.0.0.1", "::1"].include?(a) })
+      assert(Addrinfo.getaddrinfo("localhost", 80, nil, :STREAM).all? { |a| a.inspect.end_with?(" TCP (localhost)>") })
     end
 
     def test_socket_class_methods
@@ -378,14 +378,14 @@ module SocketTests
       assert_equal 3, Socket.getaddrinfo("127.0.0.1", nil).size
       assert_equal [["AF_INET6", 22, "::1", "::1", Socket::AF_INET6, Socket::SOCK_DGRAM, Socket::IPPROTO_UDP]],
                    Socket.getaddrinfo("::1", 22, :INET6, :DGRAM)
-      assert_equal [80], Socket.getaddrinfo("127.0.0.1", "http", nil, :STREAM).map { |r| r[1] }
+      assert_equal([80], Socket.getaddrinfo("127.0.0.1", "http", nil, :STREAM).map { |r| r[1] })
       e = assert_raises(Socket::ResolutionError) { Socket.getaddrinfo("nonexistent.invalid", 80) }
       assert e.message.start_with?("getaddrinfo: ")
       name = Socket.gethostname
       assert_kind_of String, name
       refute name.empty?
       list = Socket.ip_address_list
-      assert list.all? { |a| a.is_a?(Addrinfo) }
+      assert(list.all? { |a| a.is_a?(Addrinfo) })
       assert list.map(&:ip_address).include?("127.0.0.1")
       assert_equal "127.0.0.1", IPSocket.getaddress("127.0.0.1")
     end

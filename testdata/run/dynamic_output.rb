@@ -36,4 +36,4 @@ puts "-- a top-level Class.new block's constants are Object's; its hidden class 
 Class.new do
   ANON_BLOCK_CONST = 1
 end
-p Object.constants.include?(:ANON_BLOCK_CONST), Object.constants.none? { |k| k.to_s.start_with?("RbAnon") }
+p(Object.constants.include?(:ANON_BLOCK_CONST), Object.constants.none? { |k| k.to_s.start_with?("RbAnon") })

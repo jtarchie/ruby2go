@@ -1887,11 +1887,11 @@ end
       rows << ["k", "v"] << 3 << nil
       seen = rows.map { |k, v| [k, v] }
       assert_equal [["k", "v"], [3, nil], [nil, nil]], seen
-      assert_equal [["k", ["v"]], [3, []]], rows.first(2).map { |k, *v| [k, v] }
+      assert_equal([["k", ["v"]], [3, []]], rows.first(2).map { |k, *v| [k, v] })
       nested = [] #: Array[untyped]
       nested << [[1, 2], 3]
-      assert_equal [[1, 2, 3]], nested.map { |(x, y), z| [x, y, z] }
-      assert_equal ["k", 3, nil], rows.map { |k,| k }
+      assert_equal([[1, 2, 3]], nested.map { |(x, y), z| [x, y, z] })
+      assert_equal(["k", 3, nil], rows.map { |k,| k })
     end
 
     # `x ||= v` after `x = ...` on some paths only: x is nil on the others, so ||= tests it (decision 248)
@@ -1937,9 +1937,9 @@ end
       pairs = [["a", true], ["b", false]] #: Array[[String, bool]]
       pairs.reject! { |name,| name == "a" }
       assert_equal [["b", false]], pairs
-      assert_equal [1, 3], [[1, 2], [3, 4]].map { |x,| x }
-      assert_equal ["k", "j"], { "k" => 1, "j" => 2 }.map { |k,| k }
-      assert_equal [10, 20], [1, 2].map { |x,| x * 10 }
+      assert_equal([1, 3], [[1, 2], [3, 4]].map { |x,| x })
+      assert_equal(["k", "j"], { "k" => 1, "j" => 2 }.map { |k,| k })
+      assert_equal([10, 20], [1, 2].map { |x,| x * 10 })
     end
 
     def test_or_assign_multiple_assign_and_short_circuit
@@ -2490,9 +2490,9 @@ end
       assert_equal "{\"a\" => 1}", nv_h.select { |k, v| next false if k == "b"
  v > 0 }.inspect
       nv_xs = [1, 2] #: Array[Integer]
-      assert_equal [2, 4], nv_xs.map { |x| next x * 2 }
-      assert_equal [1], nv_xs.select { |n| next false if n > 1
- true }
+      assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
+      assert_equal([1], nv_xs.select { |n| next false if n > 1
+ true })
     end
   end
 
@@ -2509,7 +2509,7 @@ end
       assert_equal "odd", unless_else(3)
       assert_equal "even", unless_else(0)
       assert_equal "even", unless_else(-4)
-      assert_equal ["neg", "digit", "digit", "tens", "tens", "big", "big"], [-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) }
+      assert_equal(["neg", "digit", "digit", "tens", "tens", "big", "big"], [-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) })
       x = 3
       assert_equal "big", (x > 2 ? "big" : "small")
       assert_equal 2, (x.even? ? 1 : 2)
@@ -2540,7 +2540,7 @@ end
       teen = x >= 13
         || x == 3
       assert_equal true, teen
-      assert_equal ["A", "A", "B", "negative one", "F", "F"], [90, 100, 80, -1, 0, 85].map { |n| grade(n) }
+      assert_equal(["A", "A", "B", "negative one", "F", "F"], [90, 100, 80, -1, 0, 85].map { |n| grade(n) })
       assert_equal :warm, control_color("red")
       assert_equal :cool, control_color("green")
       assert_equal :empty, control_color("")
@@ -2955,7 +2955,7 @@ end
       assert_equal "RuntimeError", "#{RuntimeError.new}"
       list = [ArgumentError.new("a1"), TypeError.new("t1")] #: Array[StandardError]
       assert_equal ["a1", "t1"], list.map(&:message)
-      assert_equal ["ArgumentError", "TypeError"], list.map { |l| l.class.name }
+      assert_equal(["ArgumentError", "TypeError"], list.map { |l| l.class.name })
       assert_equal "[#<ArgumentError: a1>, #<TypeError: t1>]", list.inspect
       assert_equal "#<ControlTests::EdgesApp::Missing: x>", EdgesApp::Missing.new("x").inspect
       assert_equal "ControlTests::EdgesApp::Missing", EdgesApp::Missing.new.message
@@ -3306,7 +3306,7 @@ end
     def test_exceptions_in_collections_and_untyped
       errors = [] #: Array[StandardError]
       [ArgumentError.new("a"), KeyError.new("k")].each { |x| errors << x }
-      assert_equal ["ArgumentError: a", "KeyError: k"], errors.map { |x| "#{x.class}: #{x.message}" }
+      assert_equal(["ArgumentError: a", "KeyError: k"], errors.map { |x| "#{x.class}: #{x.message}" })
       anything = RuntimeError.new("untyped") #: untyped
       assert_equal "untyped", anything.message
       e = assert_raises(KeyError) { raise errors[1] || StandardError.new("fallback") }
@@ -3787,11 +3787,11 @@ end
       end
       assert_equal "nie", ex.message
       list = [1, 2, 3] #: Array[Integer]
-      assert_equal [100, 0, 2], list.map { |v| begin
+      assert_equal([100, 0, 2], list.map { |v| begin
                                                  risky_int(v - 2)
                                                rescue StandardError
                                                  100
-                                               end }
+                                               end })
       assert_equal 1, control_safe_fetch("a")
       assert_equal(-1, control_safe_fetch("b"))
     end
@@ -4009,8 +4009,8 @@ end
 
     # `it` and numbered params
     def test_it_and_numbered_params
-      assert_equal [2, 4], [1, 2].map { it * 2 }
-      assert_equal [4, 5], [3, 4].map { _1 + 1 }
+      assert_equal([2, 4], [1, 2].map { it * 2 })
+      assert_equal([4, 5], [3, 4].map { _1 + 1 })
     end
 
     # Ruby locals, params and rescue bindings may use Go keywords and predeclared names
@@ -4581,7 +4581,7 @@ end
         :never
       end
       assert_equal 30, r
-      assert_equal 7, catch { |tag| throw tag, 7 }
+      assert_equal(7, catch { |tag| throw tag, 7 })
     end
 
     def test_typed_methods_throw
@@ -4661,7 +4661,7 @@ end
     def test_args_and_array_elements
       log = [] #: Array[Integer]
       h = { a: 1 } #: Hash[Symbol, Integer]
-      assert_equal [2, 3], [log.push(2).size, log.last&.succ].then { |a| [a[0] + 1, a[1] || 0] }
+      assert_equal([2, 3], [log.push(2).size, log.last&.succ].then { |a| [a[0] + 1, a[1] || 0] })
       log.clear
       assert_equal [1, 2], [log.push(1).size, log.last&.succ]
       assert_equal [1, 2, 2], [log.size, h[:a]&.succ, log.push(9).size]
@@ -4688,7 +4688,7 @@ end
     def test_itself_and_yield_self
       assert_equal 1, 1.itself
       assert_equal({ 1 => [1, 1], 2 => [2] }, [1, 1, 2].group_by(&:itself))
-      assert_equal 3, 2.yield_self { |x| x + 1 }
+      assert_equal(3, 2.yield_self { |x| x + 1 })
     end
 
     def test_fail
@@ -4877,7 +4877,7 @@ end
       line = __LINE__
       assert_equal line + 1, __LINE__
       assert_equal :test_source_position, __method__
-      assert_equal [:test_source_position], [1].map { |_| __method__ }
+      assert_equal([:test_source_position], [1].map { |_| __method__ })
       assert_equal File.dirname(File.expand_path(__FILE__)), __dir__
     end
 
@@ -5061,8 +5061,8 @@ end
     def test_detailed_message
       assert_equal ["boom (RuntimeError)", "unhandled exception", "a (RuntimeError)\nb", "boom (RuntimeError)"],
                    [RuntimeError.new("boom").detailed_message, RuntimeError.new("").detailed_message, RuntimeError.new("a\nb").detailed_message, RuntimeError.new("boom").detailed_message(highlight: false)]
-      assert_equal ["abc (StandardError)", "a (StandardError)\n\nb", " (StandardError)\nfoo", "a (StandardError)\nb\n", " (StandardError)", "StandardError", "abc\r (StandardError)"],
-                   ["abc\n", "a\n\nb", "\nfoo", "a\nb\n", "\n", "", "abc\r\n"].map { |m| StandardError.new(m).detailed_message }
+      assert_equal(["abc (StandardError)", "a (StandardError)\n\nb", " (StandardError)\nfoo", "a (StandardError)\nb\n", " (StandardError)", "StandardError", "abc\r (StandardError)"],
+                   ["abc\n", "a\n\nb", "\nfoo", "a\nb\n", "\n", "", "abc\r\n"].map { |m| StandardError.new(m).detailed_message })
       assert_equal ["\e[1ma (\e[1;4mStandardError\e[m\e[1m)\e[m\n\e[1mb\e[m\n\e[1mc\e[m\n", "\e[1;4mStandardError\e[m", "\e[1;4munhandled exception\e[m"],
                    [StandardError.new("a\nb\nc\n").detailed_message(highlight: true), StandardError.new("").detailed_message(highlight: true), RuntimeError.new("").detailed_message(highlight: true)]
     end
@@ -5387,7 +5387,7 @@ end
     end
 
     def test_last_match_in_block
-      assert_equal ["1", nil], %w[x1 y].map { |w| w =~ /(\d)/ ? ::Regexp.last_match(1) : nil }
+      assert_equal(["1", nil], %w[x1 y].map { |w| w =~ /(\d)/ ? ::Regexp.last_match(1) : nil })
     end
 
     def test_regexp_on_the_left
@@ -5799,7 +5799,7 @@ end
     # `|_, (token, _)|` over a Hash of pairs (Homebrew's Keg#link): the blank params bind nothing
     def test_blank_params_in_nested_tuple
       h = { "a" => ["x", 1], "b" => ["y", 2], "c" => ["x", 3] } #: Hash[String, [String, Integer]]
-      assert_equal [["x", 2], ["y", 1]], h.group_by { |_, (tok, _)| tok }.map { |tok, pairs| [tok, pairs.size] }
+      assert_equal([["x", 2], ["y", 1]], h.group_by { |_, (tok, _)| tok }.map { |tok, pairs| [tok, pairs.size] })
     end
 
     # `(a, = pair_or_nil)` as a condition (cleanup.rb's autoremove): its value is the right-hand side
@@ -5965,10 +5965,10 @@ module ControlTests
 
     def test_and_or_jumps
       assert_equal %i[pos zero neg], [control_sign(3), control_sign(0), control_sign(-2)]
-      assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i|
+      assert_equal([1, 20, 3, 40], [1, 2, 3, 4].map { |i|
   i.even? and next i * 10
   i
-}
+})
       seen = [] #: Array[Integer]
       [1, 2, 3].each do |v|
         v.odd? and next

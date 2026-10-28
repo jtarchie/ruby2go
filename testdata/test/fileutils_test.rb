@@ -652,7 +652,7 @@ module FileUtilsTests
           klass = RUBY_PLATFORM.include?("darwin") ? Errno::EPERM : Errno::EISDIR
           want = [klass, "apply2files - sub"]
           assert_equal [want, want, want], [fu_failure { File.delete("sub") }, fu_failure { File.unlink("sub") }, fu_failure { FileUtils.rm("sub") }]
-          assert_equal [], fu_failure { FileUtils.rm_f("sub") }
+          assert_equal([], fu_failure { FileUtils.rm_f("sub") })
           assert File.directory?("sub")
           File.write("f", "x")
           assert_equal 1, File.delete("f")
@@ -756,7 +756,7 @@ module FileUtilsTests
         File.write("real", "R")
         File.symlink("real", "link")
         File.write("out", "old")
-        assert_equal Errno::EEXIST, fu_raised { FileUtils.cp_r("link", "out", dereference_root: false) }
+        assert_equal(Errno::EEXIST, fu_raised { FileUtils.cp_r("link", "out", dereference_root: false) })
         FileUtils.cp_r("link", "out", dereference_root: false, remove_destination: true)
         assert_equal [true, "R"], [File.symlink?("out"), File.read("real")]
       end

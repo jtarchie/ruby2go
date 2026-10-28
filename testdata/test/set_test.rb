@@ -70,7 +70,7 @@ module SetTests
       s.each { |x| seen << x }
       assert_equal [3, 1, 2], seen
       assert_equal [3, 1, 2], s.to_a
-      assert_equal [6, 2, 4], s.map { |x| x * 2 }
+      assert_equal([6, 2, 4], s.map { |x| x * 2 })
       assert_equal [1, 2, 3], s.sort
       assert_equal [3, 1], [s.first, s.min]
       assert_equal [[3, 1], [2]], s.partition(&:odd?)
@@ -129,7 +129,7 @@ module SetTests
 
     def test_inspect_classify_and_divide
       assert_equal ["Set[1, 2, 3]", "Set[]", "Set[1]"], [Set[1, 2, 3].inspect, Set[].inspect, Set[1].to_s]
-      assert_equal [[true, [1, 3]], [false, [2]]], Set[1, 2, 3].classify(&:odd?).map { |k, v| [k, v.to_a] }
+      assert_equal([[true, [1, 3]], [false, [2]]], Set[1, 2, 3].classify(&:odd?).map { |k, v| [k, v.to_a] })
       assert_equal [[1, 3], [2]], Set[1, 2, 3].divide(&:odd?).map(&:to_a)
       assert_equal [[1, 2], [3]], Set[1, 2, 3].each_slice(2).to_a
     end

@@ -176,8 +176,8 @@ module Sqlite3Tests
 
     def test_transactions
       db = seeded
-      assert_equal 7, db.transaction { |d| d.execute("insert into t (name) values ('tx')")
- 7 }
+      assert_equal(7, db.transaction { |d| d.execute("insert into t (name) values ('tx')")
+ 7 })
       refute db.transaction_active?
       e = assert_raises(RuntimeError) do
         db.transaction { db.execute("insert into t (name) values ('rb')")
@@ -220,12 +220,12 @@ module Sqlite3Tests
     def test_pragmas_and_schema
       db = seeded
       info = db.table_info("t")
-      assert_equal %w[id name score data], info.map { |c| c["name"] }
-      assert_equal %w[integer text real blob], info.map { |c| c["type"] }
-      assert_equal [1, 0, 0, 0], info.map { |c| c["pk"] }
-      assert_equal [nil, nil, nil, nil], info.map { |c| c["dflt_value"] }
+      assert_equal(%w[id name score data], info.map { |c| c["name"] })
+      assert_equal(%w[integer text real blob], info.map { |c| c["type"] })
+      assert_equal([1, 0, 0, 0], info.map { |c| c["pk"] })
+      assert_equal([nil, nil, nil, nil], info.map { |c| c["dflt_value"] })
       db.execute("create table d (a text default 'x''y', b integer default null, c integer default 3)")
-      assert_equal ["x'y", nil, "3"], db.table_info("d").map { |c| c["dflt_value"] }
+      assert_equal(["x'y", nil, "3"], db.table_info("d").map { |c| c["dflt_value"] })
       assert_equal 0, db.user_version
       db.user_version = 3
       assert_equal 3, db.user_version

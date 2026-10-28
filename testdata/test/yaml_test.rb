@@ -44,13 +44,13 @@ module YamlTests
 
     def test_symbols
       assert_equal({ a: :b, "c" => :"d e" }, YAML.load(":a: :b\nc: :\"d e\""))
-      assert_equal Psych::DisallowedClass, YamlTests.raised { YAML.safe_load(":a: 1") }
+      assert_equal(Psych::DisallowedClass, YamlTests.raised { YAML.safe_load(":a: 1") })
       assert_equal({ a: 1 }, YAML.safe_load(":a: 1", permitted_classes: [Symbol], permitted_symbols: [:a]))
-      assert_equal Psych::DisallowedClass, YamlTests.raised { YAML.load(":b: 1", permitted_symbols: [:a]) }
+      assert_equal(Psych::DisallowedClass, YamlTests.raised { YAML.load(":b: 1", permitted_symbols: [:a]) })
     end
 
     def test_dates_and_times
-      assert_equal Psych::DisallowedClass, YamlTests.raised { YAML.load("d: 2001-12-14") }
+      assert_equal(Psych::DisallowedClass, YamlTests.raised { YAML.load("d: 2001-12-14") })
       d = YAML.load("d: 2001-12-14", permitted_classes: [Date]) #: Hash[String, untyped]
       assert_equal "2001-12-14", d["d"].to_s
       assert_equal({ "x" => "2001-02-30" }, YAML.unsafe_load("x: 2001-02-30"))
@@ -77,8 +77,8 @@ module YamlTests
     end
 
     def test_aliases_and_merge
-      assert_equal Psych::AliasesNotEnabled, YamlTests.raised { YAML.load("a: &x 1\nb: *x") }
-      assert_equal Psych::AliasesNotEnabled, YamlTests.raised { YAML.load("base: &b {x: 1}\nc:\n  <<: *b") }
+      assert_equal(Psych::AliasesNotEnabled, YamlTests.raised { YAML.load("a: &x 1\nb: *x") })
+      assert_equal(Psych::AliasesNotEnabled, YamlTests.raised { YAML.load("base: &b {x: 1}\nc:\n  <<: *b") })
       h = YAML.load("base: &b {x: 1, y: 2}\nc:\n  <<: *b\n  y: 3", aliases: true) #: Hash[String, untyped]
       assert_equal({ "x" => 1, "y" => 3 }, h["c"])
       a = YAML.unsafe_load("- &a [1, 2]\n- *a") #: Array[untyped]
@@ -133,7 +133,7 @@ module YamlTests
     end
 
     def test_object_tag
-      assert_equal Psych::DisallowedClass, YamlTests.raised { YAML.load("x: !ruby/object:Foo {a: 1}") }
+      assert_equal(Psych::DisallowedClass, YamlTests.raised { YAML.load("x: !ruby/object:Foo {a: 1}") })
     end
   end
 

@@ -179,7 +179,7 @@ module StdlibTests
       assert_equal src, t.to_s
       assert_equal "#<CSV::Table mode:col_or_row row_count:4>\n#{src}", t.inspect
       assert_equal [["name", "age", "score"], ["Ada", "36", "9.5"], ["Grace", nil, "1_000"], [" Linus ", " 08 ", "0x1A"]], t.to_a
-      assert_equal ["Ada", "Grace", " Linus "], t.map { |r| r["name"] }
+      assert_equal(["Ada", "Grace", " Linus "], t.map { |r| r["name"] })
       e = assert_raises(KeyError) { t[0].fetch("missing") }
       assert_equal "key not found: missing", e.message
       n = CSV.parse(src, headers: true, converters: :numeric)
@@ -523,7 +523,7 @@ module StdlibTests
       assert_equal [1, 2, 3, 4], from_set.sort
       h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
       from_hash = Set.new(h) #: Set[[String, Integer]]
-      assert_equal [["a", 1], ["b", 2]], from_hash.sort_by { |pair| pair[0] }
+      assert_equal([["a", 1], ["b", 2]], from_hash.sort_by { |pair| pair[0] })
       doubled = Set.new([1, 2, 3]) { |x| x * 2 } #: Set[Integer]
       assert_equal [2, 4, 6], doubled.sort
       strs = Set.new(1..3) { |x| x.to_s } #: Set[String]
@@ -776,7 +776,7 @@ module StdlibTests
       assert_equal 42, Thread.new { 6 * 7 }.value
       assert_equal "ab", Thread.new("a") { |s| s + "b" }.value
       assert_nil Thread.new { stdlib_noop }.value
-      assert_equal [1, 2], [1, 2].tap { stdlib_noop }
+      assert_equal([1, 2], [1, 2].tap { stdlib_noop })
     end
 
     # Homebrew's Utils.parallel_map: a quiet thread's raise still reaches value
@@ -896,7 +896,7 @@ module StdlibTests
       sq << 4
       assert_equal [4, 4, 0], [sq.max, sq.size, sq.num_waiting]
       sq.max = 1
-      assert_equal [1, 2, 3, 4], 4.times.map { sq.pop }
+      assert_equal([1, 2, 3, 4], 4.times.map { sq.pop })
       assert_equal 0, sq.size
 
       waiter = Thread.new { sq.pop }
@@ -1307,15 +1307,15 @@ module StdlibTests
         link = File.join(dir, "link")
         File.symlink(full, link)
         gone = File.join(dir, "gone")
-        assert_equal [true, true, true, false], [full, empty, dir, gone].map { |p| FileTest.exist?(p) }
-        assert_equal [true, false, false], [full, dir, gone].map { |p| FileTest.file?(p) }
-        assert_equal [false, true, false], [full, dir, gone].map { |p| FileTest.directory?(p) }
-        assert_equal [true, false], [link, full].map { |p| FileTest.symlink?(p) }
-        assert_equal [false, true, false], [full, empty, gone].map { |p| FileTest.zero?(p) }
-        assert_equal [false, true], [full, empty].map { |p| FileTest.empty?(p) }
-        assert_equal [3, nil, nil], [full, empty, gone].map { |p| FileTest.size?(p) }
-        assert_equal [3, nil, nil], [full, empty, gone].map { |p| File.size?(p) }
-        assert_equal [3, 0], [full, empty].map { |p| FileTest.size(p) }
+        assert_equal([true, true, true, false], [full, empty, dir, gone].map { |p| FileTest.exist?(p) })
+        assert_equal([true, false, false], [full, dir, gone].map { |p| FileTest.file?(p) })
+        assert_equal([false, true, false], [full, dir, gone].map { |p| FileTest.directory?(p) })
+        assert_equal([true, false], [link, full].map { |p| FileTest.symlink?(p) })
+        assert_equal([false, true, false], [full, empty, gone].map { |p| FileTest.zero?(p) })
+        assert_equal([false, true], [full, empty].map { |p| FileTest.empty?(p) })
+        assert_equal([3, nil, nil], [full, empty, gone].map { |p| FileTest.size?(p) })
+        assert_equal([3, nil, nil], [full, empty, gone].map { |p| File.size?(p) })
+        assert_equal([3, 0], [full, empty].map { |p| FileTest.size(p) })
         assert_equal [true, true, false], [FileTest.readable?(full), FileTest.writable?(full), FileTest.executable?(full)]
         File.chmod(0o755, full)
         assert_equal [true, true], [FileTest.executable?(full), FileTest.owned?(full)]
@@ -1776,7 +1776,7 @@ module StdlibTests
       g = ThreadGroup.new
       q = Queue.new #: Queue[Integer]
       ts = 3.times.map { |i| Thread.new { q.pop.to_i + i } }
-      assert_equal [true, true, true], ts.map { |t| g.add(t).equal?(g) }
+      assert_equal([true, true, true], ts.map { |t| g.add(t).equal?(g) })
       assert_equal [true, true, true], [g.list == ts, ts.fetch(0).group.equal?(g), Thread.main.group.equal?(ThreadGroup::Default)]
       assert_equal [true, false], [ThreadGroup::Default.list.include?(Thread.main), ThreadGroup::Default.list.include?(ts.fetch(0))]
       3.times { q << 10 }
@@ -2131,7 +2131,7 @@ module StdlibTests
         ["/opt/homebrew/opt/*/bin/wget", "/opt/homebrew/Cellar/wget/1/bin/wget", File::FNM_PATHNAME],
         ["ca[", "ca[", 0], ["[a-c]x", "bx", 0], ["[!a-c]x", "bx", 0]
       ]
-      assert_equal [true, false, false, true, true, false, true, true, true, false, false, true, false, false, false, true, true, true, true, false, true, true, true, false, true, true, true, true, true, true, true, false, true, true, false, false, true, false], cases.map { |pat, s, f| File.fnmatch(pat, s, f) }
+      assert_equal([true, false, false, true, true, false, true, true, true, false, false, true, false, false, false, true, true, true, true, false, true, true, true, false, true, true, true, true, true, true, true, false, true, true, false, false, true, false], cases.map { |pat, s, f| File.fnmatch(pat, s, f) })
       assert_equal [true, true], [Pathname.new("/a/b").fnmatch?("/a/*", File::FNM_PATHNAME), File.fnmatch?("*.rb", "x.rb")]
     end
 
@@ -2264,7 +2264,7 @@ module StdlibTests
         File.write(File.join(d, "a.txt"), "")
         File.write(File.join(d, "b.txt"), "")
         assert_equal %w[a.txt b.txt], Pathname.glob("#{d}/*.txt").map { |x| x.basename.to_s }.sort
-        assert_equal ["a.txt"], Pathname.glob(Pathname(d) / "a*").map { |x| x.basename.to_s }
+        assert_equal(["a.txt"], Pathname.glob(Pathname(d) / "a*").map { |x| x.basename.to_s })
         assert_equal [2, 0], [Pathname.glob(["#{d}/a*", "#{d}/b*"]).size, Pathname.glob("#{d}/zz*").size]
       end
     end

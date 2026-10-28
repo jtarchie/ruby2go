@@ -45,7 +45,7 @@ module DateTests
       zones = ["-00:00", "Z", "UTC", "EST", "jst", "GMT+3", "+0930", "+9", "+25:00", "bogus"]
       got = zones.map { |z| DateTime.new(2024, 1, 1, 0, 0, 0, z).zone }
       assert_equal ["+00:00", "+00:00", "+00:00", "-05:00", "+09:00", "+03:00", "+09:30", "+09:00", "+00:00", "+00:00"], got
-      assert_equal ["+01:00", "-01:00", "-12:00", "+00:00"], %w[A N Y J].map { |z| DateTime.new(2024, 1, 1, 0, 0, 0, z).zone }
+      assert_equal(["+01:00", "-01:00", "-12:00", "+00:00"], %w[A N Y J].map { |z| DateTime.new(2024, 1, 1, 0, 0, 0, z).zone })
       assert_equal "+24:00", DateTime.new(2024, 1, 1, 0, 0, 0, 1).zone
       assert_equal "+12:00", DateTime.new(2024, 1, 1, 0, 0, 0, 0.5).zone
       assert_equal "#<DateTime: 2024-01-01T00:00:00+03:25 ((2460310j,74057s,0n),+12343s,2299161j)>", DateTime.new(2024, 1, 1, 0, 0, 0, Rational(1, 7)).inspect

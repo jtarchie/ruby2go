@@ -249,7 +249,7 @@ module UnionTests
 
     def test_struct_members
       pets = [Dog.new, Robot.new] #: Array[Dog | Robot]
-      assert_equal %w[woof beep], pets.map { |p| p.speak }
+      assert_equal(%w[woof beep], pets.map { |p| p.speak })
     end
 
     def test_containers
@@ -258,7 +258,7 @@ module UnionTests
       items << "two"
       items.push(3)
       assert_equal [1, "two", 3], items
-      assert_equal %w[1 two 3], items.map { |i| i.to_s }
+      assert_equal(%w[1 two 3], items.map { |i| i.to_s })
       assert_includes items, "two"
       h = {} #: Hash[Symbol, Integer | String]
       h[:a] = 1
@@ -432,7 +432,7 @@ module UnionTests
     end
 
     def test_patterns
-      assert_equal ["nil", "int 6", "str FIVE", "pair 1 2"], (0..3).map { |i| matched(varied(i)) }
+      assert_equal(["nil", "int 6", "str FIVE", "pair 1 2"], (0..3).map { |i| matched(varied(i)) })
       assert varied(0).is_a?(NilClass)
       refute varied(1).is_a?(NilClass)
       assert varied(0).nil?

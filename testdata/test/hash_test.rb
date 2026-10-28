@@ -502,7 +502,7 @@ module HashTests
       got = [] #: Array[String]
       give { |gh| got << gh.inspect }
       assert_equal ["{a: 1}"], got
-      assert_equal "[:b, :c]", give_v { |gh| gh.keys.inspect }
+      assert_equal("[:b, :c]", give_v { |gh| gh.keys.inspect })
     end
 
     # ... into super, and into a call on self.
@@ -618,7 +618,7 @@ module HashTests
       assert_equal 3, uni["😀"]
       assert_equal 4, uni[""]
       assert_nil uni["hello"]
-      assert_equal [5, 2, 1, 0], uni.keys.map { |k| k.size }
+      assert_equal([5, 2, 1, 0], uni.keys.map { |k| k.size })
     end
 
     # A String key and a Symbol key with the same text are different keys.
@@ -664,7 +664,7 @@ module HashTests
       assert_nil nested["nope"]&.fetch("z")
       # Value-returning block calls through &. on a possibly-nil nested hash
       # (iterators through &. are dynamic_bug_safe_nav_iterator).
-      assert_equal ["y1", "z2"], nested["x"]&.map { |nk, nv| "#{nk}#{nv}" }
+      assert_equal(["y1", "z2"], nested["x"]&.map { |nk, nv| "#{nk}#{nv}" })
       assert_nil(nested["zz"]&.map { |nk, _nv| nk })
       assert_equal "{\"z\" => 2}", nested["x"]&.select { |_nk, nv| nv > 1 }.inspect
       assert_equal ["y", "z"], nested["x"]&.keys
@@ -696,7 +696,7 @@ module HashTests
       assert_nil(ov.fetch("a", 9))
       ov["a"] = 5
       assert_equal ["a", "b"], ov.select { |_k, v| !v.nil? }.keys
-      assert_equal ["a", "b"], ov.map { |k, v| v ? k : "-" }
+      assert_equal(["a", "b"], ov.map { |k, v| v ? k : "-" })
     end
 
     # Assignment in a condition narrows the lookup.
@@ -719,7 +719,7 @@ module HashTests
       cnt = {} #: Hash[Symbol, Integer]
       %i[a b a c a].each { |s| cnt[s] = cnt.fetch(s, 0) + 1 }
       assert_equal "{a: 3, b: 1, c: 1}", cnt.inspect
-      assert_equal [:a, 3], cnt.max_by { |_k, v| v }
+      assert_equal([:a, 3], cnt.max_by { |_k, v| v })
     end
   end
 
@@ -924,7 +924,7 @@ module HashTests
       vals = [] #: Array[Integer]
       us_h.each { |_, v| vals << v }
       assert_equal [1, 2], vals
-      assert_equal [3, 6], us_h.map { |_, v| v * 3 }
+      assert_equal([3, 6], us_h.map { |_, v| v * 3 })
       assert_equal "{\"bb\" => 2}", us_h.select { |k, _| k.size > 1 }.inspect
       us_n = 0
       us_h.each_key { |_| us_n += 1 }
@@ -934,9 +934,9 @@ module HashTests
     # sorting on untyped values and keys reaches rbCmp
     def test_sorting_on_untyped_values_and
       scores = { "b" => 2, "a" => 1, "c" => 3 } #: Hash[String, untyped]
-      assert_equal ["c", 3], scores.max_by { |_k, v| v }
-      assert_equal ["a", 1], scores.min_by { |_k, v| v }
-      assert_equal [["a", 1], ["b", 2], ["c", 3]], scores.sort_by { |_k, v| v }
+      assert_equal(["c", 3], scores.max_by { |_k, v| v })
+      assert_equal(["a", 1], scores.min_by { |_k, v| v })
+      assert_equal([["a", 1], ["b", 2], ["c", 3]], scores.sort_by { |_k, v| v })
       byk = { 2 => "b", 1 => "a" } #: Hash[untyped, String]
       assert_equal [[1, "a"], [2, "b"]], byk.sort
       assert_equal [1, "a"], byk.min
@@ -948,9 +948,9 @@ module HashTests
     def test_unused_block_params
       ub_h = { "a" => 1, "bb" => 2 } #: Hash[String, Integer]
       assert_equal "{\"bb\" => 2}", ub_h.select { |_k, v| v > 1 }.inspect
-      assert_equal ["a=1", "bb=2"], ub_h.map { |k, v| "#{k}=#{v}" }
-      assert_equal ["bb", 2], ub_h.find { |_k, v| v > 1 }
-      assert_equal ["a", 1], ub_h.min_by { |k, _v| k.size }
+      assert_equal(["a=1", "bb=2"], ub_h.map { |k, v| "#{k}=#{v}" })
+      assert_equal(["bb", 2], ub_h.find { |_k, v| v > 1 })
+      assert_equal(["a", 1], ub_h.min_by { |k, _v| k.size })
       assert_equal "hash", hash_kind({ "a" => 1 })
       assert_equal "other", hash_kind(1)
     end
@@ -968,18 +968,18 @@ module HashTests
       sel["new"] = 9
       assert_equal 3, h.size
       assert_equal 4, sel.size
-      assert_equal ["a=1", "bb=2", "ccc=3"], h.map { |k, v| "#{k}=#{v}" }
-      assert_equal [["a", 1], ["bb", 2], ["ccc", 3]], h.map { |pair| pair }
-      assert_equal [["A", 10], ["BB", 20], ["CCC", 30]], h.map { |k, v| [k.upcase, v * 10] }
-      assert_equal ["a", "1", "bb", "2", "ccc", "3"], h.flat_map { |k, v| [k, v.to_s] }
-      assert_equal ["bb", 2], h.find { |_k, v| v > 1 }
+      assert_equal(["a=1", "bb=2", "ccc=3"], h.map { |k, v| "#{k}=#{v}" })
+      assert_equal([["a", 1], ["bb", 2], ["ccc", 3]], h.map { |pair| pair })
+      assert_equal([["A", 10], ["BB", 20], ["CCC", 30]], h.map { |k, v| [k.upcase, v * 10] })
+      assert_equal(["a", "1", "bb", "2", "ccc", "3"], h.flat_map { |k, v| [k, v.to_s] })
+      assert_equal(["bb", 2], h.find { |_k, v| v > 1 })
       assert_nil(h.detect { |_k, v| v > 5 })
-      assert_equal true, h.any? { |_k, v| v > 2 }
-      assert_equal false, h.any? { |_k, v| v > 3 }
-      assert_equal true, h.all? { |_k, v| v > 0 }
-      assert_equal false, h.all? { |k, _v| k.size < 3 }
-      assert_equal true, h.none? { |k, _v| k.empty? }
-      assert_equal false, h.none? { |k, _v| k == "a" }
+      assert_equal(true, h.any? { |_k, v| v > 2 })
+      assert_equal(false, h.any? { |_k, v| v > 3 })
+      assert_equal(true, h.all? { |_k, v| v > 0 })
+      assert_equal(false, h.all? { |k, _v| k.size < 3 })
+      assert_equal(true, h.none? { |k, _v| k.empty? })
+      assert_equal(false, h.none? { |k, _v| k == "a" })
       assert_equal 3, h.count
       assert_equal 6, h.reduce(0) { |sum, pair| sum + pair[1] }
       assert_equal "abbccc", h.inject("") { |acc, pair| acc + pair[0] }
@@ -989,9 +989,9 @@ module HashTests
       assert_equal [["a", 1], ["bb", 2], ["ccc", 3]], h.sort
       assert_equal ["a", 1], h.min
       assert_equal ["ccc", 3], h.max
-      assert_equal [["ccc", 3], ["bb", 2], ["a", 1]], h.sort_by { |_k, v| -v }
-      assert_equal ["a", 1], h.min_by { |_k, v| v }
-      assert_equal ["ccc", 3], h.max_by { |k, _v| k.size }
+      assert_equal([["ccc", 3], ["bb", 2], ["a", 1]], h.sort_by { |_k, v| -v })
+      assert_equal(["a", 1], h.min_by { |_k, v| v })
+      assert_equal(["ccc", 3], h.max_by { |k, _v| k.size })
       assert_equal "{true => [[\"a\", 1], [\"ccc\", 3]], false => [[\"bb\", 2]]}", h.group_by { |_k, v| v.odd? }.inspect
       assert_equal "{[\"a\", 1] => 1, [\"bb\", 2] => 1, [\"ccc\", 3] => 1}", h.tally.inspect
       assert_equal [["a", 1], ["bb", 2]], h.first(2)
@@ -1002,21 +1002,21 @@ module HashTests
       assert_equal [[-1, "neg"], [0, "zero"], [3, "c"]], ints.sort
       assert_equal [-1, "neg"], ints.min
       assert_equal [3, "c"], ints.max
-      assert_equal [3, "c"], ints.min_by { |_k, v| v }
-      assert_equal [[3, "c"], [-1, "neg"], [0, "zero"]], ints.sort_by { |_k, v| v.size }
+      assert_equal([3, "c"], ints.min_by { |_k, v| v })
+      assert_equal([[3, "c"], [-1, "neg"], [0, "zero"]], ints.sort_by { |_k, v| v.size })
       sym = { b: 2, a: 1, c: 0 } #: Hash[Symbol, Integer]
       assert_equal [[:a, 1], [:b, 2], [:c, 0]], sym.sort
-      assert_equal [[:c, 0], [:a, 1], [:b, 2]], sym.sort_by { |_k, v| v }
-      assert_equal [:a, 1], sym.min_by { |k, _v| k }
+      assert_equal([[:c, 0], [:a, 1], [:b, 2]], sym.sort_by { |_k, v| v })
+      assert_equal([:a, 1], sym.min_by { |k, _v| k })
       st = { "Zed" => "b", "alpha" => "a", "Élan" => "c", "beta" => "d" } #: Hash[String, String]
       assert_equal [["Zed", "b"], ["alpha", "a"], ["beta", "d"], ["Élan", "c"]], st.sort
-      assert_equal ["alpha", "beta", "Zed", "Élan"], st.sort_by { |k, _v| k.downcase }.map { |k, _v| k }
+      assert_equal(["alpha", "beta", "Zed", "Élan"], st.sort_by { |k, _v| k.downcase }.map { |k, _v| k })
       fl = { "x" => 2.5, "y" => -1.5 } #: Hash[String, Float]
       assert_equal "[[\"y\", -1.5], [\"x\", 2.5]]", fl.sort_by { |_k, v| v }.inspect
       assert_equal "[\"x\", 2.5]", fl.max_by { |_k, v| v }.inspect
       arrv = { "b" => [2, 1], "a" => [1] } #: Hash[String, Array[Integer]]
       assert_equal [["a", [1]], ["b", [2, 1]]], arrv.sort
-      assert_equal ["b", [2, 1]], arrv.max_by { |_k, v| v.size }
+      assert_equal(["b", [2, 1]], arrv.max_by { |_k, v| v.size })
       e = {} #: Hash[String, Integer]
       assert_nil e.min
       assert_nil e.max
@@ -1024,16 +1024,16 @@ module HashTests
       assert_equal [], e.sort
       assert_equal [], e.to_a
       assert_nil(e.find { |_k, _v| true })
-      assert_equal false, e.any? { |_k, _v| true }
-      assert_equal true, e.all? { |_k, _v| false }
+      assert_equal(false, e.any? { |_k, _v| true })
+      assert_equal(true, e.all? { |_k, _v| false })
       assert_equal 10, e.reduce(10) { |s, _pair| s + 1 }
       assert_equal 0, e.count
       assert_equal [], e.first(3)
       assert_equal "{}", e.group_by { |k, _v| k }.inspect
       assert_equal "{}", e.tally.inspect
-      assert_equal [], e.flat_map { |k, _v| [k] }
+      assert_equal([], e.flat_map { |k, _v| [k] })
       assert_equal "{}", e.select { |_k, _v| true }.inspect
-      assert_equal [], e.map { |k, _v| k }
+      assert_equal([], e.map { |k, _v| k })
     end
 
     # Word counting as in example 05, sorted by count then word.
@@ -1050,23 +1050,23 @@ module HashTests
     # Chains: Hash#select returns a Hash, so Hash methods keep working after it.
     def test_chains_after_hash_select
       h = { "a" => 1, "bb" => 2, "ccc" => 3 } #: Hash[String, Integer]
-      assert_equal ["bb2", "ccc3"], h.select { |_k, v| v > 1 }.map { |k, v| "#{k}#{v}" }
+      assert_equal(["bb2", "ccc3"], h.select { |_k, v| v > 1 }.map { |k, v| "#{k}#{v}" })
       assert_equal ["a"], h.reject { |_k, v| v > 1 }.keys
       assert_equal 3, h.merge({ "d" => 4 }).select { |k, _v| k.size < 3 }.size
       assert_equal ["bbbb"], h.select { |_k, v| v > 1 }.reject { |k, _v| k.size > 2 }.map { |k, v| k * v }.sort.first(1)
-      assert_equal ["ccc", "bb"], h.sort_by { |_k, v| -v }.first(2).map { |k, _v| k }
+      assert_equal(["ccc", "bb"], h.sort_by { |_k, v| -v }.first(2).map { |k, _v| k })
       assert_equal [["ccc", 3], ["bb", 2], ["a", 1]], h.to_a.sort.reverse
       assert_equal [[1, "a"], [2, "bb"], [3, "ccc"]], h.map { |k, v| [v, k] }.sort
       assert_equal [3, "ccc"], h.map { |k, v| [v, k] }.max
       assert_equal ["A", "BB", "CCC"], h.keys.map(&:upcase)
-      assert_equal [2, 4, 6], h.values.map { |v| v * 2 }
+      assert_equal([2, 4, 6], h.values.map { |v| v * 2 })
       assert_equal "[{\"a\" => 1}, {\"bb\" => 2}, {\"ccc\" => 3}]", h.map { |k, v| { k => v } }.inspect
       got = [] #: Array[String]
       h.map { |k, v| [k, v] }.each { |k, v| got << "#{k}#{v}" }
       assert_equal ["a1", "bb2", "ccc3"], got
       assert_equal [3, 2, 1], h.values.sort.reverse
       assert_equal "ccc", h.keys.max
-      assert_equal "ccc", h.keys.min_by { |k| -k.size }
+      assert_equal("ccc", h.keys.min_by { |k| -k.size })
       assert_equal 6, h.inject(0) { |s, pair| s + pair.last }
       pair = h.find { |_k, v| v == 2 }
       got = []
@@ -1082,7 +1082,7 @@ module HashTests
       assert_equal ["ccc", 3], h.max_by(&:first)
       assert_equal "{1 => [[\"a\", 1]], 2 => [[\"bb\", 2]], 3 => [[\"ccc\", 3]]}", h.group_by(&:last).inspect
       assert_equal ["[\"a\", 1]", "[\"bb\", 2]", "[\"ccc\", 3]"], h.map(&:inspect)
-      assert_equal 3, h.then { |x| x.size }
+      assert_equal(3, h.then { |x| x.size })
       assert_equal "Hash", h.class.to_s
       assert_equal "Hash", h.class.inspect
       assert_equal true, h.is_a?(Hash)
@@ -1093,8 +1093,8 @@ module HashTests
       assert_equal true, h.select { |_k, v| v > 5 }.empty?
       assert_equal false, (!h)
       ss = { a: :z, b: :y, c: :x } #: Hash[Symbol, Symbol]
-      assert_equal [%i[c x], %i[b y], %i[a z]], ss.sort_by { |_k, v| v }
-      assert_equal %i[a z], ss.max_by { |_k, v| v }
+      assert_equal([%i[c x], %i[b y], %i[a z]], ss.sort_by { |_k, v| v })
+      assert_equal(%i[a z], ss.max_by { |_k, v| v })
       assert_equal %i[a z], ss.min
       ff = { 2.5 => "x", -1.0 => "y", 0.0 => "z" } #: Hash[Float, String]
       assert_equal "[[-1.0, \"y\"], [0.0, \"z\"], [2.5, \"x\"]]", ff.sort.inspect
@@ -1120,7 +1120,7 @@ module HashTests
       fruit.each_with_index { |w, i| first_at[w] = i unless first_at.key?(w) }
       assert_equal "{\"pear\" => 0, \"apple\" => 1, \"fig\" => 2}", first_at.inspect
       by_size = fruit.group_by { |w| w.size }
-      assert_equal ["4:pear", "5:apple", "3:fig"], by_size.map { |n, ws| "#{n}:#{ws.uniq.join("/")}" }
+      assert_equal(["4:pear", "5:apple", "3:fig"], by_size.map { |n, ws| "#{n}:#{ws.uniq.join("/")}" })
       assert_equal [3, 4, 5], by_size.keys.sort
       assert_equal 3, by_size.fetch(4).size
       assert_equal "{4 => [[\"pear\", 3]], 5 => [[\"apple\", 2]], 3 => [[\"fig\", 1]]}", fc.group_by { |w, _n| w.size }.inspect
@@ -1422,10 +1422,10 @@ module HashTests
       assert_equal "bb", find_big(w, log)
       assert_equal "none", find_big({}, log)
       assert_equal ["ensure", "ensure"], log
-      assert_equal [["a", 1], ["bb", 2], ["ccc", 3]], w.map { _1 }
-      assert_equal ["a=1", "bb=2", "ccc=3"], w.map { "#{_1}=#{_2}" }
-      assert_equal [["a", 1], ["bb", 2], ["ccc", 3]], w.map { it }
-      assert_equal [["ccc", 3], ["bb", 2], ["a", 1]], w.sort_by { -it[1] }
+      assert_equal([["a", 1], ["bb", 2], ["ccc", 3]], w.map { _1 })
+      assert_equal(["a=1", "bb=2", "ccc=3"], w.map { "#{_1}=#{_2}" })
+      assert_equal([["a", 1], ["bb", 2], ["ccc", 3]], w.map { it })
+      assert_equal([["ccc", 3], ["bb", 2], ["a", 1]], w.sort_by { -it[1] })
       out = []
       w.each { out << it.inspect }
       assert_equal ["[\"a\", 1]", "[\"bb\", 2]", "[\"ccc\", 3]"], out
@@ -1632,10 +1632,10 @@ module HashTests
       assert_equal 4, hs_h.store(:d, 4)
       assert_equal "{a: 1, b: 2, c: 3, d: 4}", hs_h.to_s
       assert_equal "{a: 101, b: 2, c: 3, d: 4, e: 5}", hs_h.merge({ a: 100, e: 5 }) { |_k, old, new| old + new }.to_s
-      assert_equal 2, hs_h.count { |_k, v| v.odd? }
-      assert_equal true, hs_h.any? { |_k, v| v > 3 }
-      assert_equal true, hs_h.all? { |_k, v| v > 0 }
-      assert_equal true, hs_h.none? { |_k, v| v > 9 }
+      assert_equal(2, hs_h.count { |_k, v| v.odd? })
+      assert_equal(true, hs_h.any? { |_k, v| v > 3 })
+      assert_equal(true, hs_h.all? { |_k, v| v > 0 })
+      assert_equal(true, hs_h.none? { |_k, v| v > 9 })
       hs_h2 = hs_h.merge({})
       hs_h2.delete_if { |_k, v| v.even? }
       assert_equal "{a: 1, c: 3}", hs_h2.to_s
@@ -1645,14 +1645,14 @@ module HashTests
       hs_h.keep_if { |_k, v| v != 1 }
       assert_equal "{b: 2, c: 3, d: 4, z: 26}", hs_h.to_s
       assert_equal [[:z, 26], [:d, 4]], hs_h.sort_by { |_k, v| -v }.first(2)
-      assert_equal [:b, 2], hs_h.min_by { |_k, v| v }
-      assert_equal 35, hs_h.sum { |_k, v| v }
+      assert_equal([:b, 2], hs_h.min_by { |_k, v| v })
+      assert_equal(35, hs_h.sum { |_k, v| v })
       assert_equal "b=2&c=3&d=4&z=26", hs_h.map { |k, v| "#{k}=#{v}" }.join("&")
-      assert_equal [:d, 4], hs_h.find { |_k, v| v > 3 }
+      assert_equal([:d, 4], hs_h.find { |_k, v| v > 3 })
       assert_equal [[:b, 2], [:c, 3], [:d, 4], [:z, 26]], hs_h.sort
-      assert_equal [:z, 26], hs_h.max_by { |_k, v| v }
+      assert_equal([:z, 26], hs_h.max_by { |_k, v| v })
       assert_equal [:z, 26], hs_h.to_a.last
-      assert_equal ["0:b", "1:c", "2:d", "3:z"], hs_h.each_with_index.map { |(k, _v), i| "#{i}:#{k}" }
+      assert_equal(["0:b", "1:c", "2:d", "3:z"], hs_h.each_with_index.map { |(k, _v), i| "#{i}:#{k}" })
     end
   end
 
@@ -1757,7 +1757,7 @@ module HashTests
       mixed.each { |k, v| out << "#{k.inspect}=#{v.inspect}" }
       assert_equal ["\"s\"=1", "2=:two", "nil=nil", "[1]=1.5"], out
       assert_equal "{\"s\" => 1}", mixed.select { |k, _v| k.is_a?(String) }.inspect
-      assert_equal [false, false, true, false], mixed.map { |k, _v| k.nil? }
+      assert_equal([false, false, true, false], mixed.map { |k, _v| k.nil? })
       assert_equal 4, mixed.count
       assert_equal 4, mixed.keys.size
       inferred_nil = { "a" => 1, "b" => nil }
@@ -1871,13 +1871,13 @@ module HashTests
     # An array of hashes: hashes are shared, so each's writes stick.
     def test_an_array_of_hashes_hashes
       rows = [{ "n" => 3, "k" => 1 }, { "n" => 1, "k" => 2 }, { "n" => 2, "k" => 3 }] #: Array[Hash[String, Integer]]
-      assert_equal [2, 3, 1], rows.sort_by { |row| row.fetch("n") }.map { |row| row.fetch("k") }
+      assert_equal([2, 3, 1], rows.sort_by { |row| row.fetch("n") }.map { |row| row.fetch("k") })
       rows.each { |row| row["n"] = row.fetch("n") + 10 }
       assert_equal "[{\"n\" => 13, \"k\" => 1}, {\"n\" => 11, \"k\" => 2}, {\"n\" => 12, \"k\" => 3}]", rows.inspect
       assert_equal 2, rows.select { |row| row.fetch("k").odd? }.size
       assert_equal "{\"n\" => 13, \"k\" => 1}", rows.max_by { |row| row.fetch("n") }.inspect
       people = [{ name: "a", age: 30 }, { name: "b", age: 20 }] #: Array[Hash[Symbol, untyped]]
-      assert_equal ["a", "b"], people.map { |p| p.fetch(:name) }
+      assert_equal(["a", "b"], people.map { |p| p.fetch(:name) })
     end
 
     # A hash of hashes: buckets created on demand, then written through fetch.
@@ -1894,7 +1894,7 @@ module HashTests
       assert_equal "{\"x\" => {\"n0\" => 0, \"n2\" => 2}, \"y\" => {\"n1\" => 1}}", reg.inspect
       reg.fetch("x")["z"] = 99
       assert_equal "{\"n0\" => 0, \"n2\" => 2, \"z\" => 99}", reg["x"].inspect
-      assert_equal [["x", 3], ["y", 1]], reg.map { |k, v| [k, v.size] }
+      assert_equal([["x", 3], ["y", 1]], reg.map { |k, v| [k, v.size] })
       assert_equal [3, 1], reg.values.map(&:size)
     end
 
@@ -2250,9 +2250,9 @@ module HashTests
   class HashBangFilterTest < Minitest::Test
     def test_reject_select_bang_nil
       h = { a: 1, b: 2 }
-      assert_nil h.reject! { |_, v| v > 5 }
-      assert_nil h.select! { true }
-      assert_nil h.filter! { true }
+      assert_nil(h.reject! { |_, v| v > 5 })
+      assert_nil(h.select! { true })
+      assert_nil(h.filter! { true })
       assert_equal({ b: 2 }, h.reject! { |_, v| v == 1 })
       assert_equal({}, h.select! { false })
     end
@@ -2373,7 +2373,7 @@ module HashTests
   class HashLabelScanTest < Minitest::Test
     def test_symbol_keys_label_or_quoted
       syms = ["foo bar", "a?", "a!", "a=", "a?=", "a=?", "a!?", "[]=", "[]", "[]==", "9a", "a9", "+", "-", "a-b", "é", "éa?", "日本", "日本?", "$", "$a", "$-w", "$-", "$-é", "$-éé", "$1", "$10", "$01", "$0", "$~", "$~~", "@", "@@", "@@@a", "@a", "@@a", "@9", "@a?", "**", "<=>", "===", "!=", "+@", "-@", "*@", "`", "$`", "A", "_", "_9", "$_", "", "a b", "a\nb", "a\"b", "a#b", "#", "?", "=", "==", "=~", "!", "!~", "<<", ">=", "a.b", "nil", "self"] #: Array[String]
-      assert_equal ["{\"foo bar\": 1}", "{a?: 1}", "{a!: 1}", "{\"a=\": 1}", "{\"a?=\": 1}", "{\"a=?\": 1}", "{\"a!?\": 1}", "{\"[]=\": 1}", "{\"[]\": 1}", "{\"[]==\": 1}", "{\"9a\": 1}", "{a9: 1}", "{\"+\": 1}", "{\"-\": 1}", "{\"a-b\": 1}", "{é: 1}", "{éa?: 1}", "{日本: 1}", "{日本?: 1}", "{\"$\": 1}", "{\"$a\": 1}", "{\"$-w\": 1}", "{\"$-\": 1}", "{\"$-é\": 1}", "{\"$-éé\": 1}", "{\"$1\": 1}", "{\"$10\": 1}", "{\"$01\": 1}", "{\"$0\": 1}", "{\"$~\": 1}", "{\"$~~\": 1}", "{\"@\": 1}", "{\"@@\": 1}", "{\"@@@a\": 1}", "{\"@a\": 1}", "{\"@@a\": 1}", "{\"@9\": 1}", "{\"@a?\": 1}", "{\"**\": 1}", "{\"<=>\": 1}", "{\"===\": 1}", "{\"!=\": 1}", "{\"+@\": 1}", "{\"-@\": 1}", "{\"*@\": 1}", "{\"`\": 1}", "{\"$`\": 1}", "{A: 1}", "{_: 1}", "{_9: 1}", "{\"$_\": 1}", "{\"\": 1}", "{\"a b\": 1}", "{\"a\\nb\": 1}", "{\"a\\\"b\": 1}", "{\"a#b\": 1}", "{\"#\": 1}", "{\"?\": 1}", "{\"=\": 1}", "{\"==\": 1}", "{\"=~\": 1}", "{\"!\": 1}", "{\"!~\": 1}", "{\"<<\": 1}", "{\">=\": 1}", "{\"a.b\": 1}", "{nil: 1}", "{self: 1}"], syms.map { |s| { s.to_sym => 1 }.inspect }
+      assert_equal(["{\"foo bar\": 1}", "{a?: 1}", "{a!: 1}", "{\"a=\": 1}", "{\"a?=\": 1}", "{\"a=?\": 1}", "{\"a!?\": 1}", "{\"[]=\": 1}", "{\"[]\": 1}", "{\"[]==\": 1}", "{\"9a\": 1}", "{a9: 1}", "{\"+\": 1}", "{\"-\": 1}", "{\"a-b\": 1}", "{é: 1}", "{éa?: 1}", "{日本: 1}", "{日本?: 1}", "{\"$\": 1}", "{\"$a\": 1}", "{\"$-w\": 1}", "{\"$-\": 1}", "{\"$-é\": 1}", "{\"$-éé\": 1}", "{\"$1\": 1}", "{\"$10\": 1}", "{\"$01\": 1}", "{\"$0\": 1}", "{\"$~\": 1}", "{\"$~~\": 1}", "{\"@\": 1}", "{\"@@\": 1}", "{\"@@@a\": 1}", "{\"@a\": 1}", "{\"@@a\": 1}", "{\"@9\": 1}", "{\"@a?\": 1}", "{\"**\": 1}", "{\"<=>\": 1}", "{\"===\": 1}", "{\"!=\": 1}", "{\"+@\": 1}", "{\"-@\": 1}", "{\"*@\": 1}", "{\"`\": 1}", "{\"$`\": 1}", "{A: 1}", "{_: 1}", "{_9: 1}", "{\"$_\": 1}", "{\"\": 1}", "{\"a b\": 1}", "{\"a\\nb\": 1}", "{\"a\\\"b\": 1}", "{\"a#b\": 1}", "{\"#\": 1}", "{\"?\": 1}", "{\"=\": 1}", "{\"==\": 1}", "{\"=~\": 1}", "{\"!\": 1}", "{\"!~\": 1}", "{\"<<\": 1}", "{\">=\": 1}", "{\"a.b\": 1}", "{nil: 1}", "{self: 1}"], syms.map { |s| { s.to_sym => 1 }.inspect })
       assert_equal "{a: 1, \"b c\": 2, d?: 3, e!: 4, \"f=\": 5, \"g\" => 6}", { a: 1, "b c": 2, d?: 3, e!: 4, "f=": 5, "g" => 6 }.inspect
     end
   end
@@ -2487,7 +2487,7 @@ module HashTests
       50.times { |i| h[i] = i }
       h.delete_if { |k, _v| k % 5 != 0 }
       assert_equal [0, 5, 10, 15, 20, 25, 30, 35, 40, 45], h.keys
-      assert_nil h.select! { |_k, _v| true }
+      assert_nil(h.select! { |_k, _v| true })
       h.keep_if { |k, _v| k > 20 }
       assert_equal [25, 30, 35, 40, 45], h.keys
       h.reject! { |k, _v| k == 30 }
@@ -2579,7 +2579,7 @@ module HashTests
       64.times { |i| h[i * 64] = i }
       (0...64).step(2) { |i| h.delete(i * 64) }
       assert_equal 32, h.size
-      assert_equal (1...64).step(2).sum, (0...64).sum { |i| h[i * 64] || 0 }
+      assert_equal((1...64).step(2).sum, (0...64).sum { |i| h[i * 64] || 0 })
       assert_nil h[0]
       h[0] = -1
       h[128] = -2

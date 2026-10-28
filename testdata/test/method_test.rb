@@ -255,9 +255,9 @@ module MethodTests
     def test_dispatch_tables
       ops = { add: method(:method_add), sub: method(:method_sub) }
       assert_equal 5, ops[:add]&.call(2, 3)
-      assert_equal [3, -1], ops.values.map { |m| m.call(1, 2) }
+      assert_equal([3, -1], ops.values.map { |m| m.call(1, 2) })
       list = [method(:method_twice), method(:method_neg)]
-      assert_equal [6, -3], list.map { |m| m.call(3) }
+      assert_equal([6, -3], list.map { |m| m.call(3) })
       mixed = { twice: method(:method_twice), add: method(:method_add) } #: Hash[Symbol, Method]
       assert_equal 8, mixed.fetch(:twice).call(4)
       assert_equal 9, mixed.fetch(:add).call(4, 5)
@@ -402,7 +402,7 @@ module MethodTests
     end
 
     def test_reassigned_block_param
-      assert_equal 3, NoYield.new.ze { 3 }
+      assert_equal(3, NoYield.new.ze { 3 })
     end
 
     def test_proc_literal_info

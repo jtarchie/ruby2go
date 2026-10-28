@@ -129,7 +129,7 @@ module EncodingTests
       assert_equal "abc", "abc".scrub
       assert_equal "***", "\xff\xfe\xf0\x9f\x98".scrub("*")
       assert_equal "*****", "\xc0\x80\xed\xa0\x80".scrub("*")
-      assert_equal "a<ff>b<e381>c", "a\xffb\xe3\x81c".scrub { |bad| "<#{bad.unpack1("H*")}>" }
+      assert_equal("a<ff>b<e381>c", "a\xffb\xe3\x81c".scrub { |bad| "<#{bad.unpack1("H*")}>" })
     end
 
     def test_encode_targets

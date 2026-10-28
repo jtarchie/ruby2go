@@ -29,4 +29,4 @@ puts h.sort_by { |k, v| [-v, k] }.inspect
 puts people.flat_map { |p| [p.age, p.age * 2] }.sum
 puts people.each_slice(1000).map { |s| s.sum(&:age) }.max
 puts people.select { |p| p.city == :lima }.reject { |p| p.age.odd? }.size
-puts (1..200_000).to_a.reverse.sort.bsearch { |x| x >= 123_456 }
+puts((1..200_000).to_a.reverse.sort.bsearch { |x| x >= 123_456 })

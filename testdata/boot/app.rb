@@ -93,7 +93,7 @@ p Demo::Lenient.level_of, Demo::Lenient.level_of(:SEV_DEBUG)
 p Demo::Lenient.sent("aBc")
 p Demo::Lenient.missing(true), Demo::Lenient.missing(false)
 tagb = [{ "a" => :x }, { "b" => %i[y z] }, { "c" => nil }] #: Array[Hash[String, untyped]]
-p tagb.map { |h| Demo::Lenient.tags_of(h) }
+p(tagb.map { |h| Demo::Lenient.tags_of(h) })
 p DemoPool.new(name: "q", size: 4) { |x| x * 2 }.report, DemoPool.new.report
 p DemoPlainPool.new(size: 3).size
 p DemoTimerService.new.schedule(4)
@@ -127,7 +127,7 @@ p dcp.size
 p DemoThen.new([3]) { |x| x * 10 }.run, DemoExec.new.post(1, 2) { |a, b| a + b }
 ENV["DEMO_TOKEN"] = "s"
 p ENV.demo_clear_sensitive! { ENV["DEMO_TOKEN"] }, ENV["DEMO_TOKEN"], ENV.demo_sensitive?("a_password")
-p [DemoPostExec.new, DemoTimerSet.new].map { |x| x.run_all([1, 2]) }
+p([DemoPostExec.new, DemoTimerSet.new].map { |x| x.run_all([1, 2]) })
 p DemoTimerSet.new.post(7, 1) { |v| v * 3 }
 dev = DemoEvent.new
 dev.set

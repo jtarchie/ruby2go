@@ -326,9 +326,9 @@ module SorbetTests
     end
 
     def test_nilable_block
-      assert_equal 21, Args.maybe_yield { |x| x + 1 }
+      assert_equal(21, Args.maybe_yield { |x| x + 1 })
       assert_equal(-1, Args.maybe_yield)
-      assert_equal 31, Args.alias_yield { |x| x + 1 }
+      assert_equal(31, Args.alias_yield { |x| x + 1 })
       assert_equal 3, Args.typed_yield(Integer) { 3 }
       assert_equal ["none", "block"], [Args.maybe_untyped_block, Args.maybe_untyped_block { 1 }]
       assert_equal(-1, Args.alias_yield)

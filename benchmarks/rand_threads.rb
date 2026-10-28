@@ -13,4 +13,4 @@ threads = (0...N).map do |i|
   end
 end
 threads.each(&:join)
-puts acc.all? { |h| h < 1024 }
+puts(acc.all? { |h| h < 1024 })

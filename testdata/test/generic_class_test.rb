@@ -263,7 +263,7 @@ module GenericClassTests
       ints = Bag.new([3, 1, 2])
       strs = Bag.new(%w[b a])
       assert_equal [1, 2, 3], ints.sort
-      assert_equal [6, 2, 4], ints.map { |x| x * 2 }
+      assert_equal([6, 2, 4], ints.map { |x| x * 2 })
       assert_equal "a", strs.min
       assert strs.include?("a")
     end
@@ -337,7 +337,7 @@ module GenericClassTests
     def test_untyped_receiver
       items = [Box.new(1), Box.new("a")] #: Array[untyped]
       assert_equal [1, "a"], items.map(&:get)
-      assert_equal [true, true], items.map { |x| x.is_a?(Box) }
+      assert_equal([true, true], items.map { |x| x.is_a?(Box) })
       assert_equal 1, items[0].send(:get)
       assert_equal [Box, Box], items.map(&:class)
     end
