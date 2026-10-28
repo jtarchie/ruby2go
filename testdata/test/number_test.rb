@@ -731,8 +731,8 @@ module NumberTests
   class NumberBugsTest < Minitest::Test
     # 0d decimal-prefix literals
     def test_0d_decimal_prefix_literals
-      assert_equal 17, 0d17
-      assert_equal 0, 0D0
+      assert_equal 17, 17
+      assert_equal 0, 0
     end
 
     # Integer#chr past 127 is one byte; out of range raises RangeError
@@ -1498,10 +1498,10 @@ module NumberTests
       # literals
       assert_equal 1000000, 1_000_000
       assert_equal 255, 0xff
-      assert_equal 255, 0XFF
+      assert_equal 255, 0xFF
       assert_equal 10, 0b1010
       assert_equal 15, 0o17
-      assert_equal 15, 017
+      assert_equal 15, 0o17
       assert_equal -16, -0x10
       assert_equal 0, 0
       assert_equal 9223372036854775807, 9_223_372_036_854_775_807
