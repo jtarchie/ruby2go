@@ -530,9 +530,7 @@ class DemoBlocked
 end
 
 class DemoThen < DemoBlocked
-  def initialize(args, &task)
-    super(args, &task)
-  end
+  
 end
 
 class DemoExec
@@ -859,9 +857,7 @@ class DemoTaskBase
 end
 
 class DemoThenTask < DemoTaskBase
-  def initialize(args, &task)
-    super(args, &task)
-  end
+  
 end
 
 # concurrent-ruby's ExecutorService#post(*args, &task): RubyExecutorService's override keeps `&task` as a value, so

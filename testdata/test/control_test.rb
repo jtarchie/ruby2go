@@ -1580,9 +1580,7 @@ module ControlTests
 
   class Blank < StandardError
     #: () -> void
-    def initialize
-      super()
-    end
+    
   end
 
   class WithCode < StandardError
@@ -1722,9 +1720,7 @@ module ControlTests
   # zsuper in an exception initialize forwards the (defaulted) message
   class MidPlain < StandardError
     #: (String) -> void
-    def initialize(msg)
-      super
-    end
+    
   end
 
   class MidDefaultMsg < StandardError

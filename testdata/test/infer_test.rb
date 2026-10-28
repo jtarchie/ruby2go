@@ -208,9 +208,7 @@ module InferTests
   end
 
   class InitPass < InitBase
-    def initialize(ev)
-      super(ev)
-    end
+    
   end
 
   class InitInheritTest < Minitest::Test

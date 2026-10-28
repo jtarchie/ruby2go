@@ -117,9 +117,7 @@ module GenericClassTests
     alias extract_min dequeue
 
     #: (E, P) -> self
-    def push(e, pr)
-      super
-    end
+    
   end
 
   # @rbs generic A

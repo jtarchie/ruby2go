@@ -1894,9 +1894,7 @@ module ObjectTests
 
   class MtBox < MtNode
     #: () -> void
-    def initialize
-      super
-    end
+    
   end
 
   # Method-name tables (decision 77): public_instance_methods/instance_methods
@@ -5859,16 +5857,12 @@ def secret = "s3cret"
 
   class SuperBlkPass < SuperBlkRes
     #: (String) ?{ () -> String } -> void
-    def initialize(path, &block)
-      super(path, &block)
-    end
+    
   end
 
   class SuperBlkImplicit < SuperBlkRes
     #: (String) ?{ () -> String } -> void
-    def initialize(path)
-      super(path)
-    end
+    
   end
 
   class ObjectSuperBlockTest < Minitest::Test
