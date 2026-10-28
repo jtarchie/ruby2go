@@ -257,7 +257,7 @@ module Tep
           # on this server it would run on the main thread and hold every
           # other connection. Refuse the upgrade rather than serve it wrong.
           Tep::Server::Scheduled.send_simple(client, 501,
-            "websocket upgrade needs TEP_SERVER=thread")
+                                             "websocket upgrade needs TEP_SERVER=thread")
           return 0
         end
 

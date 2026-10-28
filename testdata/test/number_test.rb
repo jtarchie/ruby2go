@@ -2540,7 +2540,7 @@ module NumberTests
   class NumberComplexParseTest < Minitest::Test
     def test_kernel_complex_string
       assert_equal [Complex(1, 2), Complex(Rational(2, 3)), Complex(4, Rational(2, 3)), Complex(0, -1), Complex(0, 35), Complex(2e3, 4), Complex(79, 40), Complex(79, 4)],
-        [Complex("1+2i"), Complex("2/3"), Complex("4+2/3i"), Complex("-i"), Complex("35i"), Complex("2e3+4i"), Complex("7_9+4_0i"), Complex("  79+4j  ")]
+                   [Complex("1+2i"), Complex("2/3"), Complex("4+2/3i"), Complex("-i"), Complex("35i"), Complex("2e3+4i"), Complex("7_9+4_0i"), Complex("  79+4j  ")]
       assert_equal Complex.polar(2, 0), Complex("2@0")
       e = begin; Complex("79+4iruby"); rescue ArgumentError => x; x.message; end
       assert_equal 'invalid value for convert(): "79+4iruby"', e

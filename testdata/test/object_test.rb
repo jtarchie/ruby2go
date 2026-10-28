@@ -6367,7 +6367,7 @@ module ObjectTests
     def test_nil_operators
       n = nil #: untyped
       assert_equal [Rational(0, 1), Rational(0, 1), Complex(0, 0), false, true, false, true, nil],
-        [n.to_r, n.rationalize, n.to_c, n & true, n | 1, n | nil, n ^ 2, n =~ /a/]
+                   [n.to_r, n.rationalize, n.to_c, n & true, n | 1, n | nil, n ^ 2, n =~ /a/]
     end
 
     def test_immediate_new_undefined

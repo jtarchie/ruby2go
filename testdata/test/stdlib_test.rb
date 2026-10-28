@@ -2170,7 +2170,7 @@ module StdlibTests
           e.class
         end
         assert_equal [%w[a b], 0o666, nil, ["/", "/usr", "/usr/local", "/usr/local/bin"], %w[a a b b], Errno::ELOOP],
-          [kids.sort, (r + "b").world_writable?, (r + "a").world_writable?, down, hits.sort, err]
+                     [kids.sort, (r + "b").world_writable?, (r + "a").world_writable?, down, hits.sort, err]
       end
     end
 

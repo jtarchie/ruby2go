@@ -10,7 +10,7 @@ db.execute("insert into books (title, year, price) values (?, ?, ?)", ["Dune", 1
 # ...as a single value, and by name.
 db.execute("insert into books (title) values (?)", "Untitled")
 db.execute("insert into books (title, year, price, cover) values (:t, :y, :p, :c)",
-  { "t" => "Neuromancer", "y" => 1984, "p" => 12.5, "c" => SQLite3::Blob.new("\x89PNG\x00") })
+           { "t" => "Neuromancer", "y" => 1984, "p" => 12.5, "c" => SQLite3::Blob.new("\x89PNG\x00") })
 puts "inserted #{db.total_changes} rows; last id #{db.last_insert_row_id}"
 
 # Rows are Arrays of Integer, Float, String, binary String or nil.

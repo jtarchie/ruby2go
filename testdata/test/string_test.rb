@@ -1496,7 +1496,7 @@ continued"
 
     def test_split_regexp_limit
       assert_equal [["a", "b&c"], ["a", "b", "", ""], ["a", "b"], ["abc"], []],
-        ["a&b&c".split(/& */, 2), "a&b&&".split(/&/, -1), "a&b&&".split(/&/), "abc".split(/&/, 1), "".split(/&/, 3)]
+                   ["a&b&c".split(/& */, 2), "a&b&&".split(/&/, -1), "a&b&&".split(/&/), "abc".split(/&/, 1), "".split(/&/, 3)]
     end
   end
 
@@ -1653,22 +1653,22 @@ continued"
 
     def test_format_argument_errors
       assert_equal ["value given twice - 1$", "width given twice", "width given twice", "precision given twice"],
-        [string_format_error("%1$1$s", 1), string_format_error("%**s", 1, 2, 3), string_format_error("%5*s", 1, 2), string_format_error("%.5.5s", 1)]
+                   [string_format_error("%1$1$s", 1), string_format_error("%**s", 1, 2, 3), string_format_error("%5*s", 1, 2), string_format_error("%.5.5s", 1)]
       assert_equal ["unnumbered(1) mixed with numbered", "numbered(1) after unnumbered(1)", "unnumbered(1) mixed with named", "named<a> after numbered"],
-        [string_format_error("%1$d %d", 1, 2), string_format_error("%d %1$d", 1, 2), string_format_error("%<a>s %d", { a: 1 }), string_format_error("%1$<a>s", { a: 1 })]
+                   [string_format_error("%1$d %d", 1, 2), string_format_error("%d %1$d", 1, 2), string_format_error("%<a>s %d", { a: 1 }), string_format_error("%1$<a>s", { a: 1 })]
       assert_equal ["malformed format string - %$", "malformed format string - %*[0-9]", "malformed format string", "malformed format string - %q", "invalid format character - %", "malformed format string"],
-        [string_format_error("%0$s", 1), string_format_error("%5"), string_format_error("%-"), string_format_error("%q"), string_format_error("%-%"), string_format_error(" % ")]
+                   [string_format_error("%0$s", 1), string_format_error("%5"), string_format_error("%-"), string_format_error("%q"), string_format_error("%-%"), string_format_error(" % ")]
       assert_equal ["invalid character", "too few arguments"], [string_format_error("%c", -1), string_format_error("%4$d", 1, 2, 3)]
     end
 
     def test_format_positional_star
       assert_equal ["       112", "112       ", "2", "x x", "ab", "    3.14"],
-        [format("%1$*2$d", 112, 10), format("%1$*2$d", 112, -10), format("%-2$d", 1, 2, 3), format("%1$s %1$s", "x", "y"), format("%.*s", 2, "abcd"), format("%*.*f", 8, 2, 3.14159)]
+                   [format("%1$*2$d", 112, 10), format("%1$*2$d", 112, -10), format("%-2$d", 1, 2, 3), format("%1$s %1$s", "x", "y"), format("%.*s", 2, "abcd"), format("%*.*f", 8, 2, 3.14159)]
     end
 
     def test_format_hex_float_and_char
       assert_equal ["0x1.p+4", "0x000000000001.88p+7", "+0x00000000001.88p+7", "0x1.88p+7           ", "-0x01.8p+0"],
-        [format("%#a", 16.0), format("%020a", 196), format("%+020a", 196), format("%-020a", 196), format("%010a", -1.5)]
+                   [format("%#a", 16.0), format("%020a", 196), format("%+020a", 196), format("%-020a", 196), format("%010a", -1.5)]
       assert_equal ["", "a", "    あ", "0", "    0"], [format("%c", ""), format("%.3c", "abc"), format("%5c", "あ"), format("%#.0o", 0), format("%#5.0o", 0)]
     end
 

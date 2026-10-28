@@ -70,7 +70,7 @@ module FileUtilsTests
         FileUtils.mkdir(File.join(d, "e"))
         FileUtils.rmdir(File.join(d, "e"))
         assert_equal [[0o700, 0o444, 0o755], [true, true, true, false], true, false, Errno::ENOENT, false],
-          [modes, same, File.identical?(File.join(d, "g"), File.join(d, "h")), File.exist?(a), err, File.exist?(File.join(d, "e"))]
+                     [modes, same, File.identical?(File.join(d, "g"), File.join(d, "h")), File.exist?(a), err, File.exist?(File.join(d, "e"))]
       end
     end
 

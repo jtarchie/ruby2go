@@ -374,10 +374,10 @@ module SocketTests
 
     def test_socket_class_methods
       assert_equal [["AF_INET", 80, "127.0.0.1", "127.0.0.1", Socket::AF_INET, Socket::SOCK_STREAM, Socket::IPPROTO_TCP]],
-        Socket.getaddrinfo("127.0.0.1", 80, Socket::AF_INET, Socket::SOCK_STREAM)
+                   Socket.getaddrinfo("127.0.0.1", 80, Socket::AF_INET, Socket::SOCK_STREAM)
       assert_equal 3, Socket.getaddrinfo("127.0.0.1", nil).size
       assert_equal [["AF_INET6", 22, "::1", "::1", Socket::AF_INET6, Socket::SOCK_DGRAM, Socket::IPPROTO_UDP]],
-        Socket.getaddrinfo("::1", 22, :INET6, :DGRAM)
+                   Socket.getaddrinfo("::1", 22, :INET6, :DGRAM)
       assert_equal [80], Socket.getaddrinfo("127.0.0.1", "http", nil, :STREAM).map { |r| r[1] }
       e = assert_raises(Socket::ResolutionError) { Socket.getaddrinfo("nonexistent.invalid", 80) }
       assert e.message.start_with?("getaddrinfo: ")

@@ -3173,7 +3173,7 @@ end
     # decision 20: attribute reads on self narrow like locals
     def test_attribute_reads_narrow
       assert_equal ["v=2", "empty", "v=4", "none", "big 5", "small"],
-        [Box.new(1).show, Box.new(nil).show, Box.new(2).show2, Box.new(nil).show2, Box.new(5).show3, Box.new(nil).show3]
+                   [Box.new(1).show, Box.new(nil).show, Box.new(2).show2, Box.new(nil).show2, Box.new(5).show3, Box.new(nil).show3]
     end
 
     # rescue/ensure in initialize, in a class method and in a module function
@@ -3230,7 +3230,7 @@ end
     # value `when`s on untyped and optional subjects, mixed with `when nil`
     def test_value_whens_on_untyped_and_optional
       assert_equal ["one", "a or b", "a or b", "nil", "float", "other", "other"],
-        [control_classify(1), control_classify("a"), control_classify(:b), control_classify(nil), control_classify(2.5), control_classify([1]), control_classify(false)]
+                   [control_classify(1), control_classify("a"), control_classify(:b), control_classify(nil), control_classify(2.5), control_classify([1]), control_classify(false)]
       assert_equal ["nil", "xy", "other"], [opt_str(nil), opt_str("y"), opt_str("z")]
     end
 
@@ -5882,8 +5882,8 @@ end
       t = RuntimeError.new("m")
       t.set_backtrace nil
       assert_equal [true, true, true, false, false, false, false],
-        [e == e.dup, RuntimeError.new == RuntimeError.new, TypeError.new("m") == TypeError.new("m"), TypeError.new("m") == TypeError.new("n"),
-         RuntimeError.new("m") == TypeError.new("m"), ArgumentError.new == String.new, o == t]
+                   [e == e.dup, RuntimeError.new == RuntimeError.new, TypeError.new("m") == TypeError.new("m"), TypeError.new("m") == TypeError.new("n"),
+                    RuntimeError.new("m") == TypeError.new("m"), ArgumentError.new == String.new, o == t]
     end
   end
 end

@@ -342,11 +342,11 @@ module StdlibHardeningTests
         File.open(x, "wx") { |f| f.write("c") }
         assert_equal "c", File.read(x)
         assert_equal ["Errno::EEXIST", "ArgumentError", "ArgumentError"],
-          [StdlibHardeningTests.raised { File.open(x, "wx") { 1 } }, StdlibHardeningTests.raised { File.open(x, "rx") { 1 } },
-           StdlibHardeningTests.raised { File.open(x, "rb", newline: :universal) { 1 } }]
+                     [StdlibHardeningTests.raised { File.open(x, "wx") { 1 } }, StdlibHardeningTests.raised { File.open(x, "rx") { 1 } },
+                      StdlibHardeningTests.raised { File.open(x, "rb", newline: :universal) { 1 } }]
         assert_equal ["Errno::ENOTDIR", "Errno::ENOENT", false, "Errno::EINVAL", "Errno::EINVAL"],
-          [StdlibHardeningTests.raised { Dir.rmdir(x) }, StdlibHardeningTests.raised { Dir.empty?(File.join(d, "nope")) }, Dir.empty?(x),
-           StdlibHardeningTests.raised { File.truncate(x, -1) }, StdlibHardeningTests.raised { File.readlink(x) }]
+                     [StdlibHardeningTests.raised { Dir.rmdir(x) }, StdlibHardeningTests.raised { Dir.empty?(File.join(d, "nope")) }, Dir.empty?(x),
+                      StdlibHardeningTests.raised { File.truncate(x, -1) }, StdlibHardeningTests.raised { File.readlink(x) }]
       end
     end
 
@@ -354,11 +354,11 @@ module StdlibHardeningTests
       assert_equal ["usr//bin", "usr/bin", "/", "a/", "/a", ""], [File.join("usr/", "//bin"), File.join("usr//", "/bin"), File.join("", ""), File.join("a", ""), File.join("", "a"), File.join("")]
       assert_equal "ArgumentError", StdlibHardeningTests.raised { File.join("a\0", "b") }
       assert_equal ["/tmp", "/tmp", "////some/path", "/some/path", "/dir", "/", "/", "/foo"],
-        [File.expand_path("/tmp/"), File.expand_path("/tmp/../../../tmp"), File.expand_path("////some/path"), File.expand_path("/some////path"),
-         File.expand_path("/./dir"), File.expand_path(".", "/"), File.expand_path("///a/../.."), File.dirname("/////foo/bar/")]
+                   [File.expand_path("/tmp/"), File.expand_path("/tmp/../../../tmp"), File.expand_path("////some/path"), File.expand_path("/some////path"),
+                    File.expand_path("/./dir"), File.expand_path(".", "/"), File.expand_path("///a/../.."), File.dirname("/////foo/bar/")]
       assert_equal [true, true, "ArgumentError"],
-        [File.expand_path("~#{ENV["USER"]}/a") == "#{Dir.home}/a", File.expand_path("../foo", "~/dir") == "#{Dir.home}/foo",
-         StdlibHardeningTests.raised { File.expand_path("~a_not_existing_user_rugaroo") }]
+                   [File.expand_path("~#{ENV["USER"]}/a") == "#{Dir.home}/a", File.expand_path("../foo", "~/dir") == "#{Dir.home}/foo",
+                    StdlibHardeningTests.raised { File.expand_path("~a_not_existing_user_rugaroo") }]
       Dir.mktmpdir do |d|
         real = File.realpath(d)
         Dir.mkdir(File.join(d, "x"))
@@ -392,7 +392,7 @@ module StdlibHardeningTests
         File.write(File.join(d, "deeply", "nested", "f"), "")
         Dir.chdir(d) do
           assert_equal [[], [], %w[. .dotfile .dotsubdir], %w[. .dotfile .dotsubdir], %w[. .dotfile .dotsubdir deeply], %w[deeply/ deeply/nested/], ["deeply//nested/f"]],
-            ["", "{}", ".*", ".**", "{,.}*", "deeply/**/", "{deeply//**/f}"].map { |pat| Dir.glob(pat).sort }
+                       ["", "{}", ".*", ".**", "{,.}*", "deeply/**/", "{deeply//**/f}"].map { |pat| Dir.glob(pat).sort }
           assert_equal "ArgumentError", StdlibHardeningTests.raised { Dir.glob("a\0b") }
         end
       end
