@@ -46,6 +46,5 @@ module ActiveRecord
     def self.registered?(name)
       @entries.has_key?(name)
     end
-
   end
 end

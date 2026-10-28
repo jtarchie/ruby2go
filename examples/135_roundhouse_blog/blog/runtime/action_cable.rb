@@ -466,7 +466,6 @@ module ActionCable
         h.nil? ? false : h.key?(key.to_s)
       end
     end
-
   end
 
   module Connection

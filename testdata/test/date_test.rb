@@ -254,5 +254,4 @@ module DateTests
       assert_equal "#<Date: 2024-03-05 ((2460375j,0s,0n),+0s,2299161j)>", d.inspect
     end
   end
-
 end

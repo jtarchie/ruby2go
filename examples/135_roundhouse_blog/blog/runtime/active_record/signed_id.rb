@@ -72,6 +72,5 @@ module ActiveRecord
       return 0 if json == ""
       json.to_i
     end
-
   end
 end

@@ -27,7 +27,6 @@
 require_relative "boot"
 
 module Main
-
   # Maps the routes-table controller symbol to a literal `.new`
   # constructor call. Spinel's hash specializations don't accept class
   # references as values, so the route table stores symbols and this
