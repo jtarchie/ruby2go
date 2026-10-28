@@ -104,7 +104,11 @@ module RugarooBoot
 
         singleton = owner.singleton_class?
         named = singleton ? owner.attached_object : owner
-        m = (owner.instance_method(name) rescue nil)
+        m = begin
+              owner.instance_method(name)
+            rescue
+              nil
+            end
         from = m && m.original_name != name ? m.owner : nil
         @define_methods << {
           "owner" => safe_name(named), "singleton" => singleton, "name" => name.to_s, "file" => path, "line" => line,
@@ -124,7 +128,11 @@ module RugarooBoot
         next unless tp.method_id == :alias_method && Module === tp.self && tp.return_value.is_a?(Symbol)
 
         owner = tp.self
-        m = (owner.instance_method(tp.return_value) rescue next)
+        m = begin
+              owner.instance_method(tp.return_value)
+            rescue
+              next
+            end
         singleton = owner.singleton_class?
         @aliases << { "owner" => safe_name(singleton ? owner.attached_object : owner), "singleton" => singleton,
                       "name" => tp.return_value.to_s, "old" => m.original_name.to_s, "file" => tp.path, "line" => tp.lineno }
@@ -167,7 +175,11 @@ module RugarooBoot
     def captures(b)
       return {} unless b
 
-      nesting = (b.eval("Module.nesting") rescue [])
+      nesting = begin
+                  b.eval("Module.nesting")
+                rescue
+                  []
+                end
       b.local_variables.each_with_object({}) do |v, out|
         value = b.local_variable_get(v)
         lit = literal(value) || held_by_constant(value, nesting)
@@ -183,7 +195,11 @@ module RugarooBoot
         mod.constants(false).each do |c|
           next if mod.autoload?(c, false) # resolving it would load a file the program never did (decision 404)
 
-          obj = (mod.const_get(c, false) rescue next)
+          obj = begin
+                  mod.const_get(c, false)
+                rescue
+                  next
+                end
           return "#{name}::#{c}" if obj.equal?(value)
 
           case obj
@@ -207,7 +223,11 @@ module RugarooBoot
                         x.infinite? ? "#{"-" if x < 0}Float::INFINITY" : x.inspect
                       end # NaN/Infinity inspect as bare words
       when nil, true, false, Integer, Symbol then x.inspect
-      when Module then (n = MOD_NAME.bind_call(x)) && (Object.const_get(n) rescue nil).equal?(x) ? "::#{n}" : nil
+      when Module then (n = MOD_NAME.bind_call(x)) && begin
+                                                        Object.const_get(n)
+                                                      rescue
+                                                        nil
+                                                      end.equal?(x) ? "::#{n}" : nil
       when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
       when String then x.size > 100_000 ? nil : x.inspect
       when Array
@@ -378,7 +398,11 @@ module RugarooBoot
         (MOD_CONSTANTS.bind_call(owner, false) | @private_constants[owner]).each do |c|
           next if MOD_AUTOLOAD.bind_call(owner, c)
 
-          v = (MOD_CONST_GET.bind_call(owner, c, false) rescue next)
+          v = begin
+                MOD_CONST_GET.bind_call(owner, c, false)
+              rescue
+                next
+              end
           next unless Module === v # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
 
           vn = MOD_NAME.bind_call(v)
@@ -398,7 +422,11 @@ module RugarooBoot
       ObjectSpace.each_object(Class) do |k|
         next unless k < ::T::Struct && MOD_NAME.bind_call(k)
 
-        props = (k.props rescue next)
+        props = begin
+                  k.props
+                rescue
+                  next
+                end
         out[MOD_NAME.bind_call(k)] = props.map do |name, rules|
           h = { "name" => name.to_s, "type" => rules[:type_object].to_s }
           if rules.key?(:default)

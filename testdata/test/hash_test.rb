@@ -1247,7 +1247,11 @@ module HashTests
       assert_equal "key not found: :b?", e.message
       ie = assert_raises(IndexError) { u.fetch(:zz) }
       assert_equal "KeyError: key not found: :zz", "#{ie.class}: #{ie.message}"
-      x = u.fetch("zz") rescue -1
+      x = begin
+            u.fetch("zz")
+          rescue
+            -1
+          end
       assert_equal -1, x
       # formerly the uncaught KeyError that ended the file
       e = assert_raises(KeyError) { ints.fetch(42) }

@@ -1021,7 +1021,11 @@ end
 
 #: (String) -> Integer
 def control_safe_fetch(k)
-  { "a" => 1 }.fetch(k) rescue -1
+  begin
+    { "a" => 1 }.fetch(k)
+  rescue
+    -1
+  end
 end
 
 # Helpers for the checks that were control_locals.rb.
@@ -2756,7 +2760,11 @@ end
       assert_equal 200, collide_pick(nil)
       assert_equal 101, collide_pick(1)
       p = 7
-      v = collide_risky(-1) rescue p
+      v = begin
+            collide_risky(-1)
+          rescue
+            p
+          end
       assert_equal 7, v
       assert_equal "v2", doubled(1)
       assert_equal "rescued", doubled(-1)
@@ -2862,9 +2870,25 @@ end
 
     # nested rescue modifiers: the outer one catches the inner fallback's raise
     def test_nested_rescue_modifiers
-      v = (edges_risky(-1) rescue edges_risky(-2)) rescue 3
+      v = begin
+            begin
+            edges_risky(-1)
+          rescue
+            edges_risky(-2)
+          end
+          rescue
+            3
+          end
       assert_equal 3, v
-      v2 = (edges_risky(-1) rescue edges_risky(4)) rescue 3
+      v2 = begin
+             begin
+             edges_risky(-1)
+           rescue
+             edges_risky(4)
+           end
+           rescue
+             3
+           end
       assert_equal 4, v2
     end
 
@@ -3152,12 +3176,32 @@ end
     # rescue modifiers as conditions and as the left of ||
     def test_rescue_modifiers_as_conditions
       out = [] #: Array[String]
-      out << "cond ok" if (edges_risky(1) rescue nil)
-      out << "cond never" if (edges_risky(-1) rescue nil)
-      out << ((edges_risky(-1) rescue false) ? "t" : "f")
+      out << "cond ok" if begin
+                            edges_risky(1)
+                          rescue
+                            nil
+                          end
+      out << "cond never" if begin
+                               edges_risky(-1)
+                             rescue
+                               nil
+                             end
+      out << (begin
+                edges_risky(-1)
+              rescue
+                false
+              end ? "t" : "f")
       assert_equal ["cond ok", "f"], out
-      rx = (edges_risky(2) rescue nil) || 9
-      ry = (edges_risky(-2) rescue nil) || 9
+      rx = begin
+             edges_risky(2)
+           rescue
+             nil
+           end || 9
+      ry = begin
+             edges_risky(-2)
+           rescue
+             nil
+           end || 9
       assert_equal 2, rx
       assert_equal 9, ry
     end
@@ -3372,7 +3416,11 @@ end
     # rescue modifier on the right of ||=
     def test_rescue_modifier_right_of_or_assign
       opt = nil #: Integer?
-      opt ||= (flow_risky(-1) rescue 5)
+      opt ||= begin
+                flow_risky(-1)
+              rescue
+                5
+              end
       assert_equal 5, opt
     end
 
@@ -3661,30 +3709,70 @@ end
     end
 
     def test_rescue_modifiers
-      a = risky_int(2) rescue 0
-      b = risky_int(-1) rescue 0
+      a = begin
+            risky_int(2)
+          rescue
+            0
+          end
+      b = begin
+            risky_int(-1)
+          rescue
+            0
+          end
       assert_equal 4, a
       assert_equal 0, b
-      c = (risky_int(-5) rescue nil)
+      c = begin
+            risky_int(-5)
+          rescue
+            nil
+          end
       assert_nil c
-      d = risky_int(-1) rescue "failed"
+      d = begin
+            risky_int(-1)
+          rescue
+            "failed"
+          end
       assert_equal "failed", d
-      e2 = risky_int(3) rescue "failed"
+      e2 = begin
+             risky_int(3)
+           rescue
+             "failed"
+           end
       assert_equal 6, e2
-      assert_equal(-10, (tern(false) rescue -10))
+      assert_equal(-10, begin
+                          tern(false)
+                        rescue
+                          -10
+                        end)
       hits = [] #: Array[String]
-      f = risky_int(1) rescue hits.push("f").size
-      f2 = risky_int(-1) rescue hits.push("f2").size
+      f = begin
+            risky_int(1)
+          rescue
+            hits.push("f").size
+          end
+      f2 = begin
+             risky_int(-1)
+           rescue
+             hits.push("f2").size
+           end
       assert_equal 2, f
       assert_equal 1, f2
       assert_equal ["f2"], hits
       ex = assert_raises(NotImplementedError) do
-        g = risky_int(99) rescue -1
+        g = begin
+              risky_int(99)
+            rescue
+              -1
+            end
         flunk "got #{g}"
       end
       assert_equal "nie", ex.message
       list = [1, 2, 3] #: Array[Integer]
-      assert_equal [100, 0, 2], list.map { |v| risky_int(v - 2) rescue 100 }
+      assert_equal [100, 0, 2], list.map { |v| begin
+                                                 risky_int(v - 2)
+                                               rescue
+                                                 100
+                                               end }
       assert_equal 1, control_safe_fetch("a")
       assert_equal(-1, control_safe_fetch("b"))
     end
@@ -4314,11 +4402,19 @@ end
     # a rescue modifier whose fallback itself raises
     def test_rescue_modifier_fallback_raises
       e = assert_raises(KeyError) do
-        v_wrap = mid_risky(-1) rescue raise(KeyError, "wrapped")
+        v_wrap = begin
+                   mid_risky(-1)
+                 rescue
+                   raise(KeyError, "wrapped")
+                 end
         flunk "got #{v_wrap}"
       end
       assert_equal "wrapped", e.message
-      w_risky = mid_risky(2) rescue raise("no")
+      w_risky = begin
+                  mid_risky(2)
+                rescue
+                  raise("no")
+                end
       assert_equal 2, w_risky
     end
 

@@ -5,8 +5,16 @@
 # narrowing attribute reads, subclass-only methods, truthiness of untyped.
 
 values = [1, 2]
-missing_value = values.fetch(5) rescue -1
-present_value = values.fetch(1) rescue -1
+missing_value = begin
+                  values.fetch(5)
+                rescue
+                  -1
+                end
+present_value = begin
+                  values.fetch(1)
+                rescue
+                  -1
+                end
 puts missing_value, present_value
 
 #: () -> String

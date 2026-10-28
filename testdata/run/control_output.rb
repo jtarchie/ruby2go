@@ -40,10 +40,22 @@ def risky(n)
   n
 end
 
-risky(-1) rescue puts("statement fallback")
-risky(1) rescue puts("not printed")
+begin
+  risky(-1)
+rescue
+  puts("statement fallback")
+end
+begin
+  risky(1)
+rescue
+  puts("not printed")
+end
 log_void = [] #: Array[String]
-risky(-2) rescue log_void.clear
+begin
+  risky(-2)
+rescue
+  log_void.clear
+end
 puts "done"
 
 # exceptions print their message through puts, print and untyped

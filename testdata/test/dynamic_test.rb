@@ -3314,7 +3314,11 @@ module DynamicTests
       assert_equal ["pub", "both"], [x._dyngen_pub, x._dyngen_both]
       assert_equal "priv", x.send(:dyngen_both)
       assert_equal "priv2", x.send(:dyngen_priv)
-      ok = [x.dyngen_both, x.dyngen_priv].map { "no" } rescue :nomethod
+      ok = begin
+             [x.dyngen_both, x.dyngen_priv].map { "no" }
+           rescue
+             :nomethod
+           end
       assert_equal :nomethod, ok
     end
   end
