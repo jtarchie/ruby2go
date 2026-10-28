@@ -62,12 +62,12 @@ class CommentRow
     instance.article_id = (row["article_id"] || 0).to_i
     instance.commenter = if row["commenter"].nil?
                            nil
-    else
+                         else
       (row["commenter"]).nil? ? nil : (row["commenter"]).to_s
                          end
     instance.body = if row["body"].nil?
                       nil
-    else
+                    else
       (row["body"]).nil? ? nil : (row["body"]).to_s
                     end
     instance.created_at = (row["created_at"]).to_s

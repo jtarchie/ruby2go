@@ -131,7 +131,7 @@ module ActiveRecord
       return false if condition.nil?
       sql = if condition.is_a?(Hash)
               hash_conditions(condition)
-      else
+            else
         substitute_binds(condition.to_s, args)
             end
       return false if sql == ""
@@ -908,7 +908,7 @@ module ActiveRecord
           parts.push("#{key} = #{ActiveRecord.adapter.escape_value(val)}")
         end
         parts.join(", ")
-      else
+                else
         updates.to_s
                 end
       sql = "UPDATE #{@table} SET #{set_sql}#{scoped_write_where}"

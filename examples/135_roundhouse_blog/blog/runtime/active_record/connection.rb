@@ -265,7 +265,7 @@ module ActiveRecord
         next unless columns.include?(k)
         h[k.to_s] = if time_columns.include?(k)
                       ActiveSupport.json_time(self[k])
-        else
+                    else
           self[k]
                     end
       end

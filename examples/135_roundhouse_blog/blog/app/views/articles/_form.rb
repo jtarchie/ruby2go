@@ -7,7 +7,7 @@ module Views
     def self.form_into(io, article, notice, alert)
       form_method = if article.persisted?
                       :patch
-      else
+                    else
         :post
                     end
       io << "<form action=\"#{ActionView::ViewHelpers.html_escape(if article.persisted?

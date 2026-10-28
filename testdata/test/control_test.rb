@@ -2476,7 +2476,7 @@ module ControlTests
       assert_nil v2
       nested = if x > 1
                  x > 2 ? "gt2" : "eq2"
-else
+               else
   "le1"
                end
       assert_equal "gt2", nested
@@ -2602,12 +2602,12 @@ else
       x = 4
       assert_equal "b", (if x > 5
                            "a"
-else
+                         else
   x > 3 ? "b" : "c"
                          end)
       assert_equal "c", (if x > 5
                            "a"
-else
+                         else
   x > 4 ? "b" : "c"
                          end)
       assert_equal "even big", (x.even? && x > 2 ? "even big" : "other")
@@ -4713,7 +4713,7 @@ else
         10
       rescue
         0
-      else
+          else
         20
       end
       assert_equal 20, v
@@ -5365,7 +5365,7 @@ else
   # a local assigned in a condition of a constant's initializer (`X = if (p = a).empty? || (p = b).empty?`)
   CONTROL_PICKED = if (control_pick = "").empty? && (control_pick = "/tmp").empty?
                      control_pick.upcase
-  else
+                   else
     control_pick
                    end.freeze
 

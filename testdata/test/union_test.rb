@@ -369,7 +369,7 @@ module UnionTests
     #: (Integer) -> (Integer | String | nil)
     def maybe(i) = if i > 1
                      i
-else
+                   else
   (i.zero? ? nil : "s")
                    end
 

@@ -173,7 +173,7 @@ module Demo
     #: (String) -> Demo::GemTab
     def tab_for(n) = if n.empty?
                        nil
-else
+                     else
   (n == "x" ? GemTab.empty : GemAbstractTab.empty)
                      end
 

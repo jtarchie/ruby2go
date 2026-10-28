@@ -46,14 +46,14 @@ module TypedStore
       raw = line[sep + 2, line.length].to_s
       h[key] = if raw == "true"
                  true
-      elsif raw == "false"
+               elsif raw == "false"
         false
-      elsif raw == raw.to_i.to_s
+               elsif raw == raw.to_i.to_s
         raw.to_i
-      elsif raw.length >= 2 && ((raw[0, 1] == "\"" && raw[raw.length - 1, 1] == "\"") ||
+               elsif raw.length >= 2 && ((raw[0, 1] == "\"" && raw[raw.length - 1, 1] == "\"") ||
                                 (raw[0, 1] == "'" && raw[raw.length - 1, 1] == "'"))
         raw[1, raw.length - 2].to_s
-      else
+               else
         raw
                end
     end

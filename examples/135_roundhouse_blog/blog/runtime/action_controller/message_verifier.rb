@@ -220,10 +220,10 @@ module ActionController
       brace = envelope.index("}", rest)
       close = if comma.nil?
                 brace
-else
+              else
   (if brace.nil?
      comma
-  else
+   else
     (comma < brace ? comma : brace)
    end)
               end

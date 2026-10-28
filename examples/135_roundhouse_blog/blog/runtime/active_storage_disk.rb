@@ -295,7 +295,7 @@ module ActiveStorage
           # any other its own.
           image = if blob.previewable?
                     ActiveStorage::Preview.new(blob, variation).variant.image_blob
-          else
+                  else
             ActiveStorage::VariantWithRecord.new(blob, variation).image_blob
                   end
           redirect_to(ActiveStorage::DiskKey.disk_url(image.nil? ? blob : image, "inline"))

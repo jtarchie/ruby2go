@@ -243,7 +243,7 @@ class UserAgent
       named = gecko_browser
       if named.empty?
         app.nil? ? "" : app.product
-else
+      else
   named
       end
     else
@@ -279,7 +279,7 @@ else
       v = t.nil? ? "" : t.version
       if v.empty?
         app.nil? ? "" : app.version
-else
+      else
   v
       end
     else
@@ -400,11 +400,11 @@ else
     lead = first.nil? ? "" : first
     index = if second == "U"
               2
-    elsif lead.match?(/\AWindows /) || lead.match?(/\AAndroid/)
+            elsif lead.match?(/\AWindows /) || lead.match?(/\AAndroid/)
       0
-    elsif lead == "Mobile"
+            elsif lead == "Mobile"
       -1
-    else
+            else
       1
             end
     return "" if index < 0

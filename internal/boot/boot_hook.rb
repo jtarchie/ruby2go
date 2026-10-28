@@ -204,7 +204,7 @@ module RugarooBoot
       case x
       when Float then if x.nan?
                         "Float::NAN"
-else
+                      else
   x.infinite? ? "#{"-" if x < 0}Float::INFINITY" : x.inspect
                       end # NaN/Infinity inspect as bare words
       when nil, true, false, Integer, Symbol then x.inspect

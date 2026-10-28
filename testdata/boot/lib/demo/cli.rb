@@ -285,7 +285,7 @@ module DemoDeep
               value.map { |v| deep(v) }
             when String
               value.upcase
-    else
+            else
               value
             end
     value
