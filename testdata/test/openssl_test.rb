@@ -5,7 +5,7 @@ require "openssl"
 require "base64"
 
 module OpensslTests
-  PEM = <<~KEY
+  PEM = <<~KEY.freeze
     -----BEGIN PUBLIC KEY-----
     MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAo+sLhF4tO7J5uqLDk7Gx
     5f/G4pPCe5iwXi9ReJxjTIxzKq+wiDslgo6avU6PXdRYB35Rb/x22b6kA9i6YIK6

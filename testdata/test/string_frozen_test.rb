@@ -54,7 +54,7 @@ module StringFrozenTests
 
   MODE = :fast
 
-  NAMES = %w[ann bob]
+  NAMES = %w[ann bob].freeze
 
   SEP = ", " #: String
 

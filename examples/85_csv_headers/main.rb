@@ -4,7 +4,7 @@ require "csv"
 
 # CSV with headers: rows read by column name, and numbers converted.
 
-SALES = <<~CSV
+SALES = <<~CSV.freeze
   region,product,units,price
   north,widget,12,2.50
   south,widget,7,2.50

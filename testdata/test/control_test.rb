@@ -5023,9 +5023,9 @@ end
   end
 
   # ruby/spec language gaps (#49): when *LIST and rescue *ERRORS
-  CONTROL_VOWELS = %w[a e i o u]
-  CONTROL_RANGES = [1..3, 10..12]
-  CONTROL_NET_ERRORS = [IOError, ArgumentError]
+  CONTROL_VOWELS = %w[a e i o u].freeze
+  CONTROL_RANGES = [1..3, 10..12].freeze
+  CONTROL_NET_ERRORS = [IOError, ArgumentError].freeze
 
   class ControlRubySpecSplatTest < Minitest::Test
     #: (String) -> Symbol

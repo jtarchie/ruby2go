@@ -1,7 +1,7 @@
 # YAML: read a config file's settings, then write a report back out as YAML.
 require "yaml"
 
-CONFIG = <<~YAML
+CONFIG = <<~YAML.freeze
   site:
     title: My Blog
     url: https://example.com

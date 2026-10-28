@@ -5,7 +5,7 @@
 # The unmodified kramdown gem: parse a Markdown document and convert it to HTML, many times over.
 require "kramdown"
 
-SECTION = <<~MD
+SECTION = <<~MD.freeze
   ## Section
 
   Some *emphasis*, **strong**, `code`, a [link](https://example.com "title") and an ![image](a.png).

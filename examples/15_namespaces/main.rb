@@ -3,7 +3,7 @@
 # Nested modules and classes, `A::B` paths, constants, lexical lookup.
 
 module Geometry
-  VERSION = "1.2.0" #: String
+  VERSION = "1.2.0".freeze #: String
 
   module Units
     SCALE = 100

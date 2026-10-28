@@ -3,7 +3,7 @@
 # Regexp matching, captures, gsub with a hash and a block, scan, split on a pattern, and StringScanner.
 require "strscan"
 
-LINE = "2026-10-20 12:34:56 GET /api/v1/users/42?x=1 200 1532ms user=alice@example.com"
+LINE = "2026-10-20 12:34:56 GET /api/v1/users/42?x=1 200 1532ms user=alice@example.com".freeze
 lines = Array.new(20_000) { |i| LINE.sub("42", i.to_s).sub("1532", (i % 2000).to_s) }
 
 status = Hash.new(0) #: Hash[String, Integer]

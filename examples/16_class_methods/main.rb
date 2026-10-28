@@ -35,7 +35,7 @@ class Circle < Shape
   def self.fits?(n) = n.odd?
 end
 
-SHAPES = [Square, Circle] #: Array[singleton(Shape)]
+SHAPES = [Square, Circle].freeze #: Array[singleton(Shape)]
 
 #: (Integer) -> singleton(Shape)
 def pick(n) = SHAPES.find { |k| k.fits?(n) } || Shape

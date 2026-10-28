@@ -56,7 +56,7 @@ end
 # ---- lib/resty/version.rb ----
 
 module Resty
-  VERSION = "0.0.1"
+  VERSION = "0.0.1".freeze
 end
 
 # ---- lib/resty/controller.rb ----
@@ -592,7 +592,7 @@ module ExampleApp
     attr_accessor :title #: String?
     attr_accessor :body #: String?
 
-    RECORDS = {} #: Hash[Integer, Post]
+    RECORDS = {}.freeze #: Hash[Integer, Post]
 
     #: (?Integer?, ?String?, ?String?) -> void
     def initialize(id = nil, title = nil, body = nil)
@@ -759,7 +759,7 @@ def seed
   ExampleApp::Post.create({ "id" => "3", "title" => "Title" })
 end
 
-FORM = { "Content-Type" => "application/x-www-form-urlencoded" } #: Hash[String, String]
+FORM = { "Content-Type" => "application/x-www-form-urlencoded" }.freeze #: Hash[String, String]
 
 #: (Net::HTTP, String, String, ?Hash[String, String]) -> void
 def call(http, verb, path, form = {})

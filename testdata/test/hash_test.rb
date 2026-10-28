@@ -389,7 +389,7 @@ module HashTests
     def inspect = "<#{@s}>"
   end
 
-  LIMITS = { "low" => 1, "high" => 9 } #: Hash[String, Integer]
+  LIMITS = { "low" => 1, "high" => 9 }.freeze #: Hash[String, Integer]
 
   # Hashes held by ivars, accessors, Struct members and optional locals.
   class Memo

@@ -7,7 +7,7 @@ require "tmpdir"
 # socket (decision 135): ports, fds and temp paths differ per run, so they are masked or only compared as booleans.
 module SocketTests
   class SocketTest < Minitest::Test
-    LINGER_RESET = "\x01\x00\x00\x00\x00\x00\x00\x00" #: String
+    LINGER_RESET = "\x01\x00\x00\x00\x00\x00\x00\x00".freeze #: String
 
     #: (String, Integer) -> String
     def mask(s, port) = s.gsub(port.to_s, "P")

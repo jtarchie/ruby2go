@@ -11,7 +11,7 @@ FILES = {
   "test/app_test.rb" => "# test\n",
   "README.md" => "# App\n",
   ".git/config" => "[core]\n"
-} #: Hash[String, String]
+}.freeze #: Hash[String, String]
 
 Dir.mktmpdir do |root|
   Dir.chdir(root) do

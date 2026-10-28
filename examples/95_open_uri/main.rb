@@ -8,7 +8,7 @@ require "webrick"
 PAGES = {
   "/books.csv" => "title,year\nDune,1965\nNeuromancer,1984\nHyperion,1989\n",
   "/about" => "A tiny catalog."
-} #: Hash[String, String]
+}.freeze #: Hash[String, String]
 
 quiet = Logger.new(File::NULL)
 server = WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1", Logger: quiet, AccessLog: [])

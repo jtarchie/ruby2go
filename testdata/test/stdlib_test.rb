@@ -1184,7 +1184,7 @@ module StdlibTests
   # Was testdata/run/zlib_mid.rb.
   class ZlibTest < Minitest::Test
     DATA_TEXT = "the quick brown fox jumps over the lazy dog\n" * 20
-    KNOWN = "the quick brown fox jumps over the lazy dog\n"
+    KNOWN = "the quick brown fox jumps over the lazy dog\n".freeze
 
     def test_deflate_and_gzip_round_trip
       deflated = Zlib::Deflate.deflate(DATA_TEXT)

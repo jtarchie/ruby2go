@@ -5,7 +5,7 @@
 # symbol table, so this example sorts before printing.
 
 module Formats
-  VERSION = "2.0" #: String
+  VERSION = "2.0".freeze #: String
 
   class Base
     #: (String) -> bool

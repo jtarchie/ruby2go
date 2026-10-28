@@ -9,7 +9,7 @@ module SingleOnly
   extend SingleForwardable
   def_delegator :names, :size
   def_delegator :names, :first
-  LIMIT = "abc"
+  LIMIT = "abc".freeze
   def_delegator :LIMIT, :succ
 
   #: () -> Array[String]

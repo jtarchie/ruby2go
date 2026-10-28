@@ -5,7 +5,7 @@
 # The unmodified liquid gem (Jekyll 4's template language): parse a template once, render it with data.
 require "liquid"
 
-TEMPLATE = <<~LIQUID
+TEMPLATE = <<~LIQUID.freeze
   {%- assign title = page.title | default: "Untitled" -%}
   # {{ title | upcase }}
   {% comment %}This line never renders.{% endcomment %}

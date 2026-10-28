@@ -1306,7 +1306,7 @@ continued"
 
   # Array#pack and the rest of String#unpack (#54, decision 138); binary results compare as bytes since rugaroo's inspect has no binary encoding.
   class StringPackTest < Minitest::Test
-    LONG = "hello world, this is long enough to wrap beyond forty five bytes!!" #: String
+    LONG = "hello world, this is long enough to wrap beyond forty five bytes!!".freeze #: String
 
     def test_pack_strings
       assert_equal ["a", "ab\x00", "ab ", "ab\x00", "ab", "ab", "", "\x00"].map(&:bytes),

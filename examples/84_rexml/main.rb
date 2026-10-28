@@ -4,7 +4,7 @@ require "rexml/document"
 
 # REXML: parse an XML feed, query it with XPath, change it and write it back.
 
-FEED = <<~XML
+FEED = <<~XML.freeze
   <?xml version="1.0" encoding="UTF-8"?>
   <feed updated="2024-05-01">
     <entry id="1" status="published">

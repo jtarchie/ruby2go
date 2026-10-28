@@ -6,7 +6,7 @@ require "rexml/document"
 # REXML (decision 114): XPath results, escaping and formatting, each value MRI's.
 module RexmlTests
   class RexmlTest < Minitest::Test
-    SRC = "<lib><shelf n='1'><book id='a' year='2001'><t>One</t><by>X</by></book><book id='b'><t>Two &amp; Three</t><by>Y</by></book></shelf><shelf n='2'><book id='c' year='1999'><t>Four</t><by>X</by></book><!--note--><mag>M</mag></shelf></lib>" #: String
+    SRC = "<lib><shelf n='1'><book id='a' year='2001'><t>One</t><by>X</by></book><book id='b'><t>Two &amp; Three</t><by>Y</by></book></shelf><shelf n='2'><book id='c' year='1999'><t>Four</t><by>X</by></book><!--note--><mag>M</mag></shelf></lib>".freeze #: String
 
     #: () -> REXML::Element
     def root = REXML::Document.new(SRC).root || raise("no root")

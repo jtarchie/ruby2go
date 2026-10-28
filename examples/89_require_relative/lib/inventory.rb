@@ -3,7 +3,7 @@
 require_relative "item"
 
 puts "  inventory.rb loaded"
-CURRENCY = "USD"
+CURRENCY = "USD".freeze
 
 class Inventory
   #: () -> void

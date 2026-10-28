@@ -22,7 +22,7 @@ require "net/http"
 require "webrick"
 
 module Resty
-  VERSION = "0.0.1" #: String
+  VERSION = "0.0.1".freeze #: String
 
   # What resty needs from a resource: an id (ActiveRecord::Base's role).
   class Model
@@ -49,7 +49,7 @@ module Resty
     ACTIONS = {
       "Index" => NullAction, "Show" => NullAction, "Create" => NullAction,
       "Update" => NullAction, "Edit" => NullAction
-    } #: Hash[String, singleton(Action)]
+    }.freeze #: Hash[String, singleton(Action)]
   end
 
   class Request
@@ -174,7 +174,7 @@ module Resty
       def headers = { "Content-type" => "application/json" }
     end
 
-    ALL = [HTML, JSON] #: Array[singleton(Base)]
+    ALL = [HTML, JSON].freeze #: Array[singleton(Base)]
   end
 
   module Actions
@@ -303,7 +303,7 @@ module Resty
       def resource = @resource ||= action.new(params_with_id).resource
     end
 
-    ALL = [Create, Destroy, Edit, Index, New, Show, Update] #: Array[singleton(Base)]
+    ALL = [Create, Destroy, Edit, Index, New, Show, Update].freeze #: Array[singleton(Base)]
   end
 
   class App
@@ -337,7 +337,7 @@ module ExampleApp
     attr_accessor :title #: String?
     attr_accessor :body #: String?
 
-    RECORDS = {} #: Hash[Integer, Post]
+    RECORDS = {}.freeze #: Hash[Integer, Post]
 
     #: (?Integer?, ?String?, ?String?) -> void
     def initialize(id = nil, title = nil, body = nil)
@@ -437,13 +437,13 @@ module ExampleApp
     ACTIONS = {
       "Show" => Show, "Index" => Index, "New" => New, "Edit" => Edit,
       "Create" => Create, "Update" => Update, "Destroy" => Destroy
-    } #: Hash[String, singleton(Resty::Action)]
+    }.freeze #: Hash[String, singleton(Resty::Action)]
   end
 
   CONTROLLERS = {
     "posts" => PostsController::ACTIONS,
     "users" => {}
-  } #: Hash[String, Hash[String, singleton(Resty::Action)]]
+  }.freeze #: Hash[String, Hash[String, singleton(Resty::Action)]]
 end
 
 APP = Resty::App.new(ExampleApp::CONTROLLERS) #: Resty::App
@@ -466,7 +466,7 @@ def seed
   ExampleApp::Post.create("post[id]" => "3", "post[title]" => "Title")
 end
 
-FORM = { "Content-Type" => "application/x-www-form-urlencoded" } #: Hash[String, String]
+FORM = { "Content-Type" => "application/x-www-form-urlencoded" }.freeze #: Hash[String, String]
 
 #: (Net::HTTP, String, String, ?Hash[String, String]) -> void
 def call(http, verb, path, form = {})

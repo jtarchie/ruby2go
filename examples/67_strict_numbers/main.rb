@@ -3,7 +3,7 @@
 # Kernel#Integer and Kernel#Float: strict conversions that reject what
 # String#to_i and #to_f would quietly read as 0.
 
-CONFIG = <<~TEXT
+CONFIG = <<~TEXT.freeze
   port = 8080
   workers = 0x10
   mode = 0o755
