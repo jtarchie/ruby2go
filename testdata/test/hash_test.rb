@@ -911,13 +911,16 @@ module HashTests
       got = [] #: Array[String]
       sel_h.select do |x| 
         got << x.inspect
- true end
+ true
+end
       sel_h.filter do |x| 
         got << x.inspect
- false end
+ false
+end
       sel_h.reject do |x| 
         got << x.inspect
- false end
+ false
+end
       assert_equal ["\"a\"", "\"bb\"", "\"a\"", "\"bb\"", "\"a\"", "\"bb\""], got
     end
 
@@ -1461,7 +1464,8 @@ module HashTests
       assert_equal ["z1"], out
       snap = w.map do |k, v| 
                w[k] = v + 1
- k end
+ k
+end
       assert_equal ["z"], snap
       assert_equal "{\"z\" => 2}", w.inspect
     end
@@ -2501,7 +2505,8 @@ module HashTests
       begin
         h.delete_if do |_k, _v| 
           h[99] = 9
- false end
+ false
+end
       rescue RuntimeError
         raised = true
       end
@@ -2709,7 +2714,8 @@ module HashTests
       pr = #: Hash[Symbol, Integer]
 Hash.new do |hash, k| 
   calls << k
- hash[k] = 10 end
+ hash[k] = 10
+end
       pr[:a] += 1
       pr[:a] += 1
       pr[:b] += 2

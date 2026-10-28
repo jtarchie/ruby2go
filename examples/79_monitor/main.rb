@@ -67,7 +67,8 @@ end
 
 t = Thread.new do 
       Thread.current[:name] = "worker"
- Thread.current[:name] end
+ Thread.current[:name]
+end
 puts "thread-local in the thread: #{t.value.inspect}, in main: #{Thread.current[:name].inspect}"
 Thread.current[:count] = 2
 Thread.current.thread_variable_set(:tv, "x")

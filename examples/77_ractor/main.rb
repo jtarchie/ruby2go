@@ -35,7 +35,8 @@ workers.each { |w| puts w.value }
 list = [1, 2, 3]
 grown = Ractor.new(list) do |xs| 
           xs << 4
- xs.sum end
+ xs.sum
+end
 puts grown.value, list.inspect
 
 # A frozen object is shareable, so it is passed as is.
