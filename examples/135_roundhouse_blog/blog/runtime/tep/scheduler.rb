@@ -89,9 +89,7 @@ module Tep
       end
 
       ms = poll_timeout_ms
-      if Scheduler.any_time_ready
-        ms = 0
-      end
+      ms = 0 if Scheduler.any_time_ready
       Scheduler.poll_round(ms)
 
       now  = Sock.sphttp_now_us
@@ -99,14 +97,10 @@ module Tep
       i = 0
       n = Tep::APP.sched_fibers.length
       while i < n
-        if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now && (best < 0 || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best])
-          best = i
-        end
+        best = i if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now && (best < 0 || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best])
         i += 1
       end
-      if best < 0
-        return false
-      end
+      return false if best < 0
       Tep::APP.sched_current = best
       Tep::APP.sched_wake_at[best] = -1
       Tep::APP.sched_fibers[best].f.resume
@@ -137,9 +131,7 @@ module Tep
         slots.push(slot)
         i += 1
       end
-      if added == 0
-        return 0
-      end
+      return 0 if added == 0
       Sock.sphttp_poll_run(timeout_ms)
       now = Sock.sphttp_now_us
       i = 0
@@ -184,13 +176,9 @@ module Tep
         gap = deadline - Sock.sphttp_now_us
         if next_at >= 0
           tgap = next_at - Sock.sphttp_now_us
-          if tgap < gap
-            gap = tgap
-          end
+          gap = tgap if tgap < gap
         end
-        if gap < 0
-          gap = 0
-        end
+        gap = 0 if gap < 0
         if Scheduler.any_io_waiter
           # Park in poll for up to `gap` microseconds (poll wants ms).
           Scheduler.poll_round(gap / 1000)
@@ -208,14 +196,10 @@ module Tep
       i = 0
       n = Tep::APP.sched_fibers.length
       while i < n
-        if Tep::APP.sched_fibers[i].f.alive? && (best < 0 || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best])
-          best = i
-        end
+        best = i if Tep::APP.sched_fibers[i].f.alive? && (best < 0 || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best])
         i += 1
       end
-      if best < 0
-        return -1
-      end
+      return -1 if best < 0
       Tep::APP.sched_wake_at[best]
     end
 
@@ -242,9 +226,7 @@ module Tep
       i = 0
       n = Tep::APP.sched_fibers.length
       while i < n
-        if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now
-          return true
-        end
+        return true if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now
         i += 1
       end
       false
@@ -318,9 +300,7 @@ module Tep
       i = 0
       total = Tep::APP.sched_fibers.length
       while i < total
-        if Tep::APP.sched_fibers[i].f.alive?
-          n += 1
-        end
+        n += 1 if Tep::APP.sched_fibers[i].f.alive?
         i += 1
       end
       n

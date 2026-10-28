@@ -709,9 +709,7 @@ end
 class DemoCachedPool < DemoPoolBase
   def ns_initialize(opts)
     super(opts)
-    if opts[:jruby]
-      @executor = java.util.concurrent.Executors.newCachedThreadPool
-    end
+    @executor = java.util.concurrent.Executors.newCachedThreadPool if opts[:jruby]
   end
 
   def size = @size

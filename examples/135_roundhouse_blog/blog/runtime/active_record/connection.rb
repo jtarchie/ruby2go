@@ -124,9 +124,7 @@ module ActiveRecord
       while i < parts.length
         out = out + parts[i].to_s
         bind = i + 1
-        if bind < statement.length
-          out = out + ActiveRecord.adapter.escape_value(statement[bind])
-        end
+        out = out + ActiveRecord.adapter.escape_value(statement[bind]) if bind < statement.length
         i += 1
       end
       out
@@ -189,9 +187,7 @@ module ActiveRecord
     # currency `update_counters` deals in.
     def self.upsert_all(rows, unique_by: nil, on_duplicate: nil, returning: nil)
       return 0 if rows.length == 0
-      if returning
-        raise NotImplementedError, "#{name}.upsert_all: RETURNING is not supported"
-      end
+      raise NotImplementedError, "#{name}.upsert_all: RETURNING is not supported" if returning
 
       cols = rows[0].keys
       target = unique_by.nil? ? primary_key : unique_by

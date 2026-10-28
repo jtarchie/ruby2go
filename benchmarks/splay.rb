@@ -61,33 +61,25 @@ class SplayTree
     t = @root
     while true
       if key < t.key
-        if t.left.nil?
-          break
-        end
+        break if t.left.nil?
         if key < t.left.key
           y = t.left
           t.left = y.right
           y.right = t
           t = y
-          if t.left.nil?
-            break
-          end
+          break if t.left.nil?
         end
         sr.left = t
         sr = t
         t = t.left
       elsif key > t.key
-        if t.right.nil?
-          break
-        end
+        break if t.right.nil?
         if key > t.right.key
           y = t.right
           t.right = y.left
           y.left = t
           t = y
-          if t.right.nil?
-            break
-          end
+          break if t.right.nil?
         end
         sl.right = t
         sl = t
@@ -119,9 +111,7 @@ idx = 0
 while idx < 25000
   key = (idx * 7919) % 100000
   result = tree.find(key)
-  if result == key
-    found = found + 1
-  end
+  found = found + 1 if result == key
   idx = idx + 1
 end
 

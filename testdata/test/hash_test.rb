@@ -163,9 +163,7 @@ def hash_maybe(b) = b ? {} : nil
 
 #: (untyped) -> void
 def add_key(x)
-  if x.is_a?(Hash)
-    x["new"] = 1
-  end
+  x["new"] = 1 if x.is_a?(Hash)
 end
 
 #: (untyped) -> Integer
@@ -659,9 +657,7 @@ module HashTests
     def test_nested_hashes_the_inner_hash
       nested = { "x" => { "y" => 1 }, "e" => {} } #: Hash[String, Hash[String, Integer]]
       inner = nested["x"]
-      if inner
-        inner["z"] = 2
-      end
+      inner["z"] = 2 if inner
       assert_equal "{\"x\" => {\"y\" => 1, \"z\" => 2}, \"e\" => {}}", (nested).inspect
       assert_equal 2, nested["x"]&.fetch("z")
       assert_nil nested["nope"]&.fetch("z")

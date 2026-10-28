@@ -37,9 +37,7 @@ cask "rugaroo" do
   binary "rugaroo"
 
   postflight do
-    if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-      system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/rugaroo"]
-    end
+    system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/rugaroo"] if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
   end
 
   # No zap stanza required

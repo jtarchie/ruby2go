@@ -8,20 +8,14 @@ module Tep
       # String#index returns nil (not -1) when not found — matches CRuby.
       # See matz/spinel#532; spinel 0210389 fixed the prior -1 sentinel.
       end_of_headers = blob.index("\r\n\r\n")
-      if end_of_headers.nil?
-        return nil
-      end
+      return nil if end_of_headers.nil?
       headers_blob = blob[0, end_of_headers]
       lines = headers_blob.split("\r\n")
-      if lines.length == 0
-        return nil
-      end
+      return nil if lines.length == 0
 
       first = lines[0]
       first_parts = first.split(" ")
-      if first_parts.length < 3
-        return nil
-      end
+      return nil if first_parts.length < 3
 
       req = Request.new
       req.verb         = first_parts[0]
@@ -71,9 +65,7 @@ module Tep
       # Carry over any body bytes already in the blob (the C helper
       # may have read more than just the headers in one recv()).
       body_start = end_of_headers + 4
-      if body_start < blob.length
-        req.raw_body = blob[body_start, blob.length - body_start]
-      end
+      req.raw_body = blob[body_start, blob.length - body_start] if body_start < blob.length
 
       req
     end

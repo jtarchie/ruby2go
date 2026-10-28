@@ -3,39 +3,17 @@
 # (-w workers) using SO_REUSEPORT so the kernel load-balances.
 module Tep
   def self.reason(status)
-    if status == 200
-      return "OK";
-    end
-    if status == 201
-      return "Created";
-    end
-    if status == 204
-      return "No Content";
-    end
-    if status == 301
-      return "Moved Permanently";
-    end
-    if status == 302
-      return "Found";
-    end
-    if status == 304
-      return "Not Modified";
-    end
-    if status == 400
-      return "Bad Request";
-    end
-    if status == 401
-      return "Unauthorized";
-    end
-    if status == 403
-      return "Forbidden";
-    end
-    if status == 404
-      return "Not Found";
-    end
-    if status == 500
-      return "Internal Server Error";
-    end
+    return "OK" if status == 200
+    return "Created" if status == 201
+    return "No Content" if status == 204
+    return "Moved Permanently" if status == 301
+    return "Found" if status == 302
+    return "Not Modified" if status == 304
+    return "Bad Request" if status == 400
+    return "Unauthorized" if status == 401
+    return "Forbidden" if status == 403
+    return "Not Found" if status == 404
+    return "Internal Server Error" if status == 500
     "OK"
   end
 
@@ -123,18 +101,14 @@ module Tep
       # Parent: reap forever.
       loop do
         gone = Sock.sphttp_wait_any
-        if gone < 0
-          break
-        end
+        break if gone < 0
       end
     end
 
     def worker_loop(sfd)
       loop do
         client = Sock.sphttp_accept(sfd)
-        if client < 0
-          next
-        end
+        next if client < 0
         handle_connection(client)
       end
     end
@@ -163,13 +137,9 @@ module Tep
       buf = +""
       while buf.length < 65535
         chunk = Sock.sp_net_recv_some(client, 4096)
-        if chunk.length == 0
-          return ""
-        end
+        return "" if chunk.length == 0
         buf = buf + chunk
-        if buf.length >= 4 && buf.include?("\r\n\r\n")
-          return buf
-        end
+        return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
       end
       ""
     end
@@ -216,9 +186,7 @@ module Tep
         # technically legal but we keep things simple).
         res.headers["Transfer-Encoding"] = "chunked"
         res.headers["Connection"] = "close"
-        unless res.headers.key?("Content-Type")
-          res.headers["Content-Type"] = "text/event-stream"
-        end
+        res.headers["Content-Type"] = "text/event-stream" unless res.headers.key?("Content-Type")
         head = build_head(req, res)
         Sock.sphttp_write_str(client, head)
         out = Stream.new(client)
@@ -235,9 +203,7 @@ module Tep
           return
         end
         res.headers["Content-Length"] = sz.to_s
-        unless res.headers.key?("Content-Type")
-          res.headers["Content-Type"] = "application/octet-stream"
-        end
+        res.headers["Content-Type"] = "application/octet-stream" unless res.headers.key?("Content-Type")
         res.headers["Connection"] = if keep_alive
                                       "keep-alive"
                                     else
@@ -249,9 +215,7 @@ module Tep
         return
       end
 
-      if res.body.length > 0 && !res.headers.key?("Content-Type")
-        res.headers["Content-Type"] = "text/html; charset=utf-8"
-      end
+      res.headers["Content-Type"] = "text/html; charset=utf-8" if res.body.length > 0 && !res.headers.key?("Content-Type")
       # BYTES, both times — `length` counts characters and `write_str`
       # stops at the first NUL. See the twin comment in
       # server_scheduled.rb#write_response for the failure this caused.
@@ -264,9 +228,7 @@ module Tep
 
       head = build_head(req, res)
       Sock.sphttp_write_str(client, head)
-      if res.body.bytesize > 0
-        Sock.sphttp_write_bytes(client, res.body, res.body.bytesize)
-      end
+      Sock.sphttp_write_bytes(client, res.body, res.body.bytesize) if res.body.bytesize > 0
     end
 
     def build_head(req, res)

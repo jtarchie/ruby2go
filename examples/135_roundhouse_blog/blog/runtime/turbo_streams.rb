@@ -207,12 +207,8 @@ module Turbo
       remove_got = REMOVE_CALLS[0]
       REPLACE_EXPECTED[0] = -1
       REMOVE_EXPECTED[0] = -1
-      if replace_expected >= 0 && replace_got != replace_expected
-        raise "Turbo::StreamsChannel.broadcast_replace_to was expected #{replace_expected} time(s), got #{replace_got}"
-      end
-      if remove_expected >= 0 && remove_got != remove_expected
-        raise "Turbo::StreamsChannel.broadcast_remove_to was expected #{remove_expected} time(s), got #{remove_got}"
-      end
+      raise "Turbo::StreamsChannel.broadcast_replace_to was expected #{replace_expected} time(s), got #{replace_got}" if replace_expected >= 0 && replace_got != replace_expected
+      raise "Turbo::StreamsChannel.broadcast_remove_to was expected #{remove_expected} time(s), got #{remove_got}" if remove_expected >= 0 && remove_got != remove_expected
       nil
     end
 

@@ -176,16 +176,12 @@ end
 
 #: (Integer) -> String?
 def only_positive(n)
-  if n > 0
-    "yes #{n}"
-  end
+  "yes #{n}" if n > 0
 end
 
 #: (Integer) -> String?
 def unless_zero(n)
-  unless n.zero?
-    "nonzero"
-  end
+  "nonzero" unless n.zero?
 end
 
 #: (Integer) -> String
@@ -378,9 +374,7 @@ end
 def early(n)
   return "neg" if n < 0
   return "zero" if n.zero?
-  unless n > 10
-    return "small"
-  end
+  return "small" unless n > 10
   "big"
 end
 
@@ -456,9 +450,7 @@ end
 # Helpers for the checks that were control_bug_unassigned_branch_local.rb.
 #: (bool) -> Integer?
 def branch_local(flag)
-  if flag
-    a = 1
-  end
+  a = 1 if flag
   a
 end
 
@@ -1128,9 +1120,7 @@ end
 #: (bool) -> Integer
 def writes_only(flag)
   unused = 1
-  if flag
-    unused2 = "x"
-  end
+  unused2 = "x" if flag
   3.times { |t| inner_unused = t }
   7
 end
@@ -1277,9 +1267,7 @@ def joined(out, n)
   y = "a"
   y = nil if n > 5
   out << y.inspect
-  label = if n > 0
-            "pos"
-          end
+  label = ("pos" if n > 0)
   out << label.inspect
 end
 
@@ -2213,9 +2201,7 @@ end
       while k < 6
         k += 1
         if k.even?
-          if k == 4
-            next
-          end
+          next if k == 4
           odds << -k
           next
         end
@@ -2337,16 +2323,10 @@ end
     def test_lifted_condition_keeps_short_circuit
       out = [] #: Array[String]
       h_cond = { "a" => 1, "b" => 5 } #: Hash[String, Integer]
-      if h_cond["c"].nil? && (h_cond["b"] || 0) > 1
-        out << "lifted and"
-      end
-      if h_cond["a"].nil? || (h_cond["b"] || 0) > 1
-        out << "lifted or"
-      end
+      out << "lifted and" if h_cond["c"].nil? && (h_cond["b"] || 0) > 1
+      out << "lifted or" if h_cond["a"].nil? || (h_cond["b"] || 0) > 1
       ok_cond = true
-      unless ok_cond && (h_cond["zz"] || 0) > 1
-        out << "unless lifted and"
-      end
+      out << "unless lifted and" unless ok_cond && (h_cond["zz"] || 0) > 1
       assert_equal ["lifted and", "lifted or", "unless lifted and"], out
     end
 
@@ -2583,9 +2563,7 @@ end
       assert_equal 10, (maybe ? maybe * 2 : 0)
       assert_equal 0, (nothing ? nothing * 2 : 0)
       msg = "" #: String
-      if maybe && maybe > 4
-        msg = "maybe #{maybe} > 4"
-      end
+      msg = "maybe #{maybe} > 4" if maybe && maybe > 4
       assert_equal "maybe 5 > 4", msg
       assert_equal "none", guarded(nil)
       assert_equal "got OK", guarded("ok")
@@ -2649,7 +2627,7 @@ end
         end
       end
       assert_equal ["one", "five", "many"], words
-      labels = [1, 5].map { |n| if n > 2 then "big" end }
+      labels = [1, 5].map { |n| "big" if n > 2 }
       assert_equal [nil, "big"], labels
     end
 
@@ -2806,18 +2784,14 @@ end
     def test_branch_locals_in_blocks_and_loops
       got = [] #: Array[String?]
       [1, 2].each do |k|
-        if k == 1
-          m = "set"
-        end
+        m = "set" if k == 1
         got << m
       end
       assert_equal ["set", nil], got
       zs = [] #: Array[Integer?]
       i = 0
       while i < 2
-        if i == 0
-          z = 1
-        end
+        z = 1 if i == 0
         zs << z
         i += 1
       end
@@ -3040,12 +3014,8 @@ end
       assert_equal ["x", "found 1", "missing"], [control_probe(h, "x"), control_probe(h, "a"), control_probe(h, "zz")]
       assert_equal "zero", ((h["q"] || 0) > 0 ? "pos" : "zero")
       out = [] #: Array[String]
-      unless (h["b"] || 0) > 100
-        out << "unless lifted"
-      end
-      if (h["b"] || 0) > 1 && x > 2
-        out << "lifted left"
-      end
+      out << "unless lifted" unless (h["b"] || 0) > 100
+      out << "lifted left" if (h["b"] || 0) > 1 && x > 2
       assert_equal ["unless lifted", "lifted left"], out
       # ! and not on values that are never nil
       s = "s"
@@ -4285,9 +4255,7 @@ end
     def test_is_a_narrows_optional
       got = [] #: Array[Integer]
       x_narrow = 5 #: Integer?
-      if x_narrow.is_a?(Integer)
-        got << dbl(x_narrow)
-      end
+      got << dbl(x_narrow) if x_narrow.is_a?(Integer)
       y_narrow = nil #: Integer?
       got << (y_narrow.is_a?(Integer) ? dbl(y_narrow) : -1)
       assert_equal [10, -1], got
@@ -4676,9 +4644,7 @@ end
     def test_case_without_subject
       assert_equal %w[huge huge big small], [control_size_of(500), control_size_of(-500), control_size_of(50), control_size_of(1)]
       y = nil #: Integer?
-      r = if y.nil?
-            "none"
-          end
+      r = ("none" if y.nil?)
       assert_equal "none", r
     end
 

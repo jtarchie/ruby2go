@@ -206,9 +206,7 @@ module ActionText
       record = nil
       if sgid != ""
         model_name = ActionText::SignedGlobalId.model_of(sgid)
-        if model_name != ""
-          record = ActionText::Attachable.locate(model_name, ActionText::SignedGlobalId.id_of(sgid))
-        end
+        record = ActionText::Attachable.locate(model_name, ActionText::SignedGlobalId.id_of(sgid)) if model_name != ""
       end
       record.nil? ? ActionText::Attachables::MissingAttachable.new(sgid) : record
     end
@@ -383,9 +381,7 @@ module ActionText
           name = Content.tag_name_of(raw)
           attrs = Content.parse_attributes(raw)
           stop = Fragment.element_end(@html, open_at, tag_end, name, raw)
-          if Fragment.matches?(name, attrs, matcher)
-            out << Node.new(name, attrs, @html[open_at, stop - open_at].to_s)
-          end
+          out << Node.new(name, attrs, @html[open_at, stop - open_at].to_s) if Fragment.matches?(name, attrs, matcher)
           # Into the children either way: a match's descendants are
           # elements too, and Rails' `css` returns them.
           i = tag_end + 1
@@ -532,9 +528,7 @@ module ActionText
       # silently matched nothing would be indistinguishable from a
       # filter that had nothing to do — inside a rescue, from a message
       # with no content at all.
-      unless element_name?(head)
-        raise "ActionText::Fragment: unsupported selector #{selector.inspect}"
-      end
+      raise "ActionText::Fragment: unsupported selector #{selector.inspect}" unless element_name?(head)
       keys = []
       values = []
       ops = []
@@ -813,9 +807,7 @@ module ActionText
           elsif name == "br"
             out = out + "\n"
           elsif name == ActionText::Attachment.tag_name
-            unless close
-              out = out + ActionText::Attachment.new(Content.parse_attributes(raw)).to_plain_text
-            end
+            out = out + ActionText::Attachment.new(Content.parse_attributes(raw)).to_plain_text unless close
           elsif Content.scoped_element(name)
             if close
               if names.length > 0 && names[names.length - 1] == name
@@ -831,9 +823,7 @@ module ActionText
                       Content.close_scoped(name, segment, list_names, list_counts)
               end
             elsif !void
-              if name == "li" && list_counts.length > 0
-                list_counts[list_counts.length - 1] = list_counts[list_counts.length - 1] + 1
-              end
+              list_counts[list_counts.length - 1] = list_counts[list_counts.length - 1] + 1 if name == "li" && list_counts.length > 0
               if ["ul", "ol"].include?(name)
                 list_names << name
                 list_counts << 0
@@ -889,9 +879,7 @@ module ActionText
       # top-level item and gets no indent.
       bullet = "•"
       depth = list_names.length
-      if depth > 0 && list_names[depth - 1] == "ol"
-        bullet = list_counts[depth - 1].to_s + "."
-      end
+      bullet = list_counts[depth - 1].to_s + "." if depth > 0 && list_names[depth - 1] == "ol"
       indent(depth) + bullet + " " + inner + "\n"
     end
 

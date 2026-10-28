@@ -202,9 +202,7 @@ class Comment < ApplicationRecord
   def self._adapter_find_by_id(id)
     stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = " + Db.escape_int(id) + " LIMIT 1")
     result = nil
-    if Db.step?(stmt)
-      result = Comment.from_stmt(stmt)
-    end
+    result = Comment.from_stmt(stmt) if Db.step?(stmt)
     Db.finalize(stmt)
     result
   end
@@ -220,9 +218,7 @@ class Comment < ApplicationRecord
   def self._adapter_last
     stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments ORDER BY id DESC LIMIT 1")
     result = nil
-    if Db.step?(stmt)
-      result = Comment.from_stmt(stmt)
-    end
+    result = Comment.from_stmt(stmt) if Db.step?(stmt)
     Db.finalize(stmt)
     result
   end
@@ -342,9 +338,7 @@ class Comment < ApplicationRecord
     else
       stmt = Db.prepare("SELECT id, title, body, created_at, updated_at FROM articles WHERE id = " + Db.escape_int(@article_id) + " LIMIT 1")
       result = nil
-      if Db.step?(stmt)
-        result = Article.from_stmt(stmt)
-      end
+      result = Article.from_stmt(stmt) if Db.step?(stmt)
       Db.finalize(stmt)
       result
     end

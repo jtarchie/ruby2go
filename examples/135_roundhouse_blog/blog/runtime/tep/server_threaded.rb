@@ -102,18 +102,12 @@ module Tep
           end
           loop do
             gone = Sock.sphttp_wait_any
-            if gone < 0
-              break
-            end
+            break if gone < 0
           end
-          if Sock.sphttp_shutdown_requested != 0
-            Tep.on_shutdown
-          end
+          Tep.on_shutdown if Sock.sphttp_shutdown_requested != 0
         else
           Tep::Server::Threaded.run_worker(sfd)
-          if Sock.sphttp_shutdown_requested != 0
-            Tep.on_shutdown
-          end
+          Tep.on_shutdown if Sock.sphttp_shutdown_requested != 0
           # Exit outright: spinel runs every remaining green thread to
           # completion when main returns, and the connection threads are
           # parked on sockets that may never speak again (a keep-alive
@@ -135,17 +129,11 @@ module Tep
         Sock.sphttp_set_nonblock(sfd)
         lio = IO.for_fd(sfd, autoclose: false)
         while true
-          if Sock.sphttp_shutdown_requested != 0
-            break
-          end
+          break if Sock.sphttp_shutdown_requested != 0
           ready = lio.wait_readable(1)
-          if ready.nil?
-            next
-          end
+          next if ready.nil?
           client = Sock.sphttp_accept_nb(sfd)
-          if client < 0
-            next
-          end
+          next if client < 0
           Sock.sphttp_set_nonblock(client)
           Thread.new(client) do |c|
             Tep::Server::Threaded.handle_connection(c)
@@ -172,9 +160,7 @@ module Tep
       # connection open for the next keep-alive request, false to close.
       def self.handle_one(client, io)
         blob = Tep::Server::Threaded.read_request_blob(client, io, KEEPALIVE_TIMEOUT)
-        if blob.length == 0
-          return false
-        end
+        return false if blob.length == 0
         req = Parser.parse(blob)
         if req == nil
           Tep::Server::Threaded.send_simple(client, 400, "bad request")
@@ -213,21 +199,13 @@ module Tep
         deadline = Time.now.to_i + timeout_seconds
         while buf.length < MAX_REQUEST_BYTES
           remaining = deadline - Time.now.to_i
-          if remaining <= 0
-            return ""
-          end
+          return "" if remaining <= 0
           ready = io.wait_readable(remaining)
-          if ready.nil?
-            return ""
-          end
+          return "" if ready.nil?
           chunk = Sock.sphttp_recv_some(fd, 4096)
-          if chunk.length == 0
-            return ""
-          end
+          return "" if chunk.length == 0
           buf << chunk
-          if buf.length >= 4 && buf.include?("\r\n\r\n")
-            return buf
-          end
+          return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
         end
         ""
       end
@@ -258,9 +236,7 @@ module Tep
         # Streaming branch -- chunked, Connection: close.
         if res.streaming
           res.headers["Transfer-Encoding"] = "chunked"
-          unless res.headers.key?("Content-Type")
-            res.headers["Content-Type"] = "text/event-stream"
-          end
+          res.headers["Content-Type"] = "text/event-stream" unless res.headers.key?("Content-Type")
           reason = Tep.reason(res.status)
           head = req.http_version + " " + res.status.to_s + " " + reason + "\r\n"
           res.headers.each do |k, v|
@@ -278,9 +254,7 @@ module Tep
         end
 
         # Default Content-Type for inline-body responses.
-        if res.file_path.length == 0 && res.body.length > 0 && !res.headers.key?("Content-Type")
-          res.headers["Content-Type"] = "text/html; charset=utf-8"
-        end
+        res.headers["Content-Type"] = "text/html; charset=utf-8" if res.file_path.length == 0 && res.body.length > 0 && !res.headers.key?("Content-Type")
         reason = Tep.reason(res.status)
         head = req.http_version + " " + res.status.to_s + " " + reason + "\r\n"
         res.headers.each do |k, v|
@@ -304,9 +278,7 @@ module Tep
           # `write_str` crosses the FFI as a NUL-terminated C string.
           head << "Content-Length: " + res.body.bytesize.to_s + "\r\n\r\n"
           Sock.sphttp_write_str(client, head)
-          if res.body.bytesize > 0
-            Sock.sphttp_write_bytes(client, res.body, res.body.bytesize)
-          end
+          Sock.sphttp_write_bytes(client, res.body, res.body.bytesize) if res.body.bytesize > 0
         end
         0
       end

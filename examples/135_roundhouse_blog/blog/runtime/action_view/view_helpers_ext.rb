@@ -494,9 +494,7 @@ module ActionView
                 "served — rawtext, foreign and template content parse under a " \
                 "different grammar; see runtime/ruby/action_view/view_helpers_ext.rb"
         end
-        if t != "" && t != "mglyph" && t != "malignmark" && !allowed.include?(t)
-          allowed.push(t)
-        end
+        allowed.push(t) if t != "" && t != "mglyph" && t != "malignmark" && !allowed.include?(t)
         ti = ti + 1
       end
       attrs = [""]
@@ -709,15 +707,9 @@ module ActionView
           if aname != "" && !seen.include?(aname)
             seen.push(aname)
             keep = attrs.include?(aname)
-            if keep && sanitize_uri_attributes.include?(aname)
-              keep = sanitize_uri_allowed?(value)
-            end
-            if keep && aname == "src" && sanitize_blank_value?(value)
-              keep = false
-            end
-            if keep
-              out = out + " " + aname + "=\"" + sanitize_attr_value(value) + "\""
-            end
+            keep = sanitize_uri_allowed?(value) if keep && sanitize_uri_attributes.include?(aname)
+            keep = false if keep && aname == "src" && sanitize_blank_value?(value)
+            out = out + " " + aname + "=\"" + sanitize_attr_value(value) + "\"" if keep
           end
         end
       end
@@ -871,9 +863,7 @@ module ActionView
       while i < n
         c = value[i, 1].to_s
         o = c.ord
-        unless o <= 32 || o == 127 || (o >= 128 && o <= 257) || c == "`"
-          out = out + c
-        end
+        out = out + c unless o <= 32 || o == 127 || (o >= 128 && o <= 257) || c == "`"
         i = i + 1
       end
       out
@@ -1216,9 +1206,7 @@ module ActionView
     # Index just past `scheme://` or `www.` + one word char, or 0 if
     # neither opens at `i`.
     def self.auto_link_url_prefix_end(s, i)
-      if s[i, 4].to_s.downcase == "www." && auto_link_word_char?(s[i + 4, 1].to_s)
-        return i + 5
-      end
+      return i + 5 if s[i, 4].to_s.downcase == "www." && auto_link_word_char?(s[i + 4, 1].to_s)
       colon = s.index(":", i)
       return 0 if colon.nil?
       return 0 unless s[colon, 3].to_s == "://"

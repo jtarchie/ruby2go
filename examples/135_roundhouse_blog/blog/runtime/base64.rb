@@ -85,9 +85,7 @@ module Base64
   def self.char_value(c)
     idx = 0
     while idx < 64
-      if ALPHABET[idx] == c
-        return idx
-      end
+      return idx if ALPHABET[idx] == c
       idx = idx + 1
     end
     -1

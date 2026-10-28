@@ -37,9 +37,7 @@ module TypedStore
       sep = line.index(": ")
       if sep.nil?
         # `key:` with no value — an explicit empty scalar (nil).
-        if line.end_with?(":")
-          h[line[0, line.length - 1].to_s] = nil
-        end
+        h[line[0, line.length - 1].to_s] = nil if line.end_with?(":")
         next
       end
       key = line[0, sep].to_s

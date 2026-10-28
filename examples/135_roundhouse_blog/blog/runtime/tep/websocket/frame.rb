@@ -204,24 +204,12 @@ module Tep
       end
 
       def self.reserved_opcode?(op)
-        if op == Tep::WebSocket::OPCODE_CONTINUATION
-          return false
-        end
-        if op == Tep::WebSocket::OPCODE_TEXT
-          return false
-        end
-        if op == Tep::WebSocket::OPCODE_BINARY
-          return false
-        end
-        if op == Tep::WebSocket::OPCODE_CLOSE
-          return false
-        end
-        if op == Tep::WebSocket::OPCODE_PING
-          return false
-        end
-        if op == Tep::WebSocket::OPCODE_PONG
-          return false
-        end
+        return false if op == Tep::WebSocket::OPCODE_CONTINUATION
+        return false if op == Tep::WebSocket::OPCODE_TEXT
+        return false if op == Tep::WebSocket::OPCODE_BINARY
+        return false if op == Tep::WebSocket::OPCODE_CLOSE
+        return false if op == Tep::WebSocket::OPCODE_PING
+        return false if op == Tep::WebSocket::OPCODE_PONG
         true
       end
 

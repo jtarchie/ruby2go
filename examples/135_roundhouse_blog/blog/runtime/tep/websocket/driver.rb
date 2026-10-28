@@ -120,9 +120,7 @@ module Tep
       def write_frame(opcode, payload)
         r = -1
         @wlock.synchronize do
-          unless @closed
-            r = Driver.send_frame(@fd, opcode, payload)
-          end
+          r = Driver.send_frame(@fd, opcode, payload) unless @closed
         end
         r
       end
@@ -152,9 +150,7 @@ module Tep
       # §5.5.1 the payload may be omitted (close with no body); if
       # `code == 0` we emit an empty payload.
       def self.encode_close_payload(code, reason)
-        if code == 0
-          return ""
-        end
+        return "" if code == 0
         out = Tep::WebSocket::Frame.byte_to_chr((code >> 8) & 0xff) +
               Tep::WebSocket::Frame.byte_to_chr(code & 0xff)
         if reason.bytesize > 123

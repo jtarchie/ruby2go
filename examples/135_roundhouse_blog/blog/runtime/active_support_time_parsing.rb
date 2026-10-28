@@ -110,9 +110,7 @@ module ActiveSupport
         break if c.nil? || c.empty? || c < "0" || c > "9"
         digits = digits + 1
       end
-      if digits > 0
-        micros = "#{str[20, digits]}000000"[0, 6].to_i
-      end
+      micros = "#{str[20, digits]}000000"[0, 6].to_i if digits > 0
     end
     # The micros go in as `Time.utc`'s seventh argument, NOT as a float
     # added afterwards. `t + 170926 / 1_000_000.0` lands at

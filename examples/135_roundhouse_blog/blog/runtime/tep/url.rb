@@ -53,22 +53,14 @@ module Tep
     end
 
     def self.hex_char(n)
-      if n < 10
-        return ("0".bytes[0] + n).chr
-      end
+      return ("0".bytes[0] + n).chr if n < 10
       ("A".bytes[0] + n - 10).chr
     end
 
     def self.hex_nibble(c)
-      if c >= "0" && c <= "9"
-        return c.bytes[0] - "0".bytes[0]
-      end
-      if c >= "a" && c <= "f"
-        return c.bytes[0] - "a".bytes[0] + 10
-      end
-      if c >= "A" && c <= "F"
-        return c.bytes[0] - "A".bytes[0] + 10
-      end
+      return c.bytes[0] - "0".bytes[0] if c >= "0" && c <= "9"
+      return c.bytes[0] - "a".bytes[0] + 10 if c >= "a" && c <= "f"
+      return c.bytes[0] - "A".bytes[0] + 10 if c >= "A" && c <= "F"
       -1
     end
 
@@ -130,18 +122,14 @@ module Tep
         out["path"]  = rest[0, qi]
         out["query"] = rest[qi + 1, rest.length - qi - 1]
       end
-      if out["path"].length == 0
-        out["path"] = "/"
-      end
+      out["path"] = "/" if out["path"].length == 0
       out
     end
 
     # "a=1&b=2&c" -> Hash {"a"=>"1","b"=>"2","c"=>""}
     def self.parse_query(s)
       h = Tep.str_hash
-      if s.length == 0
-        return h
-      end
+      return h if s.length == 0
       pairs = s.split("&")
       pairs.each do |pair|
         next unless pair.length > 0

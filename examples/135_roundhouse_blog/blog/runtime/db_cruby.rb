@@ -318,9 +318,7 @@ module Db
           live = k
           break
         end
-        unless live.nil?
-          cache.delete(live).close
-        end
+        cache.delete(live).close unless live.nil?
       end
       cache[sql] = stmt
     else
@@ -334,9 +332,7 @@ module Db
     @next_id += 1
     capture = nil
     qcache = Fiber[:rh_qcache]
-    unless qcache.nil? || parameterized
-      capture = { rows: [], names: stmt.columns, eof: false, sql: sql }
-    end
+    capture = { rows: [], names: stmt.columns, eof: false, sql: sql } unless qcache.nil? || parameterized
     @rows[@next_id] = { stmt: stmt, row: nil, cached: cached, capture: capture }
     @next_id
   end

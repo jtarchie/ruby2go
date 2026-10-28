@@ -18,9 +18,7 @@ ROOT = File.expand_path('..', __dir__)
 missing = ARGV.delete('--missing')
 spec = ARGV.index('--spec')&.then { |i| ARGV[i + 1] }
 spec ||= IO.popen(['go', 'run', './cmd/rubyspec', '-print-root'], chdir: ROOT, &:read).strip # the pinned, atomically fetched checkout cmd/rubyspec runs
-unless $?.nil? || $?.success?
-  abort 'rubyspec-coverage: no ruby/spec checkout (go run ./cmd/rubyspec -print-root failed)'
-end
+abort 'rubyspec-coverage: no ruby/spec checkout (go run ./cmd/rubyspec -print-root failed)' unless $?.nil? || $?.success?
 abort "rubyspec-coverage: #{spec} is not a ruby/spec checkout" unless Dir.exist?(File.join(spec, 'core'))
 
 # class or module name => method names its prelude bodies define ("name.s" holds `def self.` ones)

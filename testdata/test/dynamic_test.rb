@@ -1781,9 +1781,7 @@ module DynamicTests
     def test_narrowing_holds_inside_a_block_in_the_branch
       got = [] #: Array[Integer]
       x = dynamic_word(2)
-      if x
-        [1, 2].each { |i| got << x.size + i }
-      end
+      [1, 2].each { |i| got << x.size + i } if x
       assert_equal [3, 4], got
     end
 

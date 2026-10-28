@@ -115,9 +115,7 @@ module Cable
       # genuinely broke still reaches the caller as an error.
       refused = true
     end
-    if refused
-      return nil
-    end
+    return nil if refused
     conn
   end
 
@@ -177,13 +175,9 @@ module Cable
   # it never heard back about, so a dropped frame is a reconnect loop.
   def self.subscribe(ws, connection, identifier, holder)
     name = ActionCable::Channel::Parameters.read(identifier, "channel")
-    if name.length == 0
-      return Cable.reject(ws, identifier)
-    end
+    return Cable.reject(ws, identifier) if name.length == 0
     channel = Cable.build_channel(name, connection, identifier)
-    if channel.nil?
-      return Cable.reject(ws, identifier)
-    end
+    return Cable.reject(ws, identifier) if channel.nil?
     # A RAISE IS AN OUTCOME, NOT AN ESCAPE, and on this lane that is
     # load-bearing rather than tidy: tep has no per-request rescue, so
     # an unhandled error inside `subscribed` ends the PROCESS — every
@@ -206,9 +200,7 @@ module Cable
       warn "[cable] " + name + "#subscribed raised: " + e.message
       return Cable.reject(ws, identifier)
     end
-    if channel.subscription_rejected?
-      return Cable.reject(ws, identifier)
-    end
+    return Cable.reject(ws, identifier) if channel.subscription_rejected?
     channel.streams.each do |stream|
       Tep::APP.cable_lock.synchronize do
         Tep::APP.cable_identifiers[stream] = identifier
@@ -243,16 +235,10 @@ module Cable
   # adds: identity existed and nothing consulted it.
   def self.handle_message(ws, connection, data, holder)
     frame = ActionCable::Channel::Parameters.object(data)
-    if frame.nil?
-      return 0
-    end
-    if frame["command"].to_s != "subscribe"
-      return 0
-    end
+    return 0 if frame.nil?
+    return 0 if frame["command"].to_s != "subscribe"
     identifier = frame["identifier"].to_s
-    if identifier.length == 0
-      return 0
-    end
+    return 0 if identifier.length == 0
     Cable.subscribe(ws, connection, identifier, holder)
   end
 
@@ -285,9 +271,7 @@ module Cable
     # Outside the lock: nothing else should wait on the registry while a
     # thread is being born. The flag is already set, so a second opener
     # racing here cannot start a second beat.
-    if start
-      Cable.spawn_heartbeat
-    end
+    Cable.spawn_heartbeat if start
     0
   end
 
@@ -360,9 +344,7 @@ module Cable
     while slice < BEAT_SLICES
       Cable.beat_pause(pause)
       stop = i + per
-      if stop > n
-        stop = n
-      end
+      stop = n if stop > n
       # A timestamp per slice, not per cycle: the frame says when it was
       # sent, and the slices are up to an interval apart.
       payload = Cable.ping_payload
@@ -590,9 +572,7 @@ module Cable
     # updates arrive. Select it only when offered (a raw ws client that
     # offers none leaves it "" and the header is omitted, per RFC 6455).
     hs.protocols.each do |proto|
-      if proto == "actioncable-v1-json"
-        drv.set_subprotocol("actioncable-v1-json")
-      end
+      drv.set_subprotocol("actioncable-v1-json") if proto == "actioncable-v1-json"
     end
 
     cb_open = Cable::WsOpen.new
@@ -640,9 +620,7 @@ module Cable
 
   def self.publish_raw(stream, message_json)
     id = Cable.identifier_for(stream)
-    if id.length == 0
-      return nil
-    end
+    return nil if id.length == 0
     envelope = "{\"identifier\":" + JSON.generate(id) +
                ",\"message\":" + message_json + "}"
     Tep::Broadcast.publish(stream, envelope)

@@ -2965,9 +2965,7 @@ module ArrayTests
       a = [1, 2, 3]
       out = []
       out << a.shift unless a.empty?
-      unless a.empty?
-        out << a.pop
-      end
+      out << a.pop unless a.empty?
       out << if a.empty?
                0
              else

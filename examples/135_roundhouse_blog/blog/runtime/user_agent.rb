@@ -164,16 +164,12 @@ class UserAgent
     if !app.nil? && !app.comment.empty?
       second = app.comment[1]
       joined = app.comment.join("; ")
-      if (!second.nil? && second.match?(/MSIE/)) || joined.match?(/Trident.+rv:/)
-        return "internet_explorer"
-      end
+      return "internet_explorer" if (!second.nil? && second.match?(/MSIE/)) || joined.match?(/Trident.+rv:/)
     end
     first = tokens.first
     first_product = first.nil? ? "" : first.product
     app_product = app.nil? ? "" : app.product
-    if first_product == "Opera" || app_product == "Opera" || last_product == "OPR"
-      return "opera"
-    end
+    return "opera" if first_product == "Opera" || app_product == "Opera" || last_product == "OPR"
     return "vivaldi" if product?(tokens, "Vivaldi")
     return "chrome" if product?(tokens, "Chrome") || product?(tokens, "CriOS")
     return "webkit" if webkit?(tokens)

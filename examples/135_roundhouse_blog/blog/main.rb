@@ -81,9 +81,7 @@ module Main
     # poly-into-poly unifies (a raw StrStrHash value would not).
     out = Main.deep_dup(path_params)
     scalars.each { |k, v| out[k] = v }
-    if outer_name.length > 0
-      out[outer_name] = Main.deep_dup(sub)
-    end
+    out[outer_name] = Main.deep_dup(sub) if outer_name.length > 0
     out
   end
 
@@ -105,9 +103,7 @@ module Main
         inner = k[(ob + 1)...cb].to_s
         merged = {}
         existing = out[outer]
-        if existing.is_a?(Hash)
-          existing.each { |sk, sv| merged[sk.to_s] = sv }
-        end
+        existing.each { |sk, sv| merged[sk.to_s] = sv } if existing.is_a?(Hash)
         merged[inner] = file
         out[outer] = merged
       end
@@ -171,9 +167,7 @@ module Main
   # The `..` guard blocks path-traversal escapes (`/assets/../../etc`)
   # before the path is concatenated onto the static/ root.
   def self.static_asset?(path)
-    if path.include?("..")
-      return false
-    end
+    return false if path.include?("..")
     path.start_with?("/assets/") || path == "/icon.png" || path == "/icon.svg"
   end
 
@@ -268,9 +262,7 @@ module Main
   def self.job_loop
     while true
       sleep(JOB_POLL_INTERVAL)
-      if ActiveJob.pending_count > 0
-        Db.with_connection { ActiveJob.drain }
-      end
+      Db.with_connection { ActiveJob.drain } if ActiveJob.pending_count > 0
     end
     0
   end
@@ -280,9 +272,7 @@ module Main
     Broadcasts.reset_log!
     # Under RH_SQL_TRACE the request line brackets its queries, so a
     # tally script can attribute each SQL line to the request that ran it.
-    if Db.sql_trace?
-      warn "-- " + req.verb + " " + req.path
-    end
+    warn "-- " + req.verb + " " + req.path if Db.sql_trace?
 
     # Action Cable: upgrade /cable to a WebSocket and hand off to the
     # Cable glue. Tep::Server::Scheduled's write path runs the recv
@@ -324,9 +314,7 @@ module Main
     verb = req.verb
     if verb == "POST"
       override = req.req_params.fetch("_method", "").upcase
-      if ["PATCH", "PUT", "DELETE"].include?(override)
-        verb = override
-      end
+      verb = override if ["PATCH", "PUT", "DELETE"].include?(override)
     end
 
     matched = ActionDispatch::Router.match(verb, request_path, Main.route_table)

@@ -64,9 +64,7 @@ module ActionDispatch
       # String, not a file).
       def self.from_params(sub, key)
         value = sub[key]
-        if value.is_a?(ActionDispatch::Http::UploadedFile)
-          value
-        end
+        value if value.is_a?(ActionDispatch::Http::UploadedFile)
       end
 
       # Did the request carry a file under `key`? The file twin of
@@ -113,9 +111,7 @@ module ActionDispatch
         semi = rest.index(";")
         rest = rest[0, semi].to_s unless semi.nil?
         rest = rest.strip
-        if rest.length >= 2 && rest[0, 1] == "\"" && rest[rest.length - 1, 1] == "\""
-          rest = rest[1, rest.length - 2].to_s
-        end
+        rest = rest[1, rest.length - 2].to_s if rest.length >= 2 && rest[0, 1] == "\"" && rest[rest.length - 1, 1] == "\""
         rest
       end
 

@@ -82,9 +82,7 @@ module Tep
             # misalignment) whenever XOR'd bytes form multi-byte UTF-8
             # sequences — mask-dependent, so it flakes per connection.
             r = Tep::WebSocket::Frame.parse_from_buf(inbuf, 0, inbuf.bytesize)
-            if r.outcome == "need"
-              break
-            end
+            break if r.outcome == "need"
             if r.outcome == "close"
               @driver.close(r.close_code, "protocol error")
               Connection.dispatch_close(@driver, r.close_code, "protocol error")
@@ -122,9 +120,7 @@ module Tep
           # reason opens with a multi-byte character.
           if frame.payload.bytesize >= 2
             code = (frame.payload.getbyte(0) << 8) | frame.payload.getbyte(1)
-            if frame.payload.bytesize > 2
-              reason = frame.payload.byteslice(2, frame.payload.bytesize - 2)
-            end
+            reason = frame.payload.byteslice(2, frame.payload.bytesize - 2) if frame.payload.bytesize > 2
           end
           # Echo the close back (§5.5.1) then dispatch.
           driver.close(code == 0 ? Tep::WebSocket::CLOSE_NORMAL : code, reason)

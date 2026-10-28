@@ -75,9 +75,7 @@ module Tep
     # value, so we force the assignment through this method (where
     # `self` is unambiguously Response).
     def set_body_if_empty(s)
-      if @body.length == 0 && s.length > 0
-        @body = s
-      end
+      @body = s if @body.length == 0 && s.length > 0
     end
 
     def set_status(n) = @status = n

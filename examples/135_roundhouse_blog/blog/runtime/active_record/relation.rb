@@ -171,9 +171,7 @@ module ActiveRecord
         sorted << loaded[i]
         i += 1
       end
-      @records = if sort_in_place!(sorted, terms)
-                   sorted
-                 end
+      @records = (sorted if sort_in_place!(sorted, terms))
       self
     end
 
@@ -936,9 +934,7 @@ module ActiveRecord
     # statement, not a subquery over every row.
     def scoped_write_where
       return "" if @wheres.length == 0 && @joins.length == 0
-      if @joins.length == 0
-        return " WHERE #{@wheres.join(" AND ")}"
-      end
+      return " WHERE #{@wheres.join(" AND ")}" if @joins.length == 0
       key = "#{@table}.#{@model.primary_key}"
       inner = "SELECT #{key} FROM #{@table} #{@joins.join(" ")}"
       inner = "#{inner} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
@@ -1005,9 +1001,7 @@ module ActiveRecord
       @wheres << "#{@table}.id = #{ActiveRecord.adapter.escape_value(id)}"
       record = first
       @wheres.pop
-      if record.nil?
-        raise RecordNotFound, "Couldn't find record in #{@table} with id=#{id}"
-      end
+      raise RecordNotFound, "Couldn't find record in #{@table} with id=#{id}" if record.nil?
       record
     end
 

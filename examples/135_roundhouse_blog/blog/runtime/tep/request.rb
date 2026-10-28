@@ -54,12 +54,8 @@ module Tep
     # We treat both as "use HTTP/1.1 default behaviour".
     def keep_alive?
       lc = @req_headers["connection"].downcase
-      if lc == "close"
-        return false
-      end
-      if lc == "keep-alive"
-        return true
-      end
+      return false if lc == "close"
+      return true if lc == "keep-alive"
       @http_version == "HTTP/1.1"
     end
 
@@ -98,9 +94,7 @@ module Tep
     # proxy sets.
     def scheme
       proto = @req_headers["x-forwarded-proto"]
-      if proto.length > 0
-        return proto.downcase
-      end
+      return proto.downcase if proto.length > 0
       "http"
     end
 

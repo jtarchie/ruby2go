@@ -175,9 +175,7 @@ module ActionDispatch
         route = table[i]
         if route.verb.to_s == method_upcase
           params = match_parts(route.pattern_parts, path_parts, route.int_params, format)
-          unless params.nil?
-            return MatchResult.new(route.controller, route.action, params, route.req_format)
-          end
+          return MatchResult.new(route.controller, route.action, params, route.req_format) unless params.nil?
         end
         i += 1
       end
@@ -250,9 +248,7 @@ module ActionDispatch
           # it wrongly at a non-nilable call arg; routing the segment
           # through `to_s` first hands `digits_only` a definite String.
           seg = ap.to_s
-          if int_constrained(int_params, name) && !digits_only(seg)
-            return nil
-          end
+          return nil if int_constrained(int_params, name) && !digits_only(seg)
           params[name] = ap
         elsif pp != ap
           return nil

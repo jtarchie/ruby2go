@@ -73,9 +73,7 @@ module Tep
               "Upgrade: websocket\r\n" +
               "Connection: Upgrade\r\n" +
               "Sec-WebSocket-Accept: " + accept_key + "\r\n"
-        if protocol.length > 0
-          out << "Sec-WebSocket-Protocol: " + protocol + "\r\n"
-        end
+        out << "Sec-WebSocket-Protocol: " + protocol + "\r\n" if protocol.length > 0
         out + "\r\n"
       end
 
@@ -84,9 +82,7 @@ module Tep
       # leaves values as-is, and clients sometimes send
       # `Connection: keep-alive, Upgrade` capitalised.
       def self.icontains(hay, needle)
-        if hay.length == 0 || needle.length == 0
-          return false
-        end
+        return false if hay.length == 0 || needle.length == 0
         hl = Handshake.downcase(hay)
         nl = Handshake.downcase(needle)
         Tep.str_find(hl, nl, 0) >= 0
@@ -112,9 +108,7 @@ module Tep
       def self.split_csv(s)
         out = [""]
         out.pop
-        if s.length == 0
-          return out
-        end
+        return out if s.length == 0
         pos = 0
         while pos < s.length
           comma = Tep.str_find(s, ",", pos)
@@ -133,9 +127,7 @@ module Tep
         i += 1 while i < s.length && ([" ", "\t"].include?(s[i]))
         j = s.length - 1
         j -= 1 while j >= i && ([" ", "\t"].include?(s[j]))
-        if j < i
-          return ""
-        end
+        return "" if j < i
         s[i, j - i + 1]
       end
 

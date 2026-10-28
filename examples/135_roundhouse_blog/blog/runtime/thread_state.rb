@@ -255,9 +255,7 @@ module TypedStore
       next if [" ", "-", "#"].include?(c0)
       sep = line.index(": ")
       if sep.nil?
-        if line.end_with?(":")
-          h[line[0, line.length - 1].to_s] = nil
-        end
+        h[line[0, line.length - 1].to_s] = nil if line.end_with?(":")
         next
       end
       key = line[0, sep].to_s

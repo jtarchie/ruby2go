@@ -393,9 +393,7 @@ class DbConn
       rc = SQL.sqlite3_prepare_v2(@dbh, sql, -1, SQL.stmt_out, nil)
       st = rc == SQL::OK ? SQL.read_ptr(SQL.stmt_out) : 0
     end
-    if rc != SQL::OK
-      raise "Db.prepare failed (" + rc.to_s + "): " + SQL.sqlite3_errmsg(@dbh) + " — sql: " + sql
-    end
+    raise "Db.prepare failed (" + rc.to_s + "): " + SQL.sqlite3_errmsg(@dbh) + " — sql: " + sql if rc != SQL::OK
     @entries.push(Stmt.new(sql, st))
     st
   end
@@ -823,9 +821,7 @@ module Db
     @sql_trace = ENV.fetch("RH_SQL_TRACE", "") != ""
     n = pool_size
     ev = ENV["DATABASE_POOL_SIZE"]
-    if !ev.nil? && ev != ""
-      n = ev.to_i
-    end
+    n = ev.to_i if !ev.nil? && ev != ""
     # SHARDED, because one pool means one Mutex on every request and that
     # mutex — not the queries under it — was what pinned the server to a
     # couple of OS workers. `with_connection` takes the pool lock twice per
@@ -904,9 +900,7 @@ module Db
   def self.seed_from_file(src_path)
     dest = current_conn.dbh
     rc = SQL.sqlite3_open_v2(src_path, SQL.seed_out, SQL::OPEN_URI_RWC, nil)
-    if rc != SQL::OK
-      raise "Db.seed_from_file: cannot open " + src_path + " (" + rc.to_s + ")"
-    end
+    raise "Db.seed_from_file: cannot open " + src_path + " (" + rc.to_s + ")" if rc != SQL::OK
     src = SQL.read_ptr(SQL.seed_out)
     bk = SQL.sqlite3_backup_init(dest, "main", src, "main")
     if bk.nil?
@@ -920,9 +914,7 @@ module Db
     SQL.sqlite3_close(src)
     # DONE, not OK, is success for a completed step(-1); OK means pages remain,
     # which for -1 would mean it did not finish.
-    if step_rc != SQL::DONE
-      raise "Db.seed_from_file: backup_step(" + src_path + ") -> " + step_rc.to_s
-    end
+    raise "Db.seed_from_file: backup_step(" + src_path + ") -> " + step_rc.to_s if step_rc != SQL::DONE
     # The fixture ships without sqlite_stat1, and an unplanned database
     # misplans the hottest-stories SELECT into a full-table walk plus a
     # temp-btree sort instead of reading hotness_idx to the LIMIT. Every other
@@ -1054,9 +1046,7 @@ module Db
     if handle != 0
       # A replay is not a round trip: the capture log (Rails' SQLCounter
       # ignores CACHE events too) and the trace both say so.
-      if @sql_trace
-        warn "  CACHE " + sql
-      end
+      warn "  CACHE " + sql if @sql_trace
       return handle
     end
     record_query(sql)
@@ -1085,9 +1075,7 @@ module Db
   # No-op (single nil check) when no capture is installed.
   def self.record_query(sql)
     @query_log.push(sql) unless @query_log.nil?
-    if @sql_trace
-      warn "  SQL " + sql
-    end
+    warn "  SQL " + sql if @sql_trace
   end
 
   def self.sql_trace?
@@ -1095,9 +1083,7 @@ module Db
   end
 
   def self.step?(stmt)
-    if stmt.is_a?(Integer)
-      return current_conn.qc_step?(stmt)
-    end
+    return current_conn.qc_step?(stmt) if stmt.is_a?(Integer)
     has_row = SQL.sqlite3_step(stmt) == SQL::ROW
     current_conn.qc_record_step(stmt, has_row)
     has_row

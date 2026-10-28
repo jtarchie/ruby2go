@@ -79,18 +79,14 @@ module Nokogiri
       bracket = text.index("[")
       name = bracket.nil? ? text : text[0, bracket].to_s
       predicate = bracket.nil? ? "" : text[bracket + 1, text.length - bracket - 2].to_s
-      unless ActionText::Fragment.element_name?(name) && (bracket.nil? || text.end_with?("]"))
-        GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})")
-      end
+      GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})") unless ActionText::Fragment.element_name?(name) && (bracket.nil? || text.end_with?("]"))
       keys = []
       prefixes = []
       predicate.split(" or ").each do |clause|
         clause = clause.strip
         next if clause == ""
         # starts-with(@attr, "prefix")
-        unless clause.start_with?("starts-with(@") && clause.end_with?(")")
-          GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})")
-        end
+        GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})") unless clause.start_with?("starts-with(@") && clause.end_with?(")")
         inner = clause[13, clause.length - 14].to_s
         comma = inner.index(",")
         GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})") if comma.nil?
@@ -99,9 +95,7 @@ module Nokogiri
       end
       out = []
       ActionText::Fragment.new(@html.to_s).find_all(name).each do |node|
-        if Document.starts_with_any?(node.attributes, keys, prefixes)
-          out << Element.new.load(node.name, node.attributes)
-        end
+        out << Element.new.load(node.name, node.attributes) if Document.starts_with_any?(node.attributes, keys, prefixes)
       end
       out
     end

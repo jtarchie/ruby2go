@@ -179,9 +179,7 @@ module ActionCable
     out = "{"
     first = true
     payload.each do |key, value|
-      unless first
-        out = out + ","
-      end
+      out = out + "," unless first
       first = false
       out = out + JSON.generate(key.to_s) + ":" + value.to_s
     end
@@ -298,9 +296,7 @@ module ActionCable
       # identify one has a hole, and swallowing it here would hide the
       # hole rather than the error.
       def current_user
-        if @connection.nil?
-          return nil
-        end
+        return nil if @connection.nil?
         @connection.current_user
       end
 
@@ -363,9 +359,7 @@ module ActionCable
       end
 
       def self.strip_channel_suffix(text)
-        if text.length > 7 && text[text.length - 7, 7] == "Channel"
-          return text[0, text.length - 7]
-        end
+        return text[0, text.length - 7] if text.length > 7 && text[text.length - 7, 7] == "Channel"
         text
       end
 
@@ -388,9 +382,7 @@ module ActionCable
         while i < text.length
           c = text[i]
           if c >= "A" && c <= "Z"
-            if i != 0 && out[out.length - 1] != "_" && out[out.length - 1] != ":"
-              out << "_"
-            end
+            out << "_" if i != 0 && out[out.length - 1] != "_" && out[out.length - 1] != ":"
             out << c.downcase
           else
             out << c
@@ -450,9 +442,7 @@ module ActionCable
       # cable glue reads subscribe frames through this too.
       def self.read(text, name)
         h = Parameters.object(text)
-        if h.nil?
-          return ""
-        end
+        return "" if h.nil?
         v = h[name]
         v.nil? ? "" : v.to_s
       end
