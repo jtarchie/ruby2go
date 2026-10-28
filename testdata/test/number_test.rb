@@ -498,7 +498,7 @@ module NumberTests
       # ! and not
       assert_equal false, (!t)
       assert_equal true, (!f)
-      assert_equal false, (not t)
+      assert_equal false, (!t)
       assert_equal true, (!!t)
       assert_equal false, (!!f)
 

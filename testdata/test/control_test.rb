@@ -1757,7 +1757,7 @@ module ControlTests
       assert_equal "got 5", seen
 
       # not / ! on optional and untyped values
-      assert_equal true, (not opt)
+      assert_equal true, (!opt)
       assert_equal true, (!u)
       assert_equal false, (!w)
     end
@@ -2010,7 +2010,7 @@ module ControlTests
       log.clear
       r5 = (tb(log, "i", true) and tb(log, "j", true))
       r6 = (tb(log, "k", false) or tb(log, "l", true))
-      r7 = (not tb(log, "m", true))
+      r7 = (!tb(log, "m", true))
       assert_equal [true, true, false], ([r5, r6, r7])
       assert_equal ["i", "j", "k", "l", "m"], log
       none = nil #: Integer?
@@ -2632,7 +2632,7 @@ module ControlTests
       a = true
       b = false
       got = [] #: Array[String]
-      got << "and-not" if a and not b
+      got << "and-not" if a and !b
       got << "unless-or" unless a || b
       got << "not-or" if !(a || b)
       got << "neither" unless a or b
@@ -3006,7 +3006,7 @@ module ControlTests
       # ! and not on values that are never nil
       s = "s"
       assert_equal false, (!x)
-      assert_equal false, (not x)
+      assert_equal false, (!x)
       assert_equal false, (!s)
       assert_equal true, (!!s)
     end
