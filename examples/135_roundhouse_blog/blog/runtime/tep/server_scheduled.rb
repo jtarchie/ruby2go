@@ -65,7 +65,7 @@ module Tep
           exit(1)
         end
         Sock.sphttp_set_nonblock(sfd)
-        if !quiet
+        unless quiet
           # Same banner shape as the prefork Tep::Server, printed only
           # after a successful bind so startup and bind-failure are
           # distinguishable at a glance. Explicit flush: when stdout is
@@ -291,7 +291,7 @@ module Tep
         # the prefork server.
         if res.streaming
           res.headers["Transfer-Encoding"] = "chunked"
-          if !res.headers.key?("Content-Type")
+          unless res.headers.key?("Content-Type")
             res.headers["Content-Type"] = "text/event-stream"
           end
           reason = Tep.reason(res.status)

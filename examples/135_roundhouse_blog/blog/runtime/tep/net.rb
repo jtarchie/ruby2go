@@ -101,7 +101,7 @@ module Sock
   # filesize (File.size) and sendfile (data.bytesize) both byte-based.
   # Small static assets only.
   def self.sphttp_filesize(path)
-    if !File.exist?(path)
+    unless File.exist?(path)
       return -1
     end
     File.size(path)
@@ -112,7 +112,7 @@ module Sock
   # bytesize (not length): the byte count must match the Content-Length
   # (File.size) sphttp_filesize advertised, or a multibyte asset truncates.
   def self.sphttp_sendfile(fd, path)
-    if !File.exist?(path)
+    unless File.exist?(path)
       return -1
     end
     data = File.read(path)

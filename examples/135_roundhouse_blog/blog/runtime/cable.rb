@@ -562,7 +562,7 @@ module Cable
   # valid WS upgrade.
   def self.upgrade(req, res)
     hs = Tep::WebSocket::Handshake.check(req)
-    if !hs.valid
+    unless hs.valid
       res.status = 400
       res.body = "invalid websocket upgrade"
       return true

@@ -493,7 +493,7 @@ class DbConn
   # open hands back the same pointer) is left alone.
   def qc_record(sql, ptr)
     return nil if !@qc_on || sql.include?("?")
-    return nil if !@qc_recording[ptr].nil?
+    return nil unless @qc_recording[ptr].nil?
     ncols = SQL.sqlite3_column_count(ptr)
     names = []
     i = 0
@@ -520,7 +520,7 @@ class DbConn
   # Called after every real step. Appends the row (or marks eof) — or,
   # past the bound, drops the capture.
   def qc_record_step(ptr, has_row)
-    return nil if !@qc_on
+    return nil unless @qc_on
     e = @qc_recording[ptr]
     return nil if e.nil?
     if has_row
@@ -539,7 +539,7 @@ class DbConn
   # partial one — the next identical SELECT replays the consumed prefix
   # and promotes past it only if it wants more.
   def qc_install(ptr)
-    return nil if !@qc_on
+    return nil unless @qc_on
     e = @qc_recording[ptr]
     return nil if e.nil?
     @qc_recording.delete(ptr)
@@ -554,7 +554,7 @@ class DbConn
   # The real stmt a replay promoted to, or nil while it is still replaying.
   def qc_ptr(handle)
     c = qc_cursor(handle)
-    return nil if !c.promoted
+    return nil unless c.promoted
     c.real_ptr
   end
 
@@ -870,7 +870,7 @@ module Db
   # per request, not a lock ever.
   def self.pool_for_thread
     pi = Thread.current[:db_pool]
-    return @pools[pi] if !pi.nil?
+    return @pools[pi] unless pi.nil?
     n = 0
     @assign_lock.synchronize do
       n = @next_pool
@@ -949,7 +949,7 @@ module Db
 
   def self.current_conn
     c = Thread.current[:db_conn]
-    return c if !c.nil?
+    return c unless c.nil?
     @pools[0].first
   end
 

@@ -111,7 +111,7 @@ module Tep
           return out
         end
         if Frame.control_opcode?(opcode)
-          if !fin
+          unless fin
             out.outcome = "close"
             out.close_code = Tep::WebSocket::CLOSE_PROTOCOL_ERROR
             return out
@@ -122,7 +122,7 @@ module Tep
             return out
           end
         end
-        if !masked
+        unless masked
           # Server MUST close on unmasked client frame (§5.3).
           out.outcome = "close"
           out.close_code = Tep::WebSocket::CLOSE_PROTOCOL_ERROR

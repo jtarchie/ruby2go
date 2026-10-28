@@ -625,7 +625,7 @@ module ActionView
         end
       end
       attrs[:src] = image_path(source)
-      if !size.nil?
+      unless size.nil?
         parts = size.to_s.split("x")
         attrs[:width] = parts[0]
         attrs[:height] = parts.length > 1 ? parts[1] : parts[0]

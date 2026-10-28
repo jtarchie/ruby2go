@@ -2969,7 +2969,7 @@ module ArrayTests
       a = [1, 2, 3]
       out = []
       out << a.shift unless a.empty?
-      if !a.empty?
+      unless a.empty?
         out << a.pop
       end
       out << if a.empty?

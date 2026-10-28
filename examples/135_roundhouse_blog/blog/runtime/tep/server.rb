@@ -69,7 +69,7 @@ module Tep
     warn(tag + " 500 " + verb + " " + path + " -- " +
                  e.class.to_s + ": " + e.message)
     frames = e.backtrace
-    if !frames.nil?
+    unless frames.nil?
       frames.each do |frame|
         warn(tag + "        " + frame)
       end
@@ -84,7 +84,7 @@ module Tep
     end
 
     def run(port, workers, quiet)
-      if !quiet
+      unless quiet
         puts Tep.display_name + " (" + RUBY_ENGINE +
              ") listening on http://0.0.0.0:" + port.to_s +
              ", pid " + Sock.sphttp_getpid.to_s
@@ -218,7 +218,7 @@ module Tep
         # technically legal but we keep things simple).
         res.headers["Transfer-Encoding"] = "chunked"
         res.headers["Connection"] = "close"
-        if !res.headers.key?("Content-Type")
+        unless res.headers.key?("Content-Type")
           res.headers["Content-Type"] = "text/event-stream"
         end
         head = build_head(req, res)
@@ -237,7 +237,7 @@ module Tep
           return
         end
         res.headers["Content-Length"] = sz.to_s
-        if !res.headers.key?("Content-Type")
+        unless res.headers.key?("Content-Type")
           res.headers["Content-Type"] = "application/octet-stream"
         end
         res.headers["Connection"] = if keep_alive

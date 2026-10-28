@@ -120,10 +120,10 @@ class Comment < ApplicationRecord
     self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s
     self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s
     self.created_at_raw = attrs[:created_at] || ""
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !(attrs[:created_at].nil?)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless (attrs[:created_at].nil?)
     self.updated_at_raw = attrs[:updated_at] || ""
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !(attrs[:updated_at].nil?)
-    self.article_id = attrs[:article].id if !(attrs[:article].nil?)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless (attrs[:updated_at].nil?)
+    self.article_id = attrs[:article].id unless (attrs[:article].nil?)
   end
 
   def attributes
@@ -169,9 +169,9 @@ class Comment < ApplicationRecord
     self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s if attrs.key?(:commenter)
     self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s if attrs.key?(:body)
     self.created_at_raw = (attrs[:created_at]).to_s if attrs.key?(:created_at)
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !((attrs[:created_at]).to_s.nil?)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless ((attrs[:created_at]).to_s.nil?)
     self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !((attrs[:updated_at]).to_s.nil?)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless ((attrs[:updated_at]).to_s.nil?)
     save
   end
 
@@ -180,9 +180,9 @@ class Comment < ApplicationRecord
     self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s if attrs.key?(:commenter)
     self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s if attrs.key?(:body)
     self.created_at_raw = (attrs[:created_at]).to_s if attrs.key?(:created_at)
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !((attrs[:created_at]).to_s.nil?)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless ((attrs[:created_at]).to_s.nil?)
     self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !((attrs[:updated_at]).to_s.nil?)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless ((attrs[:updated_at]).to_s.nil?)
     save!
     self
   end

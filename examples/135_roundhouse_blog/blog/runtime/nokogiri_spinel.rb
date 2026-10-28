@@ -129,7 +129,7 @@ module Nokogiri
         next unless !at.nil?
         value = content[at + 8, content.length].to_s.strip
         semi = value.index(";")
-        value = value[0, semi].to_s if !semi.nil?
+        value = value[0, semi].to_s unless semi.nil?
         return value.gsub("\"", "").gsub("'", "").strip if value != ""
       end
       nil

@@ -179,7 +179,7 @@ module ActionCable
     out = "{"
     first = true
     payload.each do |key, value|
-      if !first
+      unless first
         out = out + ","
       end
       first = false

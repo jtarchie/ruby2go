@@ -99,7 +99,7 @@ class IPAddr
   # stdlib answers every predicate below about the embedded address, so
   # the tests here reduce to the v4 ones on the last four octets.
   def ipv4_mapped?
-    return false if !ipv6?
+    return false unless ipv6?
     i = 0
     while i < 10
       return false if @octets[i] != 0
@@ -115,7 +115,7 @@ class IPAddr
   # `@addr < 2` test (measured: `::0.0.0.1` is false, `::1.2.3.4` is
   # true).
   def ipv4_compat?
-    return false if !ipv6?
+    return false unless ipv6?
     i = 0
     while i < 12
       return false if @octets[i] != 0

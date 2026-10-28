@@ -162,7 +162,7 @@ module SchematizedJson
   # such key. Empty is unambiguous: the shortest JSON value text is two
   # characters, so nothing valid renders as the empty string.
   def self.read_raw(data, key)
-    return "" if !data.key?(key)
+    return "" unless data.key?(key)
     data[key].to_s
   end
 
@@ -219,7 +219,7 @@ module SchematizedJson
   # the per-key writer already applies.
   def self.assign(serialized, value, schema)
     return nil if value.nil?
-    return value.to_s if !value.is_a?(Hash)
+    return value.to_s unless value.is_a?(Hash)
     out = serialized
     value.each do |k, v|
       key = k.to_s

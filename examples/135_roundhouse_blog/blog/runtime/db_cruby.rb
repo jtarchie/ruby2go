@@ -150,7 +150,7 @@ module Db
   # effectively thread-local (each worker thread's root fiber).
   def self.current_dbh
     h = Fiber[:db_handle]
-    return h if !h.nil?
+    return h unless h.nil?
     # Only the UNLEASED path pays the fork check — boot, tests, and
     # single-threaded dev. Under a lease the line above has already
     # returned, so the per-query cost of all this is zero.

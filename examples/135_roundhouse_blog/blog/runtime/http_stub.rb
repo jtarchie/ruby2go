@@ -180,7 +180,7 @@ module HttpStub
       if !actual.key?(key)
         ok = false
       elsif v.is_a?(Hash)
-        ok = false if !subset?(actual[key], v)
+        ok = false unless subset?(actual[key], v)
       elsif actual[key] != v
         ok = false
       end

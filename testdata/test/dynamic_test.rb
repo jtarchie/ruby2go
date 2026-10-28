@@ -321,7 +321,7 @@ end
 
 #: (String?) -> Integer
 def len_bang_guard(s)
-  return -3 if !s
+  return -3 unless s
   s.size + 2000
 end
 

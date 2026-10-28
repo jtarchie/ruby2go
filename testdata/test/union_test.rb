@@ -44,7 +44,7 @@ end
 
 #: (Integer | String) -> String
 def union_guard_not(x)
-  return "int" if !x.is_a?(String)
+  return "int" unless x.is_a?(String)
   x.upcase
 end
 

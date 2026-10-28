@@ -73,7 +73,7 @@ module Tep
                port.to_s + " (already in use?)"
           exit(1)
         end
-        if !quiet
+        unless quiet
           puts Tep.display_name + " (" + RUBY_ENGINE +
                ") listening on http://0.0.0.0:" + port.to_s +
                ", pid " + Sock.sphttp_getpid.to_s
@@ -260,7 +260,7 @@ module Tep
         # Streaming branch -- chunked, Connection: close.
         if res.streaming
           res.headers["Transfer-Encoding"] = "chunked"
-          if !res.headers.key?("Content-Type")
+          unless res.headers.key?("Content-Type")
             res.headers["Content-Type"] = "text/event-stream"
           end
           reason = Tep.reason(res.status)

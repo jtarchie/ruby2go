@@ -120,7 +120,7 @@ module Tep
       def write_frame(opcode, payload)
         r = -1
         @wlock.synchronize do
-          if !@closed
+          unless @closed
             r = Driver.send_frame(@fd, opcode, payload)
           end
         end

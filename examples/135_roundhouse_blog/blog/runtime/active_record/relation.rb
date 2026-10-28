@@ -548,7 +548,7 @@ module ActiveRecord
     def ==(other)
       mine = to_a
       theirs = other.is_a?(ActiveRecord::Relation) ? other.to_a : other
-      return false if !theirs.is_a?(Array)
+      return false unless theirs.is_a?(Array)
       return false if mine.length != theirs.length
       i = 0
       same = true
@@ -1076,7 +1076,7 @@ module ActiveRecord
     # create-seed slot.
     def find_or_create_by(conditions)
       record = find_by(conditions)
-      return record if !record.nil?
+      return record unless record.nil?
       created = @model.new(scope_attributes.merge(conditions))
       created.save
       created

@@ -73,7 +73,7 @@ module CgiIo
     # GETs ignore the override.
     if method == "POST"
       override = params.delete("_method")
-      if !override.nil?
+      unless override.nil?
         upcased = override.to_s.upcase
         method = upcased if ["PATCH", "PUT", "DELETE"].include?(upcased)
       end
@@ -178,7 +178,7 @@ module CgiIo
       segments.push(rest[1...close_bracket])
       rest = rest[(close_bracket + 1)..]
     end
-    return if !rest.empty?
+    return unless rest.empty?
     current = into
     key = raw_key[0, open_bracket]
     segments.each do |segment|
