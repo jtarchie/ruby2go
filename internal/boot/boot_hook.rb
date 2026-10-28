@@ -16,7 +16,6 @@ module RugarooBoot
   @features = nil
 
   class << self
-    attr_reader :classes, :define_methods, :aliases, :evals, :autoloads, :pid
 
     # Valid UTF-8, since JSON raises on a binary or invalid String.
     def text(s)
@@ -38,7 +37,7 @@ module RugarooBoot
       @delegators = {}
     end
 
-    attr_reader :delegators
+    attr_reader :classes, :define_methods, :aliases, :evals, :autoloads, :pid, :delegators
 
     # Forwardable's delegated names by call site, for a list built at load time (`*(DSL_METHODS - [:x])`, decision 204).
     def install_forwardable

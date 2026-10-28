@@ -1,7 +1,7 @@
 # Tep::Request -- what the handler reads off the wire.
 module Tep
   class Request
-    attr_accessor :verb, :path, :raw_path, :http_version
+    attr_accessor :verb, :path, :raw_path, :http_version, :remote_host, :ivars, :passed, :uploads
     # `req_params` (not `params`): renamed to avoid sharing an ivar
     # slot with the controller's `@params`. Roundhouse assigns the
     # controller a nested poly hash (params["article"]["title"]); under
@@ -9,8 +9,6 @@ module Tep
     # plain `@params` here would be widened to that poly hash and break
     # this class's String->String reads. Same fix as req_headers.
     attr_accessor :req_params, :query, :req_headers, :raw_body, :cookies
-    attr_accessor :remote_host
-    attr_accessor :ivars
 
     def initialize
       @verb         = +""
@@ -44,9 +42,6 @@ module Tep
       # and `Main.nest_params` folds both into the controller's params.
       @uploads      = {}
     end
-
-    attr_accessor :passed
-    attr_accessor :uploads
 
     def set_passed; @passed = true; end
 

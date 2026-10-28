@@ -3,7 +3,7 @@
 # automatically when serializing.
 module Tep
   class Response
-    attr_accessor :status, :headers, :body, :halted, :file_path, :set_cookies
+    attr_accessor :status, :headers, :body, :halted, :file_path, :set_cookies, :streamer, :streaming, :upgrading_ws, :ws_accept_key, :ws_driver
 
     def initialize
       @status      = 200
@@ -33,9 +33,6 @@ module Tep
       @ws_accept_key = +""
       @ws_driver     = Tep::WebSocket::Driver.new(0)
     end
-
-    attr_accessor :streamer, :streaming
-    attr_accessor :upgrading_ws, :ws_accept_key, :ws_driver
 
     def start_stream(streamer)
       @streamer  = streamer

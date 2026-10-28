@@ -22,8 +22,7 @@
 # battery design.
 module Tep
   class BroadcastSubscription
-    attr_reader :topic   # String
-    attr_reader :fd      # Integer file descriptor
+    attr_reader :topic, :fd, :ws   # String      # Integer file descriptor
     # Delivery mode controls how Tep::Broadcast.publish writes
     # `payload` to `fd`:
     #
@@ -35,8 +34,7 @@ module Tep
     # Modes 1 and 2 route through Tep::WebSocket::Driver.send_frame,
     # so payloads land as proper WS frames the peer will accept.
     # Apps register mode-1 subscriptions via subscribe_ws.
-    attr_reader :mode
-    attr_reader :ws      # Tep::WebSocket::Driver; the writer for modes 1 and 2
+    attr_reader :mode      # Tep::WebSocket::Driver; the writer for modes 1 and 2
 
     def initialize(topic, fd, mode, ws)
       @topic = topic
