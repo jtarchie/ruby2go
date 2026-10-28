@@ -2689,7 +2689,7 @@ module ControlTests
       end
       begin
         seen << "body"
-      ensure
+      
       end
       assert_equal ["three", "body"], seen
       x = if i > 5 then end #: Integer?
