@@ -138,7 +138,7 @@ module Tep
       while buf.length < 65535
         chunk = Sock.sp_net_recv_some(client, 4096)
         return "" if chunk.length == 0
-        buf = buf + chunk
+        buf += chunk
         return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
       end
       ""

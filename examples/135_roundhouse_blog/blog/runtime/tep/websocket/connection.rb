@@ -72,7 +72,7 @@ module Tep
             Connection.dispatch_close(@driver, Tep::WebSocket::CLOSE_GOING_AWAY, "")
             return 0
           end
-          inbuf = inbuf + chunk
+          inbuf += chunk
 
           # Parse + dispatch every complete frame the buffer now holds.
           while true

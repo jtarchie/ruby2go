@@ -38,11 +38,11 @@ while depth <= max_depth
   i = 1
   while i <= iterations
     t = make_tree(depth)
-    check = check + check_tree(t)
-    i = i + 1
+    check += check_tree(t)
+    i += 1
   end
   puts check
-  depth = depth + 2
+  depth += 2
 end
 
 puts check_tree(long_lived_tree)

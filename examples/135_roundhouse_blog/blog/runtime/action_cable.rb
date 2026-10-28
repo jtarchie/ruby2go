@@ -179,7 +179,7 @@ module ActionCable
     out = "{"
     first = true
     payload.each do |key, value|
-      out = out + "," unless first
+      out += "," unless first
       first = false
       out = out + JSON.generate(key.to_s) + ":" + value.to_s
     end
@@ -387,7 +387,7 @@ module ActionCable
           else
             out << c
           end
-          i = i + 1
+          i += 1
         end
         out
       end

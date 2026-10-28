@@ -42,20 +42,20 @@ module SchematizedJson
     s = serialized.to_s
     n = s.length
     i = 0
-    i = i + 1 while i < n && s[i, 1].to_s != "{"
-    i = i + 1
+    i += 1 while i < n && s[i, 1].to_s != "{"
+    i += 1
     scanning = true
     while scanning
-      i = i + 1 while i < n && separator?(s[i, 1].to_s)
+      i += 1 while i < n && separator?(s[i, 1].to_s)
       if i >= n || s[i, 1].to_s != "\""
         scanning = false
       else
         key_end = scan_string(s, i)
         key = decode_string(s[i, key_end - i].to_s)
         i = key_end
-        i = i + 1 while i < n && s[i, 1].to_s != ":"
-        i = i + 1
-        i = i + 1 while i < n && separator?(s[i, 1].to_s)
+        i += 1 while i < n && s[i, 1].to_s != ":"
+        i += 1
+        i += 1 while i < n && separator?(s[i, 1].to_s)
         value_end = scan_value(s, i)
         if i >= n || value_end == i
           scanning = false
@@ -85,12 +85,12 @@ module SchematizedJson
     while i < n && !done
       c = s[i, 1].to_s
       if c == "\\"
-        i = i + 2
+        i += 2
       elsif c == "\""
-        i = i + 1
+        i += 1
         done = true
       else
-        i = i + 1
+        i += 1
       end
     end
     i
@@ -109,7 +109,7 @@ module SchematizedJson
       elsif [" ", "\n", "\t", "\r"].include?(c)
         done = true
       else
-        i = i + 1
+        i += 1
       end
     end
     i
@@ -141,10 +141,10 @@ module SchematizedJson
               else
           out + e
               end
-        i = i + 2
+        i += 2
       else
-        out = out + c
-        i = i + 1
+        out += c
+        i += 1
       end
     end
     out
@@ -244,10 +244,10 @@ module SchematizedJson
     out = "{"
     i = 0
     while i < names.length
-      out = out + "," if i > 0
+      out += "," if i > 0
       out = out + "\"" + JsonBuilder.encode_string(names[i].to_s) + "\":" +
             read_raw(data, names[i].to_s)
-      i = i + 1
+      i += 1
     end
     out + "}"
   end

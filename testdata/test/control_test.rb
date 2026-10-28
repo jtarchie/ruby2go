@@ -1806,7 +1806,7 @@ module ControlTests
       ix = 0
       while ix < 3
         dummy = ix
-        ix = ix + 1
+        ix += 1
       end
       assert_equal 3, ix
     end
@@ -3841,7 +3841,7 @@ end
       list += [2, 3]
       assert_equal [1, 2, 3], list
       x1 = 1
-      x1 = x1 + 1 while x1 < 100
+      x1 += 1 while x1 < 100
       assert_equal 100, x1
       assert_equal "1!,2!,outer", shadow(1)
       nums = [1, 2, 3] #: Array[Integer]
@@ -5363,7 +5363,7 @@ end
     #: (?String?) -> String
     def control_refill(buffer = nil)
       buffer ||= ""
-      buffer = buffer + "x"
+      buffer += "x"
       buffer
     end
 

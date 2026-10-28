@@ -108,7 +108,7 @@ module ActiveSupport
       while digits < 6
         c = str[20 + digits, 1]
         break if c.nil? || c.empty? || c < "0" || c > "9"
-        digits = digits + 1
+        digits += 1
       end
       micros = "#{str[20, digits]}000000"[0, 6].to_i if digits > 0
     end

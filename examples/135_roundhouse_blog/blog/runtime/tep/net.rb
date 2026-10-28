@@ -83,7 +83,7 @@ module Sock
       if chunk.length == 0
         break # peer closed mid-body
       end
-      out = out + chunk
+      out += chunk
     end
     out
   end

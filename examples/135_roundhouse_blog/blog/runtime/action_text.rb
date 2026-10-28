@@ -408,10 +408,10 @@ module ActionText
       while i < n
         open_at = Fragment.next_element(@html, i)
         if open_at < 0
-          out = out + @html[i, n - i].to_s
+          out += @html[i, n - i].to_s
           i = n
         else
-          out = out + @html[i, open_at - i].to_s
+          out += @html[i, open_at - i].to_s
           tag_end = Fragment.tag_end(@html, open_at)
           raw = @html[open_at + 1, tag_end - open_at - 1].to_s
           name = Content.tag_name_of(raw)
@@ -419,10 +419,10 @@ module ActionText
           stop = Fragment.element_end(@html, open_at, tag_end, name, raw)
           if Fragment.matches?(name, attrs, matcher)
             node = Node.new(name, attrs, @html[open_at, stop - open_at].to_s)
-            out = out + (yield node).to_s
+            out += (yield node).to_s
             i = stop
           else
-            out = out + @html[open_at, tag_end - open_at + 1].to_s
+            out += @html[open_at, tag_end - open_at + 1].to_s
             i = tag_end + 1
           end
         end
@@ -442,7 +442,7 @@ module ActionText
           nxt = html[i + 1, 1].to_s
           return i if nxt != "/" && nxt != "!" && nxt != ""
         end
-        i = i + 1
+        i += 1
       end
       -1
     end
@@ -465,7 +465,7 @@ module ActionText
         elsif c == ">"
           break
         end
-        i = i + 1
+        i += 1
       end
       i < n ? i : n - 1
     end
@@ -490,19 +490,19 @@ module ActionText
           close = html[i + 1, 1].to_s == "/"
           start = close ? i + 2 : i + 1
           j = i + 1
-          j = j + 1 while j < n && html[j, 1].to_s != ">"
+          j += 1 while j < n && html[j, 1].to_s != ">"
           inner_raw = html[start, j - start].to_s
           if Content.tag_name_of(inner_raw) == name
             if close
-              depth = depth - 1
+              depth -= 1
               stop = j + 1 if depth == 0
             elsif inner_raw[inner_raw.length - 1, 1].to_s != "/"
-              depth = depth + 1
+              depth += 1
             end
           end
           i = j + 1
         else
-          i = i + 1
+          i += 1
         end
       end
       stop
@@ -547,7 +547,7 @@ module ActionText
         keys << key
         values << value
         ops << op
-        i = i + 1
+        i += 1
       end
       Selector.new("name", head, [], keys, values, ops)
     end
@@ -562,7 +562,7 @@ module ActionText
         ok = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") ||
              (c >= "0" && c <= "9") || c == "-" || c == "_"
         return false unless ok
-        i = i + 1
+        i += 1
       end
       true
     end
@@ -574,7 +574,7 @@ module ActionText
       i = 1
       while i < parts.length
         out << parts[i].to_s.split(")")[0].to_s
-        i = i + 1
+        i += 1
       end
       raise "ActionText::Fragment: unsupported selector #{text.inspect}" if out.length == 0
       out
@@ -597,7 +597,7 @@ module ActionText
         else
           ok = false unless actual == values[i]
         end
-        i = i + 1
+        i += 1
       end
       ok
     end
@@ -685,7 +685,7 @@ module ActionText
           href = node.fetch("href", "")
           out << href if href != "" && !out.include?(href)
         end
-        i = i + 1
+        i += 1
       end
       out
     end
@@ -700,7 +700,7 @@ module ActionText
       while i < nodes.length
         node = nodes[i]
         out << ActionText::Attachment.new(node) if node.fetch("__name", "") == ActionText::Attachment.tag_name
-        i = i + 1
+        i += 1
       end
       out
     end
@@ -743,7 +743,7 @@ module ActionText
           id = ActionText::SignedGlobalId.id_of(sgid)
           out << id if id != 0 && !out.include?(id)
         end
-        i = i + 1
+        i += 1
       end
       out
     end
@@ -788,16 +788,16 @@ module ActionText
           close = @html[i + 1, 1].to_s == "/"
           name_start = close ? i + 2 : i + 1
           j = name_start
-          j = j + 1 while j < n && @html[j, 1].to_s != ">"
+          j += 1 while j < n && @html[j, 1].to_s != ">"
           raw = @html[name_start, j - name_start].to_s
           name = Content.tag_name_of(raw)
           void = raw[raw.length - 1, 1].to_s == "/"
           if skipping != ""
             if close && name == skipping
-              skip_depth = skip_depth - 1
+              skip_depth -= 1
               skipping = "" if skip_depth <= 0
             elsif !close && name == skipping
-              skip_depth = skip_depth + 1
+              skip_depth += 1
             end
           elsif ["script", "style"].include?(name)
             unless close || void
@@ -805,9 +805,9 @@ module ActionText
               skip_depth = 1
             end
           elsif name == "br"
-            out = out + "\n"
+            out += "\n"
           elsif name == ActionText::Attachment.tag_name
-            out = out + ActionText::Attachment.new(Content.parse_attributes(raw)).to_plain_text unless close
+            out += ActionText::Attachment.new(Content.parse_attributes(raw)).to_plain_text unless close
           elsif Content.scoped_element(name)
             if close
               if names.length > 0 && names[names.length - 1] == name
@@ -836,15 +836,15 @@ module ActionText
         elsif c == "&"
           stop = Content.entity_end(@html, i)
           if stop > i
-            out = out + Content.decode_entity(@html[i, stop - i + 1].to_s) if skipping == ""
+            out += Content.decode_entity(@html[i, stop - i + 1].to_s) if skipping == ""
             i = stop + 1
           else
-            out = out + c if skipping == ""
-            i = i + 1
+            out += c if skipping == ""
+            i += 1
           end
         else
-          out = out + c if skipping == ""
-          i = i + 1
+          out += c if skipping == ""
+          i += 1
         end
       end
       Content.chomp_newlines(out)
@@ -898,7 +898,7 @@ module ActionText
       i = 0
       while i < text.length
         return i unless space_at(text, i)
-        i = i + 1
+        i += 1
       end
       -1
     end
@@ -907,7 +907,7 @@ module ActionText
       i = text.length - 1
       while i >= 0
         return i unless space_at(text, i)
-        i = i - 1
+        i -= 1
       end
       -1
     end
@@ -923,7 +923,7 @@ module ActionText
       while i < n
         if html[i, 1].to_s == "<"
           j = i + 1
-          j = j + 1 while j < n && html[j, 1].to_s != ">"
+          j += 1 while j < n && html[j, 1].to_s != ">"
           raw = html[i + 1, j - i - 1].to_s
           if raw[0, 1].to_s != "/" && raw[0, 1].to_s != "!"
             attrs = parse_attributes(raw)
@@ -932,7 +932,7 @@ module ActionText
           end
           i = j + 1
         else
-          i = i + 1
+          i += 1
         end
       end
       out
@@ -948,7 +948,7 @@ module ActionText
       while i < n
         c = text[i, 1].to_s
         break if [" ", "\t", "\n", "\r", "/"].include?(c)
-        i = i + 1
+        i += 1
       end
       text[0, i].to_s.downcase
     end
@@ -961,26 +961,26 @@ module ActionText
       i = 0
       n = raw.length
       # Step past the element name.
-      i = i + 1 while i < n && !Content.space_at(raw, i)
+      i += 1 while i < n && !Content.space_at(raw, i)
       while i < n
-        i = i + 1 while i < n && Content.space_at(raw, i)
+        i += 1 while i < n && Content.space_at(raw, i)
         name_start = i
-        i = i + 1 while i < n && !Content.space_at(raw, i) && raw[i, 1].to_s != "="
+        i += 1 while i < n && !Content.space_at(raw, i) && raw[i, 1].to_s != "="
         name = raw[name_start, i - name_start].to_s.downcase
         break if name == ""
         value = ""
         if raw[i, 1].to_s == "="
-          i = i + 1
+          i += 1
           quote = raw[i, 1].to_s
           if ["\"", "'"].include?(quote)
-            i = i + 1
+            i += 1
             value_start = i
-            i = i + 1 while i < n && raw[i, 1].to_s != quote
+            i += 1 while i < n && raw[i, 1].to_s != quote
             value = raw[value_start, i - value_start].to_s
-            i = i + 1
+            i += 1
           else
             value_start = i
-            i = i + 1 while i < n && !Content.space_at(raw, i)
+            i += 1 while i < n && !Content.space_at(raw, i)
             value = raw[value_start, i - value_start].to_s
           end
         end
@@ -1007,7 +1007,7 @@ module ActionText
         c = html[i, 1].to_s
         return i if c == ";"
         return start if [" ", "<", "&"].include?(c)
-        i = i + 1
+        i += 1
       end
       start
     end
@@ -1071,7 +1071,7 @@ module ActionText
         return -1 if d.nil?
         value = value * base + d
         return -1 if value > 1114111
-        i = i + 1
+        i += 1
       end
       value
     end
@@ -1084,15 +1084,15 @@ module ActionText
         if text[i, 1].to_s == "&"
           stop = entity_end(text, i)
           if stop > i
-            out = out + decode_entity(text[i, stop - i + 1].to_s)
+            out += decode_entity(text[i, stop - i + 1].to_s)
             i = stop + 1
           else
-            out = out + "&"
-            i = i + 1
+            out += "&"
+            i += 1
           end
         else
-          out = out + text[i, 1].to_s
-          i = i + 1
+          out += text[i, 1].to_s
+          i += 1
         end
       end
       out
@@ -1105,8 +1105,8 @@ module ActionText
       out = +""
       i = 1
       while i < list_depth
-        out = out + "  "
-        i = i + 1
+        out += "  "
+        i += 1
       end
       out
     end
@@ -1119,7 +1119,7 @@ module ActionText
     # trailing newline, not just one.
     def self.chomp_newlines(text)
       stop = text.length
-      stop = stop - 1 while stop > 0 && text[stop - 1, 1].to_s == "\n"
+      stop -= 1 while stop > 0 && text[stop - 1, 1].to_s == "\n"
       text[0, stop].to_s
     end
   end

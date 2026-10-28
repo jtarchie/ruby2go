@@ -120,7 +120,7 @@ module Tep
       already = @raw_body.bytesize
       if cl > already
         rest = Sock.sphttp_drain_body(client_fd, cl - already)
-        @raw_body = @raw_body + rest
+        @raw_body += rest
       end
       parse_body_params
       0
@@ -164,7 +164,7 @@ module Tep
         if chunk.bytesize == 0
           break   # peer closed mid-body
         end
-        @raw_body = @raw_body + chunk
+        @raw_body += chunk
       end
       parse_body_params
       0
@@ -189,7 +189,7 @@ module Tep
         if chunk.bytesize == 0
           break   # peer closed mid-body
         end
-        @raw_body = @raw_body + chunk
+        @raw_body += chunk
       end
       parse_body_params
       0

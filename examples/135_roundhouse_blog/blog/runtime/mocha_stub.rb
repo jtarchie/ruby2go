@@ -51,7 +51,7 @@ class MochaStub
 
   # The guard's first call: one more invocation seen.
   def record!
-    @seen = @seen + 1
+    @seen += 1
     nil
   end
 
@@ -91,7 +91,7 @@ class MochaStub
     i = 0
     while i < PENDING.length
       PENDING[i].verify!
-      i = i + 1
+      i += 1
     end
     PENDING.clear
     nil

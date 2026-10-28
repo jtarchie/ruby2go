@@ -479,7 +479,7 @@ class UserAgent
     while i < str.length
       ch = str[i, 1]
       if ch >= "0" && ch <= "9"
-        run = run + ch
+        run += ch
       else
         parts << run unless run.empty?
         run = ""

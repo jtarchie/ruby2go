@@ -153,9 +153,9 @@ module ActiveSupport
     head = +""
     i = 0
     while i < n - 1
-      head = head + ", " if i > 0
-      head = head + list[i].to_s
-      i = i + 1
+      head += ", " if i > 0
+      head += list[i].to_s
+      i += 1
     end
     "#{head}, and #{list[n - 1]}"
   end

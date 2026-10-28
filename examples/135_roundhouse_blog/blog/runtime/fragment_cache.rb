@@ -59,7 +59,7 @@ module Rails
       SHARD_LOCKS.push(Mutex.new)
       SHARD_ENTRIES.push({})
       SHARD_EXPIRES.push({})
-      i = i + 1
+      i += 1
     end
 
     # Which shard owns a key. Read from the TAIL, because that is where
@@ -162,7 +162,7 @@ module Rails
           SHARD_ENTRIES[s].clear
           SHARD_EXPIRES[s].clear
         end
-        s = s + 1
+        s += 1
       end
       nil
     end

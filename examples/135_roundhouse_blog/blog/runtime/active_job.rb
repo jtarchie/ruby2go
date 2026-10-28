@@ -155,7 +155,7 @@ module ActiveJob
       work = PENDING.shift
       begin
         work.call
-        ran = ran + 1
+        ran += 1
       rescue StandardError => e
         warn "[job] a queued job raised: " + e.message
       end

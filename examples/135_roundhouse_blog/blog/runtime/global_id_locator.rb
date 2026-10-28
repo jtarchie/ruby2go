@@ -115,7 +115,7 @@ module GlobalID
       while i < text.length
         c = text[i]
         return text if c < "0" || c > "9"
-        i = i + 1
+        i += 1
       end
       text.to_i
     end

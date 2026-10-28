@@ -350,7 +350,7 @@ class IPAddr
     out = +""
     shift = 12
     while shift >= 0
-      out = out + digits[(value >> shift) & 0xf, 1]
+      out += digits[(value >> shift) & 0xf, 1]
       shift -= 4
     end
     out

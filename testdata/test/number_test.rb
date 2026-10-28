@@ -1712,7 +1712,7 @@ module NumberTests
       num_c += Num.new(3)
       assert_equal 6, num_c.v
       num_d = Num.new(10)
-      num_d = num_d + Num.new(5)
+      num_d += Num.new(5)
       assert_equal 15, num_d.v
     end
 

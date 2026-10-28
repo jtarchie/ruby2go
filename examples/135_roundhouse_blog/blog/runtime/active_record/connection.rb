@@ -122,9 +122,9 @@ module ActiveRecord
       out = ""
       i = 0
       while i < parts.length
-        out = out + parts[i].to_s
+        out += parts[i].to_s
         bind = i + 1
-        out = out + ActiveRecord.adapter.escape_value(statement[bind]) if bind < statement.length
+        out += ActiveRecord.adapter.escape_value(statement[bind]) if bind < statement.length
         i += 1
       end
       out

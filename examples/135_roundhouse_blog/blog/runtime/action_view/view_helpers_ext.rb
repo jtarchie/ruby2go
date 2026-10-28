@@ -58,7 +58,7 @@ module ActionView
       i = int.length
       while i > 3
         out = "," + int[i - 3, 3].to_s + out
-        i = i - 3
+        i -= 3
       end
       out = int[0, i].to_s + out
       sign + out
@@ -82,9 +82,9 @@ module ActionView
         # isn't in the proven surface.
         c = name[i, 1].to_s
         if c != "]"
-          out = out + ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-:.".include?(c) ? c : "_")
+          out += ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-:.".include?(c) ? c : "_")
         end
-        i = i + 1
+        i += 1
       end
       out
     end
@@ -146,8 +146,8 @@ module ActionView
       n = neg ? -value : value
       idx = 0
       while n >= 1000 && idx < units.length - 1
-        n = n / 1000
-        idx = idx + 1
+        n /= 1000
+        idx += 1
       end
       num = neg ? "-" + n.to_s : n.to_s
       format.sub("%n", num).sub("%u", units[idx]).strip
@@ -309,24 +309,24 @@ module ActionView
             after = tag_end_index(s, i)
             i = after.nil? ? n : after
           else
-            out = out + "&lt;"
-            i = i + 1
+            out += "&lt;"
+            i += 1
           end
         elsif c == ">"
-          out = out + "&gt;"
-          i = i + 1
+          out += "&gt;"
+          i += 1
         elsif c == "&"
           len = entity_reference_length(s, i)
           if len == 0
-            out = out + "&amp;"
-            i = i + 1
+            out += "&amp;"
+            i += 1
           else
-            out = out + s[i, len].to_s
-            i = i + len
+            out += s[i, len].to_s
+            i += len
           end
         else
-          out = out + c
-          i = i + 1
+          out += c
+          i += 1
         end
       end
       out
@@ -477,7 +477,7 @@ module ActionView
       while i < n
         c = raw[i, 1].to_s
         break if sanitize_space?(c) || c == "/"
-        i = i + 1
+        i += 1
       end
       raw[0, i].to_s.downcase
     end
@@ -495,7 +495,7 @@ module ActionView
                 "different grammar; see runtime/ruby/action_view/view_helpers_ext.rb"
         end
         allowed.push(t) if t != "" && t != "mglyph" && t != "malignmark" && !allowed.include?(t)
-        ti = ti + 1
+        ti += 1
       end
       attrs = [""]
       attrs.pop
@@ -509,7 +509,7 @@ module ActionView
                 "runtime/ruby/action_view/view_helpers_ext.rb"
         end
         attrs.push(a) if a != "" && !attrs.include?(a)
-        ai = ai + 1
+        ai += 1
       end
 
       open_stack = [""]
@@ -561,7 +561,7 @@ module ActionView
                   # escape it like text. (These names cannot be in
                   # `allowed` — the engine refused them above.)
                   close_at = sanitize_rawtext_close_at(s, after, name)
-                  out = out + sanitize_text(s[after, close_at - after].to_s)
+                  out += sanitize_text(s[after, close_at - after].to_s)
                   if close_at >= n
                     i = n
                   else
@@ -569,7 +569,7 @@ module ActionView
                     i = gt.nil? ? n : gt + 1
                   end
                 elsif allowed.include?(name)
-                  out = out + sanitize_open_tag(name, raw, attrs)
+                  out += sanitize_open_tag(name, raw, attrs)
                   open_stack.push(name) unless sanitize_void_elements.include?(name)
                   i = after
                 else
@@ -580,24 +580,24 @@ module ActionView
               end
             end
           else
-            out = out + "&lt;"
-            i = i + 1
+            out += "&lt;"
+            i += 1
           end
         elsif c == ">"
-          out = out + "&gt;"
-          i = i + 1
+          out += "&gt;"
+          i += 1
         elsif c == "&"
           len = entity_reference_length(s, i)
           if len == 0
-            out = out + "&amp;"
-            i = i + 1
+            out += "&amp;"
+            i += 1
           else
-            out = out + s[i, len].to_s
-            i = i + len
+            out += s[i, len].to_s
+            i += len
           end
         else
-          out = out + c
-          i = i + 1
+          out += c
+          i += 1
         end
       end
       # Close anything the input left open, innermost first — measured:
@@ -625,9 +625,9 @@ module ActionView
           return n if te.nil?
           raw = s[lt + 1, te - lt - 2].to_s
           if raw[0, 1].to_s == "/"
-            depth = depth - 1 if sanitize_tag_name(raw[1, raw.length - 1].to_s) == name
+            depth -= 1 if sanitize_tag_name(raw[1, raw.length - 1].to_s) == name
           elsif sanitize_tag_name(raw) == name && raw[raw.length - 1, 1].to_s != "/"
-            depth = depth + 1
+            depth += 1
           end
           j = te
         else
@@ -672,35 +672,35 @@ module ActionView
       while i < n
         c = raw[i, 1].to_s
         break if sanitize_space?(c)
-        i = i + 1
+        i += 1
       end
       while i < n
         c = raw[i, 1].to_s
         if sanitize_space?(c) || c == "/"
-          i = i + 1
+          i += 1
         else
           astart = i
           while i < n
             c = raw[i, 1].to_s
             break if sanitize_space?(c) || c == "="
-            i = i + 1
+            i += 1
           end
           aname = raw[astart, i - astart].to_s.downcase
-          i = i + 1 while i < n && sanitize_space?(raw[i, 1].to_s)
+          i += 1 while i < n && sanitize_space?(raw[i, 1].to_s)
           value = ""
           if raw[i, 1].to_s == "="
-            i = i + 1
-            i = i + 1 while i < n && sanitize_space?(raw[i, 1].to_s)
+            i += 1
+            i += 1 while i < n && sanitize_space?(raw[i, 1].to_s)
             q = raw[i, 1].to_s
             if ["\"", "'"].include?(q)
-              i = i + 1
+              i += 1
               vstart = i
-              i = i + 1 while i < n && raw[i, 1].to_s != q
+              i += 1 while i < n && raw[i, 1].to_s != q
               value = raw[vstart, i - vstart].to_s
-              i = i + 1 if i < n
+              i += 1 if i < n
             else
               vstart = i
-              i = i + 1 while i < n && !sanitize_space?(raw[i, 1].to_s)
+              i += 1 while i < n && !sanitize_space?(raw[i, 1].to_s)
               value = raw[vstart, i - vstart].to_s
             end
           end
@@ -721,7 +721,7 @@ module ActionView
       n = value.length
       while i < n
         return false if value[i, 1].to_s.ord > 32
-        i = i + 1
+        i += 1
       end
       true
     end
@@ -735,23 +735,23 @@ module ActionView
       while i < n
         c = t[i, 1].to_s
         if c == "<"
-          out = out + "&lt;"
-          i = i + 1
+          out += "&lt;"
+          i += 1
         elsif c == ">"
-          out = out + "&gt;"
-          i = i + 1
+          out += "&gt;"
+          i += 1
         elsif c == "&"
           len = entity_reference_length(t, i)
           if len == 0
-            out = out + "&amp;"
-            i = i + 1
+            out += "&amp;"
+            i += 1
           else
-            out = out + t[i, len].to_s
-            i = i + len
+            out += t[i, len].to_s
+            i += len
           end
         else
-          out = out + c
-          i = i + 1
+          out += c
+          i += 1
         end
       end
       out
@@ -767,20 +767,20 @@ module ActionView
       while i < n
         c = value[i, 1].to_s
         if c == "\""
-          out = out + "&quot;"
-          i = i + 1
+          out += "&quot;"
+          i += 1
         elsif c == "&"
           len = entity_reference_length(value, i)
           if len == 0
-            out = out + "&amp;"
-            i = i + 1
+            out += "&amp;"
+            i += 1
           else
-            out = out + value[i, len].to_s
-            i = i + len
+            out += value[i, len].to_s
+            i += len
           end
         else
-          out = out + c
-          i = i + 1
+          out += c
+          i += 1
         end
       end
       out
@@ -812,7 +812,7 @@ module ActionView
       while i < n
         c = t[i, 1].to_s
         break unless c != "" && "abcdefghijklmnopqrstuvwxyz0123456789+-.".include?(c)
-        i = i + 1
+        i += 1
       end
       sep = sanitize_uri_separator_length(t, i)
       return true if sep == 0
@@ -824,8 +824,8 @@ module ActionView
         while j < n
           c = t[j, 1].to_s
           break if [";", ","].include?(c)
-          m = m + c
-          j = j + 1
+          m += c
+          j += 1
         end
         return sanitize_data_mediatypes.include?(m)
       end
@@ -843,11 +843,11 @@ module ActionView
         return 7 if t[i + 2, 5] == "37;3a"
         j = i + 2
         if t[j, 1].to_s == "x"
-          j = j + 1
-          j = j + 1 while t[j, 1].to_s == "0"
+          j += 1
+          j += 1 while t[j, 1].to_s == "0"
           return j + 2 - i if t[j, 2] == "3a"
         else
-          j = j + 1 while t[j, 1].to_s == "0"
+          j += 1 while t[j, 1].to_s == "0"
           return j + 2 - i if t[j, 2] == "58"
         end
       end
@@ -863,8 +863,8 @@ module ActionView
       while i < n
         c = value[i, 1].to_s
         o = c.ord
-        out = out + c unless o <= 32 || o == 127 || (o >= 128 && o <= 257) || c == "`"
-        i = i + 1
+        out += c unless o <= 32 || o == 127 || (o >= 128 && o <= 257) || c == "`"
+        i += 1
       end
       out
     end
@@ -886,8 +886,8 @@ module ActionView
       n = value.length
       while i < n
         if value[i, 1].to_s != "&"
-          out = out + value[i, 1].to_s
-          i = i + 1
+          out += value[i, 1].to_s
+          i += 1
         else
           rep = ""
           len = 0
@@ -915,17 +915,17 @@ module ActionView
             marker = value[j, 1].to_s
             if marker == "x" || (!first_pass && marker == "X")
               hex = true
-              j = j + 1
+              j += 1
             end
             digits = hex ? "0123456789abcdefABCDEF" : "0123456789"
             dstart = j
-            j = j + 1 while j < n && digits.include?(value[j, 1].to_s) && value[j, 1].to_s != ""
+            j += 1 while j < n && digits.include?(value[j, 1].to_s) && value[j, 1].to_s != ""
             if j > dstart
               semi = value[j, 1].to_s == ";"
               if semi || !first_pass
                 dtext = value[dstart, j - dstart].to_s
                 k = 0
-                k = k + 1 while k < dtext.length && dtext[k, 1].to_s == "0"
+                k += 1 while k < dtext.length && dtext[k, 1].to_s == "0"
                 sig = dtext.length - k
                 if sig <= (hex ? 6 : 7)
                   cp = dtext.to_i(hex ? 16 : 10)
@@ -939,11 +939,11 @@ module ActionView
             end
           end
           if len == 0
-            out = out + "&"
-            i = i + 1
+            out += "&"
+            i += 1
           else
-            out = out + rep
-            i = i + len
+            out += rep
+            i += len
           end
         end
       end
@@ -996,7 +996,7 @@ module ActionView
         elsif c == ">"
           out = j + 1
         end
-        j = j + 1
+        j += 1
       end
       out
     end
@@ -1011,9 +1011,9 @@ module ActionView
       j = i + 1
       digits = ""
       if s[j, 1].to_s == "#"
-        j = j + 1
+        j += 1
         if ["x", "X"].include?(s[j, 1].to_s)
-          j = j + 1
+          j += 1
           digits = "0123456789abcdefABCDEF"
         else
           digits = "0123456789"
@@ -1024,7 +1024,7 @@ module ActionView
         return 0 unless "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".include?(s[j, 1].to_s) && s[j, 1].to_s != ""
       end
       start = j
-      j = j + 1 while j < n && digits.include?(s[j, 1].to_s) && s[j, 1].to_s != ""
+      j += 1 while j < n && digits.include?(s[j, 1].to_s) && s[j, 1].to_s != ""
       return 0 if j == start
       return 0 unless s[j, 1].to_s == ";"
       j + 1 - i
@@ -1139,8 +1139,8 @@ module ActionView
         if c == "<"
           open_lt = i
           open_lt_closes = !s.index(">", i).nil?
-          out = out + c
-          i = i + 1
+          out += c
+          i += 1
         elsif c == ">" && open_lt >= 0
           # The anchor state turns over HERE and not at the `<`: the
           # gem's second clause is `pre.rindex(/<a\b.*?>/i)`, which
@@ -1150,24 +1150,24 @@ module ActionView
           in_anchor = false if auto_link_anchor_close?(tag)
           open_lt = -1
           open_lt_closes = false
-          out = out + c
-          i = i + 1
+          out += c
+          i += 1
         elsif in_anchor || (open_lt >= 0 && open_lt_closes && i >= open_lt + 2)
-          out = out + c
-          i = i + 1
+          out += c
+          i += 1
         else
           len = do_urls ? auto_link_url_length(s, i) : 0
           if len > 0
-            out = out + auto_link_url(s[i, len].to_s, html)
-            i = i + len
+            out += auto_link_url(s[i, len].to_s, html)
+            i += len
           else
             len = do_emails ? auto_link_email_length(s, i) : 0
             if len > 0
-              out = out + mail_to(s[i, len].to_s, "", html)
-              i = i + len
+              out += mail_to(s[i, len].to_s, "", html)
+              i += len
             else
-              out = out + c
-              i = i + 1
+              out += c
+              i += 1
             end
           end
         end
@@ -1198,7 +1198,7 @@ module ActionView
       j = auto_link_url_prefix_end(s, i)
       return 0 if j == 0
       k = j
-      k = k + 1 while k < n && auto_link_url_char?(s[k, 1].to_s)
+      k += 1 while k < n && auto_link_url_char?(s[k, 1].to_s)
       return 0 if k == j
       k - i
     end
@@ -1274,7 +1274,7 @@ module ActionView
         # STATEMENT: used as a value it types as an Option on the
         # strict targets, and `last` is the same character anyway.
         punctuation.pop
-        href = href + last
+        href += last
         break
       end
       # `&gt;` survives the loop above (`;` is a keeper) and is not part
@@ -1331,8 +1331,8 @@ module ActionView
       i = 0
       n = s.length
       while i < n
-        count = count + 1 if s[i, 1].to_s == c
-        i = i + 1
+        count += 1 if s[i, 1].to_s == c
+        i += 1
       end
       count
     end
@@ -1370,12 +1370,12 @@ module ActionView
       return 0 if i > 0 && auto_link_email_local_char?(s[i - 1, 1].to_s)
       return 0 unless auto_link_email_start_char?(s[i, 1].to_s)
       j = i + 1
-      j = j + 1 if s[j, 1].to_s == "."
-      j = j + 1 while j < n && auto_link_email_local_char?(s[j, 1].to_s)
+      j += 1 if s[j, 1].to_s == "."
+      j += 1 while j < n && auto_link_email_local_char?(s[j, 1].to_s)
       return 0 unless s[j, 1].to_s == "@"
-      j = j + 1
+      j += 1
       k = j
-      k = k + 1 while k < n && auto_link_email_domain_char?(s[k, 1].to_s)
+      k += 1 while k < n && auto_link_email_domain_char?(s[k, 1].to_s)
       return 0 if k == j
       # `(?:\.[\w-]+)+` — one label is not a domain.
       labels = 0
@@ -1384,10 +1384,10 @@ module ActionView
         more = false
         next unless s[k, 1].to_s == "."
         m = k + 1
-        m = m + 1 while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
+        m += 1 while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
         next unless m > k + 1
         k = m
-        labels = labels + 1
+        labels += 1
         more = true
       end
       return 0 if labels == 0

@@ -107,7 +107,7 @@ module Nokogiri
       while i < keys.length
         value = attributes.fetch(keys[i], nil)
         return true if !value.nil? && value.start_with?(prefixes[i])
-        i = i + 1
+        i += 1
       end
       false
     end

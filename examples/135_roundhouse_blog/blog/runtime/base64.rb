@@ -30,7 +30,7 @@ module Base64
       out << ALPHABET[((b0 << 4) | (b1 >> 4)) & 0x3F].to_s
       out << ALPHABET[((b1 << 2) | (b2 >> 6)) & 0x3F].to_s
       out << ALPHABET[b2 & 0x3F].to_s
-      i = i + 3
+      i += 3
     end
     rem = n - i
     if rem == 1
@@ -62,7 +62,7 @@ module Base64
     n = s.length
     while i < n
       val = char_value(s[i])
-      i = i + 1
+      i += 1
       if val < 0
         next # padding "=" or stray byte
       end
@@ -71,9 +71,9 @@ module Base64
       # Bignum in Ruby, and on a fixed-width Integer a silent wrap that
       # spinel now raises on (`integer overflow in <<`, e3883499).
       acc = ((acc << 6) | val) & 0xFFFF
-      nbits = nbits + 6
+      nbits += 6
       next unless nbits >= 8
-      nbits = nbits - 8
+      nbits -= 8
       byte = (acc >> nbits) & 0xFF
       out << byte.chr
     end
@@ -86,7 +86,7 @@ module Base64
     idx = 0
     while idx < 64
       return idx if ALPHABET[idx] == c
-      idx = idx + 1
+      idx += 1
     end
     -1
   end
@@ -115,7 +115,7 @@ module Base64
              else
         c.to_s
              end
-      i = i + 1
+      i += 1
     end
     out
   end
@@ -133,7 +133,7 @@ module Base64
   def self.urlsafe_encode64_nopad(s)
     out = urlsafe_encode64(s)
     n = out.length
-    n = n - 1 while n > 0 && out[n - 1] == "="
+    n -= 1 while n > 0 && out[n - 1] == "="
     out[0, n].to_s
   end
 
@@ -152,7 +152,7 @@ module Base64
              else
         c.to_s
              end
-      i = i + 1
+      i += 1
     end
     strict_decode64(std)
   end

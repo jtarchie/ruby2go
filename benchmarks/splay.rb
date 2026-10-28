@@ -42,7 +42,7 @@ class SplayTree
         @root = node
       end
     end
-    @size = @size + 1
+    @size += 1
   end
 
   def find(key)
@@ -102,7 +102,7 @@ idx = 0
 while idx < 25000
   key = (idx * 7919) % 100000
   tree.insert(key, idx)
-  idx = idx + 1
+  idx += 1
 end
 
 # Find known keys
@@ -111,8 +111,8 @@ idx = 0
 while idx < 25000
   key = (idx * 7919) % 100000
   result = tree.find(key)
-  found = found + 1 if result == key
-  idx = idx + 1
+  found += 1 if result == key
+  idx += 1
 end
 
 puts found
