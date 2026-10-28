@@ -344,7 +344,7 @@ module Cable
       return 0
     end
     per = (n + BEAT_SLICES - 1) / BEAT_SLICES
-    pause = PING_INTERVAL.to_f / BEAT_SLICES.to_f
+    pause = PING_INTERVAL.to_f / BEAT_SLICES
     i = 0
     slice = 0
     while slice < BEAT_SLICES
