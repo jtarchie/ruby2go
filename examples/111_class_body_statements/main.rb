@@ -5,14 +5,14 @@
 
 class Table
   ROWS = {}
-  %w(one two three).each do |word|
+  %w[one two three].each do |word|
     ROWS[word] = word.upcase
   end
 end
 
 module Registry
   NAMES = []
-  %w(alpha beta).each { |name| NAMES << name }
+  %w[alpha beta].each { |name| NAMES << name }
 end
 
 puts Table::ROWS.inspect

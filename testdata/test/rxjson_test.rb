@@ -509,8 +509,8 @@ module RxjsonTests
       assert_equal "/a+?/ =~ \"aaa\": 0", (rxjson_show(/a+?/, "aaa"))
       assert_equal "/a??b/ =~ \"ab\": 0", (rxjson_show(/a??b/, "ab"))
       assert_equal "/a/i", (%r{a}i).inspect
-      assert_equal "x/y", %r[x/y].source
-      assert_equal "/q/", (%r!q!).inspect
+      assert_equal "x/y", %r{x/y}.source
+      assert_equal "/q/", (%r{q}).inspect
       assert_equal "(?m-ix:\\d+)", %r{\d+}m.to_s
     end
 

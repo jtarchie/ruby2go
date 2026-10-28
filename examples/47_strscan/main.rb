@@ -65,8 +65,8 @@ p StringScanner.new("a\nb").tap { |s| s.scan(/a\n/) }.beginning_of_line?
 p StringScanner.new("abc").scan(/^b/), StringScanner.new("abc").tap { |s| s.getch }.scan(/^b/)
 
 puts "== shellwords"
-p Shellwords.split(%q{cp "my file.txt" 'other dir/' plain\ word x"y z"w})
-p "a  b\tc\n".shellsplit, Shellwords.shellwords(%q{"esc \" \$ \\ \a"})
+p Shellwords.split(%q(cp "my file.txt" 'other dir/' plain\ word x"y z"w))
+p "a  b\tc\n".shellsplit, Shellwords.shellwords(%q("esc \" \$ \\ \a"))
 p Shellwords.escape("it's a $test"), "".shellescape, "multi\nline".shellescape, "héllo".shellescape
 p ["ls", "-la", "a b"].shelljoin, Shellwords.join(["x", "y;z"])
 begin
