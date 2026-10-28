@@ -16,12 +16,12 @@ module Sock
   # recv uses the `:binstr` return mode (matz/spinel ac1e0d2c) — builds a
   # binary-safe String from (ptr, sp_net_bin_len) rather than strlen, so a
   # recv'd 0x00 no longer truncates.
-  ffi_func :sp_net_listen,                %i[int int],       :int
+  ffi_func :sp_net_listen,                %i[int int], :int
   ffi_func :sp_net_accept,                [:int],             :int
   ffi_func :sp_net_accept_nb,             [:int],             :int
   ffi_func :sp_net_set_nonblock,          [:int],             :int
   ffi_func :sp_net_close,                 [:int],             :int
-  ffi_func :sp_net_write_str,             %i[int str],       :int
+  ffi_func :sp_net_write_str,             %i[int str], :int
   ffi_func :sp_net_write_bytes,           %i[int str int], :int
   ffi_func :sp_net_recv_some,             %i[int int],       :binstr
   ffi_func :sp_net_recv_all,              %i[int int],       :binstr
@@ -33,10 +33,10 @@ module Sock
   ffi_func :sp_net_install_term_handlers, [],                 :int
   ffi_func :sp_net_shutdown_requested,    [],                 :int
   ffi_func :sp_net_poll_reset,            [],                 :int
-  ffi_func :sp_net_poll_add,              %i[int int],       :int
+  ffi_func :sp_net_poll_add,              %i[int int], :int
   ffi_func :sp_net_poll_run,              [:int],             :int
   ffi_func :sp_net_poll_ready,            [:int],             :int
-  ffi_func :sp_net_shell_capture,         %i[str int],       :binstr
+  ffi_func :sp_net_shell_capture,         %i[str int], :binstr
 
   # Delegators: keep the existing `Sock.sphttp_*` call sites unchanged
   # while routing them through sp_net (Stage 1 of retiring sphttp.c).

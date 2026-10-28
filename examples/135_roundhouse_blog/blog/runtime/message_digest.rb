@@ -23,7 +23,7 @@ module SpCrypto
   ffi_func :sp_crypto_hmac_sha1_hex,            %i[str str],             :str
   ffi_func :sp_crypto_hmac_sha256_hex,          %i[str str],             :str
   ffi_func :sp_crypto_pbkdf2_sha256_b64url_len, %i[str str int int], :str
-  ffi_func :sp_crypto_b64url_decode,            [:str],                   :str
+  ffi_func :sp_crypto_b64url_decode,            [:str], :str
 end
 
 module MessageDigest

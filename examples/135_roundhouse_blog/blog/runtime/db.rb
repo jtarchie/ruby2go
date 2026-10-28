@@ -68,7 +68,7 @@ module SQL
   # `sqlite3_open` uses, so a non-URI path opens identically either way.
   ffi_const :OPEN_URI_RWC, 70
 
-  ffi_func :sqlite3_open,              %i[str ptr],                          :int
+  ffi_func :sqlite3_open,              %i[str ptr], :int
   # `sqlite3_open` honors a `file:` URI only on a build compiled with
   # SQLITE_USE_URI; Ubuntu's is, but that is a property of the distro's sqlite
   # and not of this program. `open_v2` takes the flag explicitly, so a URI path
@@ -77,17 +77,17 @@ module SQL
   # `file:x?mode=memory&cache=shared` string as a FILENAME and cheerfully
   # creates a file with that name, so the process serves a fresh empty database
   # from disk while every log line says it opened the one that was asked for.
-  ffi_func :sqlite3_open_v2,           %i[str ptr int str],              :int
-  ffi_func :sqlite3_close,             [:ptr],                                :int
+  ffi_func :sqlite3_open_v2,           %i[str ptr int str], :int
+  ffi_func :sqlite3_close,             [:ptr], :int
   # Online backup — copies one open database over another at the PAGE level.
   # Used to seed an in-memory database from a file: it replaces the whole
   # destination, so schema DDL already run against the empty destination is
   # simply superseded rather than conflicting. `step(-1)` means "all remaining
   # pages in one call", which is what a boot-time seed wants (the incremental
   # form exists to avoid holding a lock, and at boot nothing else is reading).
-  ffi_func :sqlite3_backup_init,       %i[ptr str ptr str],              :ptr
-  ffi_func :sqlite3_backup_step,       %i[ptr int],                          :int
-  ffi_func :sqlite3_backup_finish,     [:ptr],                                :int
+  ffi_func :sqlite3_backup_init,       %i[ptr str ptr str], :ptr
+  ffi_func :sqlite3_backup_step,       %i[ptr int], :int
+  ffi_func :sqlite3_backup_finish,     [:ptr], :int
   ffi_func :sqlite3_exec,              %i[ptr str ptr ptr ptr],        :int
   ffi_func :sqlite3_prepare_v2,        %i[ptr str int ptr ptr],        :int
   ffi_func :sqlite3_step,              [:ptr],                                :int
@@ -107,8 +107,8 @@ module SQL
   # returning — safe even if the Ruby string is later GC'd. int→:ptr
   # coercion for the -1 destructor is the spinel primitive validated in
   # spinel's test/ffi_ptr_int_literal.rb.
-  ffi_func :sqlite3_bind_int64,        %i[ptr int long],                   :int
-  ffi_func :sqlite3_bind_text,         %i[ptr int str int ptr],        :int
+  ffi_func :sqlite3_bind_int64,        %i[ptr int long], :int
+  ffi_func :sqlite3_bind_text,         %i[ptr int str int ptr], :int
   # `sqlite3_column_type` reports the storage class of a column in the
   # current row; 5 is SQLITE_NULL. The nullable-column reads below need
   # it because `sqlite3_column_int` cannot distinguish a stored 0 from
@@ -117,8 +117,8 @@ module SQL
   ffi_func :sqlite3_column_int,        %i[ptr int],                          :int
   ffi_func :sqlite3_column_double,     %i[ptr int],                          :double
   ffi_func :sqlite3_column_text,       %i[ptr int],                          :str
-  ffi_func :sqlite3_column_count,      [:ptr],                                :int
-  ffi_func :sqlite3_column_name,       %i[ptr int],                          :str
+  ffi_func :sqlite3_column_count,      [:ptr], :int
+  ffi_func :sqlite3_column_name,       %i[ptr int], :str
   ffi_func :sqlite3_errmsg,            [:ptr],                                :str
   ffi_func :sqlite3_last_insert_rowid, [:ptr],                                :long
   ffi_func :sqlite3_changes,           [:ptr],                                :int
