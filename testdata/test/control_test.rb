@@ -6243,7 +6243,7 @@ module ControlTests
       ((big - 1)..big).each { |i| got << i - big }
       assert_equal [-1, 0, -1, -1, 0], got
       calls = 0
-      lim = -> { calls += 1
+      lim = lambda { calls += 1
  3 }
       1.upto(lim.call) { |i| calls += i * 0 }
       lim.call.times { calls += 0 }
