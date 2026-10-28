@@ -4088,8 +4088,7 @@ module ObjectTests
   # method's nil, `.class` on a tuple, `is_a?` on a generic value.
   class SumTypeGapsTest < Minitest::Test
     #: () -> void
-    def nothing
-    end
+    def nothing; end
 
     # @rbs [T] (T) -> bool
     def string?(x) = x.is_a?(String)

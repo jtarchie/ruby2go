@@ -269,8 +269,7 @@ module ActionController
     # `def fresh_when(_record, _record)` — a duplicate match variable,
     # which that target's `--warnings-as-errors` build rejects. Every
     # other method here already avoids the name; this one found out why.
-    def fresh_when(subject)
-    end
+    def fresh_when(subject); end
 
     def stale?(etag: nil)
       true

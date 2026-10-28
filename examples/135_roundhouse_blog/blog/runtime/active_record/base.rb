@@ -120,8 +120,7 @@ module ActiveRecord
     # the `_preload_<assoc>` caches — see `apply_preload_lowering`);
     # models without one fall back to this no-op, which leaves the lazy
     # association readers doing the work (correct, just N+1).
-    def self.preload_associations(_records, _specs)
-    end
+    def self.preload_associations(_records, _specs); end
 
     # Per-model adapter primitives — public AR API delegates here.
     # Default implementations route through the legacy
@@ -532,8 +531,7 @@ module ActiveRecord
     # a `nil` tail on a void method emits as a bare `None;` in rust
     # ("cannot infer type of the type parameter T"). An empty body is
     # the shape every target already renders for a no-op.
-    def _note_hydrated
-    end
+    def _note_hydrated; end
 
     # The argument-taking half of the ActiveModel::Dirty read surface,
     # for call sites that name the attribute at runtime rather than in

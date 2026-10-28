@@ -3,8 +3,7 @@ require 'rbconfig'
 module Kernel
   remove_method(:gem) if private_method_defined?(:gem)
 
-  def gem(*)
-  end
+  def gem(*); end
 
   private :gem
 end
