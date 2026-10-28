@@ -464,8 +464,8 @@ module HashTests
 
     # Core methods take braceless hashes too.
     def test_core_methods_take_braceless_hashes
-      assert_equal "[{a: 1}]", (([a: 1])).inspect
-      assert_equal "[1, {b: 2}]", (([1, b: 2])).inspect
+      assert_equal "[{a: 1}]", (([{a: 1}])).inspect
+      assert_equal "[1, {b: 2}]", (([1, {b: 2}])).inspect
       k = { a: 1 } #: Hash[Symbol, Integer]
       assert_equal "{a: 1, b: 2}", ((k.merge(b: 2))).inspect
       assert_equal "{a: 9}", ((k.merge(a: 9))).inspect
