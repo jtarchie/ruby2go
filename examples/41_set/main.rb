@@ -16,6 +16,7 @@ end
 def jaccard(a, b)
   union = a.tags | b.tags
   return 0.0 if union.empty?
+
   (a.tags & b.tags).size.to_f / union.size
 end
 
@@ -33,6 +34,7 @@ puts posts[1].tags.inspect
 posts.each_with_index do |a, i|
   posts.each_with_index do |b, j|
     next unless i < j
+
     puts "#{a.title} ~ #{b.title}: #{jaccard(a, b).round(2)} shared=#{(a.tags & b.tags).to_a.sort.inspect}"
   end
 end

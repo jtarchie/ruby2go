@@ -99,6 +99,7 @@ module GlobalID
     # minted" is an ordinary answer to that question.
     def self.decode(gid_param)
       return nil if gid_param.nil?
+
       value = Base64.urlsafe_decode64(gid_param.to_s)
       value.empty? ? nil : value
     rescue ArgumentError
@@ -111,10 +112,12 @@ module GlobalID
     # and anything else (a uuid pk) is passed through unchanged.
     def self.cast_id(text)
       return text if text.empty?
+
       i = 0
       while i < text.length
         c = text[i]
         return text if c < "0" || c > "9"
+
         i += 1
       end
       text.to_i

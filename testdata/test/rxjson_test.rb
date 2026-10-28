@@ -49,6 +49,7 @@ end
 #: (MatchData?) -> Array[String]
 def md_dump(m)
   return ["no match"] unless m
+
   out = [m.inspect, m.to_s.inspect, m.pre_match.inspect, m.post_match.inspect, m.captures.size.to_s]
   out << "[0]=#{m[0].inspect} [1]=#{m[1].inspect} [9]=#{m[9].inspect} [-9]=#{m[-9].inspect}"
   out << "[-1]=#{m[-1].inspect}" if m.captures.size > 0
@@ -59,6 +60,7 @@ end
 def num(s)
   m = s.match(/(\d+)/)
   return nil unless m
+
   m[1]
 end
 
@@ -962,6 +964,7 @@ b/
       "a=1\nb=2\nc".split("\n").each do |l|
         lm = l.match(/\A(\w)=(\d)\z/)
         next unless lm
+
         key = lm[1]
         kv[key] = lm[2] if key
       end

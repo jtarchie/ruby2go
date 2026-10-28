@@ -72,8 +72,10 @@ module RugarooBoot
         install_forwardable
         klass = tp.self
         next unless klass.is_a?(Class) || klass.is_a?(Module)
+
         name = safe_name(klass)
         next if name.nil? || name.empty? || @classes.key?(name)
+
         @classes[name] = { "name" => name, "super" => safe_name(klass.is_a?(Class) ? klass.superclass : nil),
                            "path" => tp.path, "line" => tp.lineno }
       end
@@ -306,6 +308,7 @@ module RugarooBoot
 
     def safe_name(obj)
       return nil if obj.nil?
+
       obj.is_a?(Module) ? MOD_NAME.bind_call(obj) : obj.to_s # not obj.name: a module may define its own (REXML::Functions.name)
     rescue StandardError
       nil
@@ -330,6 +333,7 @@ module RugarooBoot
       @classes.each_key do |name|
         owner = RugarooBoot.const_at(name)
         next unless owner.is_a?(Module)
+
         owner.instance_variables.each do |ivar|
           value = owner.instance_variable_get(ivar)
           out << describe_state(name, ivar.to_s, value)

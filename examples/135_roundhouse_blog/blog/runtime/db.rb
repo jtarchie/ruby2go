@@ -373,6 +373,7 @@ class DbConn
     while i < @entries.length
       e = @entries[i]
       return e.ptr if e.sql == sql
+
       i += 1
     end
     # `SQL.stmt_out` is ONE 8-byte out-buffer for the whole process (an
@@ -394,6 +395,7 @@ class DbConn
       st = rc == SQL::OK ? SQL.read_ptr(SQL.stmt_out) : 0
     end
     raise "Db.prepare failed (" + rc.to_s + "): " + SQL.sqlite3_errmsg(@dbh) + " — sql: " + sql if rc != SQL::OK
+
     @entries.push(Stmt.new(sql, st))
     st
   end
@@ -411,6 +413,7 @@ class DbConn
   # reason `Stmt` is a class and not a bare ptr.
   def trim!
     return nil if @entries.length <= CAP
+
     keep = []
     drop_before = @entries.length - CAP
     i = 0
@@ -480,8 +483,10 @@ class DbConn
   # Returns 0 as "no replay" so `Db.prepare` can tell the two apart.
   def qc_lookup(sql)
     return 0 if !@qc_on || sql.include?("?")
+
     e = @qc_by_sql[sql]
     return 0 if e.nil?
+
     @qc_cursors.push(QcCursor.new(e))
     @qc_cursors.length
   end
@@ -492,6 +497,7 @@ class DbConn
   def qc_record(sql, ptr)
     return nil if !@qc_on || sql.include?("?")
     return nil unless @qc_recording[ptr].nil?
+
     ncols = SQL.sqlite3_column_count(ptr)
     names = []
     i = 0
@@ -519,8 +525,10 @@ class DbConn
   # past the bound, drops the capture.
   def qc_record_step(ptr, has_row)
     return nil unless @qc_on
+
     e = @qc_recording[ptr]
     return nil if e.nil?
+
     if has_row
       if e.nrows >= QC_CAPTURE_ROWS
         @qc_recording.delete(ptr)
@@ -538,8 +546,10 @@ class DbConn
   # and promotes past it only if it wants more.
   def qc_install(ptr)
     return nil unless @qc_on
+
     e = @qc_recording[ptr]
     return nil if e.nil?
+
     @qc_recording.delete(ptr)
     @qc_by_sql[e.qc_sql] = e if @qc_by_sql[e.qc_sql].nil?
     nil
@@ -553,18 +563,21 @@ class DbConn
   def qc_ptr(handle)
     c = qc_cursor(handle)
     return nil unless c.promoted
+
     c.real_ptr
   end
 
   def qc_step?(handle)
     c = qc_cursor(handle)
     return SQL.sqlite3_step(c.real_ptr) == SQL::ROW if c.promoted
+
     e = c.qc_entry
     if c.row_pos + 1 < e.nrows
       c.advance_row
       return true
     end
     return false if e.eof
+
     # The first consumer stopped before the end and this one wants more:
     # re-run the real statement and fast-forward past what was replayed.
     ptr = prepare_cached(e.qc_sql)
@@ -598,6 +611,7 @@ class DbConn
     return c.qc_entry.cell_int(c.row_pos, i) if k == 1
     return c.qc_entry.cell_float(c.row_pos, i).to_i if k == 2
     return c.qc_entry.cell_text(c.row_pos, i).to_i if k == 3
+
     0
   end
 
@@ -607,6 +621,7 @@ class DbConn
     return c.qc_entry.cell_float(c.row_pos, i) if k == 2
     return c.qc_entry.cell_int(c.row_pos, i).to_f if k == 1
     return c.qc_entry.cell_text(c.row_pos, i).to_f if k == 3
+
     0.0
   end
 
@@ -616,6 +631,7 @@ class DbConn
     return c.qc_entry.cell_text(c.row_pos, i) if k == 3
     return c.qc_entry.cell_int(c.row_pos, i).to_s if k == 1
     return c.qc_entry.cell_float(c.row_pos, i).to_s if k == 2
+
     ""
   end
 
@@ -722,6 +738,7 @@ class DbPool
         # path are the only signals we can raise pre-handle.
         raise "Db.configure: sqlite3_open(" + path + ") failed (" + rc.to_s + ")"
       end
+
       dbh = SQL.read_ptr(SQL.db_out)
       # Deliberately not raising on a refused pragma. Every one of these is an
       # optimization or a politeness; none changes a query's RESULT. A build of
@@ -865,6 +882,7 @@ module Db
   def self.pool_for_thread
     pi = Thread.current[:db_pool]
     return @pools[pi] unless pi.nil?
+
     n = 0
     @assign_lock.synchronize do
       n = @next_pool
@@ -901,6 +919,7 @@ module Db
     dest = current_conn.dbh
     rc = SQL.sqlite3_open_v2(src_path, SQL.seed_out, SQL::OPEN_URI_RWC, nil)
     raise "Db.seed_from_file: cannot open " + src_path + " (" + rc.to_s + ")" if rc != SQL::OK
+
     src = SQL.read_ptr(SQL.seed_out)
     bk = SQL.sqlite3_backup_init(dest, "main", src, "main")
     if bk.nil?
@@ -915,6 +934,7 @@ module Db
     # DONE, not OK, is success for a completed step(-1); OK means pages remain,
     # which for -1 would mean it did not finish.
     raise "Db.seed_from_file: backup_step(" + src_path + ") -> " + step_rc.to_s if step_rc != SQL::DONE
+
     # The fixture ships without sqlite_stat1, and an unplanned database
     # misplans the hottest-stories SELECT into a full-table walk plus a
     # temp-btree sort instead of reading hotness_idx to the LIMIT. Every other
@@ -940,6 +960,7 @@ module Db
   def self.current_conn
     c = Thread.current[:db_conn]
     return c unless c.nil?
+
     @pools[0].first
   end
 
@@ -981,6 +1002,7 @@ module Db
 
   def self.close
     return if @pools.nil?
+
     i = 0
     while i < @pools.length
       @pools[i].close_all
@@ -1013,6 +1035,7 @@ module Db
     if rc != SQL::OK
       msg = SQL.sqlite3_errmsg(h)
       raise ActiveRecord::RecordNotUnique, msg if Db.unique_violation?(msg)
+
       raise "Db.exec failed (" + rc.to_s + "): " + msg + " — sql: " + sql
     end
   end
@@ -1084,6 +1107,7 @@ module Db
 
   def self.step?(stmt)
     return current_conn.qc_step?(stmt) if stmt.is_a?(Integer)
+
     has_row = SQL.sqlite3_step(stmt) == SQL::ROW
     current_conn.qc_record_step(stmt, has_row)
     has_row
@@ -1100,6 +1124,7 @@ module Db
     if stmt.is_a?(Integer)
       p = Db.replay_ptr(stmt)
       return current_conn.qc_int(stmt, i) if p.nil?
+
       stmt = p
     end
     SQL.sqlite3_column_int(stmt, i)
@@ -1109,6 +1134,7 @@ module Db
     if stmt.is_a?(Integer)
       p = Db.replay_ptr(stmt)
       return current_conn.qc_float(stmt, i) if p.nil?
+
       stmt = p
     end
     SQL.sqlite3_column_double(stmt, i)
@@ -1122,6 +1148,7 @@ module Db
     if stmt.is_a?(Integer)
       p = Db.replay_ptr(stmt)
       return current_conn.qc_text(stmt, i) if p.nil?
+
       stmt = p
     end
     s = SQL.sqlite3_column_text(stmt, i)
@@ -1162,6 +1189,7 @@ module Db
         return nil if k == 0
         return conn.qc_int(stmt, i) if k == 1
         return conn.qc_float(stmt, i) if k == 2
+
         return conn.qc_text(stmt, i)
       end
       stmt = p
@@ -1193,6 +1221,7 @@ module Db
       if p.nil?
         conn = current_conn
         return nil if conn.qc_kind(stmt, i) == 0
+
         return conn.qc_int(stmt, i)
       end
       stmt = p
@@ -1210,6 +1239,7 @@ module Db
       if p.nil?
         conn = current_conn
         return nil if conn.qc_kind(stmt, i) == 0
+
         return conn.qc_float(stmt, i)
       end
       stmt = p
@@ -1227,6 +1257,7 @@ module Db
       if p.nil?
         conn = current_conn
         return nil if conn.qc_kind(stmt, i) == 0
+
         return conn.qc_text(stmt, i)
       end
       stmt = p
@@ -1240,6 +1271,7 @@ module Db
       if p.nil?
         conn = current_conn
         return nil if conn.qc_kind(stmt, i) == 0
+
         return conn.qc_int(stmt, i) != 0
       end
       stmt = p
@@ -1255,6 +1287,7 @@ module Db
     if stmt.is_a?(Integer)
       p = Db.replay_ptr(stmt)
       return current_conn.qc_column_count(stmt) if p.nil?
+
       stmt = p
     end
     SQL.sqlite3_column_count(stmt)
@@ -1267,6 +1300,7 @@ module Db
     if stmt.is_a?(Integer)
       p = Db.replay_ptr(stmt)
       return current_conn.qc_column_name(stmt, i) if p.nil?
+
       stmt = p
     end
     s = SQL.sqlite3_column_name(stmt, i)
@@ -1298,11 +1332,13 @@ module Db
   # here starts clean.
   def self.bind_int(stmt, idx, value)
     return nil if stmt.is_a?(Integer)
+
     SQL.sqlite3_bind_int64(stmt, idx, value)
   end
 
   def self.bind_text(stmt, idx, value)
     return nil if stmt.is_a?(Integer)
+
     SQL.sqlite3_bind_text(stmt, idx, value, -1, -1)
   end
 
@@ -1310,6 +1346,7 @@ module Db
   # form and the INTEGER affinity `t.boolean` columns get.
   def self.bind_bool(stmt, idx, value)
     return nil if stmt.is_a?(Integer)
+
     SQL.sqlite3_bind_int64(stmt, idx, value ? 1 : 0)
   end
 

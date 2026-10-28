@@ -127,6 +127,7 @@ module ActionCable
       out = []
       Broadcasts.log.each do |entry|
         next if entry[:stream] != stream
+
         out << if entry[:action] == :message
                  entry[:payload].to_s
                else
@@ -297,6 +298,7 @@ module ActionCable
       # hole rather than the error.
       def current_user
         return nil if @connection.nil?
+
         @connection.current_user
       end
 
@@ -360,6 +362,7 @@ module ActionCable
 
       def self.strip_channel_suffix(text)
         return text[0, text.length - 7] if text.length > 7 && text[text.length - 7, 7] == "Channel"
+
         text
       end
 
@@ -443,6 +446,7 @@ module ActionCable
       def self.read(text, name)
         h = Parameters.object(text)
         return "" if h.nil?
+
         v = h[name]
         v.nil? ? "" : v.to_s
       end

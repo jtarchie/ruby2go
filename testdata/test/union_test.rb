@@ -38,6 +38,7 @@ def union_pick_inferred(b) = b ? 1 : "x"
 #: (Integer | String | nil) -> String
 def union_guard_nil(x)
   return "none" if x.nil?
+
   y = x #: Integer | String
   y.to_s
 end
@@ -45,6 +46,7 @@ end
 #: (Integer | String) -> String
 def union_guard_not(x)
   return "int" unless x.is_a?(String)
+
   x.upcase
 end
 

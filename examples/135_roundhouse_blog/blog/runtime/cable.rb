@@ -116,6 +116,7 @@ module Cable
       refused = true
     end
     return nil if refused
+
     conn
   end
 
@@ -176,8 +177,10 @@ module Cable
   def self.subscribe(ws, connection, identifier, holder)
     name = ActionCable::Channel::Parameters.read(identifier, "channel")
     return Cable.reject(ws, identifier) if name.length == 0
+
     channel = Cable.build_channel(name, connection, identifier)
     return Cable.reject(ws, identifier) if channel.nil?
+
     # A RAISE IS AN OUTCOME, NOT AN ESCAPE, and on this lane that is
     # load-bearing rather than tidy: tep has no per-request rescue, so
     # an unhandled error inside `subscribed` ends the PROCESS — every
@@ -201,6 +204,7 @@ module Cable
       return Cable.reject(ws, identifier)
     end
     return Cable.reject(ws, identifier) if channel.subscription_rejected?
+
     channel.streams.each do |stream|
       Tep::APP.cable_lock.synchronize do
         Tep::APP.cable_identifiers[stream] = identifier
@@ -237,8 +241,10 @@ module Cable
     frame = ActionCable::Channel::Parameters.object(data)
     return 0 if frame.nil?
     return 0 if frame["command"].to_s != "subscribe"
+
     identifier = frame["identifier"].to_s
     return 0 if identifier.length == 0
+
     Cable.subscribe(ws, connection, identifier, holder)
   end
 
@@ -621,6 +627,7 @@ module Cable
   def self.publish_raw(stream, message_json)
     id = Cable.identifier_for(stream)
     return nil if id.length == 0
+
     envelope = "{\"identifier\":" + JSON.generate(id) +
                ",\"message\":" + message_json + "}"
     Tep::Broadcast.publish(stream, envelope)
@@ -637,6 +644,7 @@ module Cable
       if id.length == 0
         return nil # no subscriber has named this stream yet
       end
+
       envelope = "{\"identifier\":" + JSON.generate(id) +
                  ",\"message\":" + JSON.generate(fragment) + "}"
       Tep::Broadcast.publish(stream, envelope)

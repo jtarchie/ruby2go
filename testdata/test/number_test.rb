@@ -93,12 +93,14 @@ end
 #: (Integer?) -> Integer
 def double_or_zero(x)
   return 0 unless x
+
   x * 2
 end
 
 #: (Float?) -> Float
 def number_half(x)
   return -1.0 if x.nil?
+
   x / 2.0
 end
 
@@ -197,6 +199,7 @@ class Integer
   #: () -> String
   def ordinal
     return "#{self}th" if (self % 100).between?(11, 13)
+
     case self % 10
     when 1 then "#{self}st"
     when 2 then "#{self}nd"
@@ -1568,16 +1571,19 @@ module NumberTests
       10.times do |i|
         next if i.odd?
         break if i > 6
+
         seen << i
       end
       assert_equal [0, 2, 4, 6], seen
       seen = []
       1.upto(10) do |i|
         break if i == 4
+
         seen << i
       end
       10.downto(1) do |i|
         next unless i % 4 == 0
+
         seen << i
       end
       assert_equal [1, 2, 3, 8, 4], seen
@@ -1605,6 +1611,7 @@ module NumberTests
       1.upto(3) do |i|
         i.downto(1) do |j|
           next if j == 2
+
           total += i * j
         end
       end
@@ -1636,6 +1643,7 @@ module NumberTests
         10.times do |i|
           break if i > k
           next if i.zero?
+
           s += i
         end
         s

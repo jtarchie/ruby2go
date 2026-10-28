@@ -62,6 +62,7 @@ class SplayTree
     while true
       if key < t.key
         break if t.left.nil?
+
         if key < t.left.key
           y = t.left
           t.left = y.right
@@ -74,6 +75,7 @@ class SplayTree
         t = t.left
       elsif key > t.key
         break if t.right.nil?
+
         if key > t.right.key
           y = t.right
           t.right = y.left

@@ -66,6 +66,7 @@ module Base64
       if val < 0
         next # padding "=" or stray byte
       end
+
       # Masked: only the low `nbits + 6` bits (at most 13) are ever
       # read, and an unmasked accumulator grows without bound — a
       # Bignum in Ruby, and on a fixed-width Integer a silent wrap that
@@ -73,6 +74,7 @@ module Base64
       acc = ((acc << 6) | val) & 0xFFFF
       nbits += 6
       next unless nbits >= 8
+
       nbits -= 8
       byte = (acc >> nbits) & 0xFF
       out << byte.chr
@@ -86,6 +88,7 @@ module Base64
     idx = 0
     while idx < 64
       return idx if ALPHABET[idx] == c
+
       idx += 1
     end
     -1

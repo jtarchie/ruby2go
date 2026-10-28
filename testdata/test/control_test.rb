@@ -106,6 +106,7 @@ def tail_ret(out, n)
   begin
     return 5 if n == 1
     raise "x" if n == 2
+
     n * 10
   rescue StandardError
     -1
@@ -119,6 +120,7 @@ def tail_void(out, n)
   out << "start"
   begin
     return if n == 1
+
     out << "mid #{n}"
   ensure
     out << "ens #{n}"
@@ -139,6 +141,7 @@ def count_until_neg(xs)
   count = 0
   xs.each do |x|
     break if x < 0
+
     count += 1
   end
   count
@@ -159,6 +162,7 @@ end
 #: (Integer) -> Integer
 def bugs_risky(n)
   raise ArgumentError, "neg" if n < 0
+
   n
 end
 
@@ -307,12 +311,14 @@ def yn(flag) = flag ? "yes" : "no"
 #: (String?) -> String
 def guarded(s)
   return "none" unless s
+
   "got #{s.upcase}"
 end
 
 #: (String?) -> Integer
 def guarded_nil(s)
   return -1 if s.nil?
+
   s.size
 end
 
@@ -375,6 +381,7 @@ def early(n)
   return "neg" if n < 0
   return "zero" if n.zero?
   return "small" unless n > 10
+
   "big"
 end
 
@@ -385,6 +392,7 @@ def abs_val(n) = n < 0 ? -n : n
 #: (Integer) -> Integer
 def empty_risky(n)
   raise ArgumentError, "neg" if n < 0
+
   n
 end
 
@@ -435,6 +443,7 @@ end
 #: (Integer) -> Integer
 def collide_risky(n)
   raise ArgumentError, "neg" if n < 0
+
   n
 end
 
@@ -442,6 +451,7 @@ end
 def doubled(n)
   ret_ = n * 2
   raise "x" if n < 0
+
   "v#{ret_}"
 rescue StandardError
   "rescued"
@@ -468,6 +478,7 @@ end
 def control_half(out, n)
   begin
     raise ArgumentError, "odd" if n.odd?
+
     h = n / 2
   rescue ArgumentError
     out << "rescue sees #{h.inspect}"
@@ -543,6 +554,7 @@ def rescued(out, n)
   begin
     got = n
     raise ArgumentError, "big" if n > 1
+
     out << twice(got)
   rescue ArgumentError
     out << twice(got)
@@ -574,6 +586,7 @@ end
 #: (Integer) -> Integer
 def edges_risky(n)
   raise ArgumentError, "neg" if n < 0
+
   n
 end
 
@@ -657,6 +670,7 @@ def total_until_nil(xs)
   sum = 0
   xs.each do |x|
     break unless x
+
     sum += x
   end
   sum
@@ -717,6 +731,7 @@ end
 def two_bindings(k)
   raise ArgumentError, "arg" if k == 0
   raise KeyError, "key" if k == 1
+
   "none"
 rescue ArgumentError => e
   "A #{e.message}"
@@ -731,6 +746,7 @@ def sum_positive(xs)
   total = 0
   xs.each do |x|
     raise ArgumentError, "negative #{x}" if x < 0
+
     total += x
   end
   "sum #{total}"
@@ -741,6 +757,7 @@ end
 #: (Integer) -> Integer
 def depth(n)
   return depth(n - 1) + 1 if n > 0
+
   raise ArgumentError, "bottom"
 rescue ArgumentError
   n * 1000
@@ -758,6 +775,7 @@ end
 #: (Array[String], Integer) -> String
 def rescue_then_ensure_return(out, n)
   raise ArgumentError, "a" if n > 0
+
   "body"
 rescue ArgumentError
   "rescue"
@@ -772,6 +790,7 @@ def progress(xs)
   done = 0
   xs.each do |x|
     raise ArgumentError, "stop at #{x}" if x < 0
+
     done += 1
   end
   "all #{done}"
@@ -784,6 +803,7 @@ def first_ok(out, xs)
   xs.each do |x|
     begin
       raise "bad #{x}" if x < 0
+
       return x * 10
     rescue StandardError => e
       out << "skip #{e.message}"
@@ -795,6 +815,7 @@ end
 #: (Integer) -> String
 def case_tail(n)
   raise ArgumentError, "neg" if n < 0
+
   case n
   when 0 then "zero"
   else "pos"
@@ -806,6 +827,7 @@ end
 #: (Integer) -> Integer
 def flow_risky(n)
   raise ArgumentError, "neg" if n < 0
+
   n
 end
 
@@ -889,6 +911,7 @@ end
 def ordered(out, fail)
   out << "body"
   raise "f" if fail
+
   1
 rescue StandardError
   out << "rescue"
@@ -927,6 +950,7 @@ end
 #: (Integer) -> String
 def ensure_after_rescue(n)
   raise ArgumentError, "a" if n > 0
+
   "body"
 rescue ArgumentError
   raise "from rescue"
@@ -957,6 +981,7 @@ end
 def void_ensure(out, flag)
   begin
     return if flag
+
     out << "not returned"
   ensure
     out << "ensure #{flag}"
@@ -1006,6 +1031,7 @@ end
 def risky_int(n)
   raise ArgumentError, "neg" if n < 0
   raise NotImplementedError, "nie" if n == 99
+
   n * 2
 end
 
@@ -1175,6 +1201,7 @@ def control_first_square_over(limit)
   while true
     return i * i if i * i > limit
     return nil if i > 100
+
     i += 1
   end
 end
@@ -1182,6 +1209,7 @@ end
 #: (Array[String], Integer) -> void
 def void_early(out, n)
   return if n > 1
+
   out << "small #{n}"
 end
 
@@ -1274,6 +1302,7 @@ end
 #: (Integer) -> Integer
 def mid_risky(n)
   raise ArgumentError, "neg" if n < 0
+
   n
 end
 
@@ -1299,6 +1328,7 @@ end
 #: (Integer) -> Integer
 def control_pos(x)
   return x if x > 0
+
   throw :neg, x
 end
 
@@ -1325,12 +1355,14 @@ def control_branch_then_or(c)
   name = nil #: String?
   name = "x" if c
   return 0 if name.nil? || name.empty?
+
   name.size
 end
 
 #: (String?) -> bool
 def control_strip_or(s)
   return false if s.nil?
+
   s.strip.empty? || s.strip == ":"
 end
 
@@ -1440,6 +1472,7 @@ module ControlTests
     #: () -> String
     def show
       return "empty" unless v
+
       "v=#{v + 1}"
     end
 
@@ -1471,6 +1504,7 @@ module ControlTests
     #: (Array[String], String) -> Integer
     def self.parse(out, s)
       raise ArgumentError, "bad" unless s == "1"
+
       1
     rescue ArgumentError => e
       out << "class method rescued #{e.message}"
@@ -1485,6 +1519,7 @@ module ControlTests
     def self.check(n)
       return "neg" if n < 0
       raise KeyError, "zero" if n.zero?
+
       "pos"
     rescue KeyError => e
       "rescued #{e.message}"
@@ -1521,6 +1556,7 @@ module ControlTests
     #: (Integer) -> String
     def attempt(n)
       raise ArgumentError, "attempt #{n} failed" if n < 2
+
       "attempt #{n} ok"
     rescue ArgumentError => e
       "#{worker_name}: #{e.message}"
@@ -1572,6 +1608,7 @@ module ControlTests
     #: (String) -> String
     def self.find(k)
       raise Missing, "no #{k}" if k.empty?
+
       k
     end
   end
@@ -1583,6 +1620,7 @@ module ControlTests
     #: (Integer) -> void
     def initialize(n)
       raise ArgumentError, "n must be positive, got #{n}" unless n > 0
+
       @n = n
     end
   end
@@ -1604,6 +1642,7 @@ module ControlTests
     def compute
       @calls += 1
       raise ArgumentError, "first call fails" if @calls == 1
+
       @calls * 100
     end
   end
@@ -2115,6 +2154,7 @@ end
             begin
               next if w == 10
               break if v == 2
+
               out << "#{v} #{w}"
             ensure
               out << "e #{v} #{w}"
@@ -2134,6 +2174,7 @@ end
         i += 1
         begin
           raise "boom #{i}" if i.even?
+
           out << "body #{i}"
         ensure
           next if i == 2
@@ -2202,6 +2243,7 @@ end
         k += 1
         if k.even?
           next if k == 4
+
           odds << -k
           next
         end
@@ -2224,6 +2266,7 @@ end
       %w[a b c].each_with_index do |s, idx|
         2.times do |t|
           next if t == idx
+
           res << "#{s}#{t}"
         end
       end
@@ -2239,6 +2282,7 @@ end
       10.downto(1) do |d|
         next if d.odd?
         break if d < 4
+
         acc << d
       end
       assert_equal [10, 8, 6, 4], acc
@@ -2253,6 +2297,7 @@ end
       chars = [] #: Array[String]
       "abcd".each_char do |ch|
         next if ch == "b"
+
         chars << ch
       end
       assert_equal "acd", chars.join
@@ -2267,6 +2312,7 @@ end
           m += 1
           next if m == 2
           break if m > lim
+
           sum += m
         end
         sum
@@ -2345,11 +2391,13 @@ end
       xs_next = [1, 2, 3] #: Array[Integer]
       ys_next = xs_next.map do |x|
         next if x == 2
+
         x * 10
       end
       assert_equal "[10, nil, 30]", ys_next.inspect
       picked_next = xs_next.select do |x|
         next if x.odd?
+
         true
       end
       assert_equal [2], picked_next
@@ -2710,6 +2758,7 @@ end
       out = [] #: Array[String]
       each_logged_ensure(out) do |v|
         break if v == 2
+
         out << "b#{v}"
       end
       assert_equal ["b1", "after 1", "after 2"], out
@@ -2974,6 +3023,7 @@ end
         while c < 2
           c += 1
           next if c == 1
+
           out << "ensure loop #{c}"
         end
       end
@@ -2983,6 +3033,7 @@ end
       rescue StandardError => e
         [1, 2, 3].each do |q|
           break if q == 2
+
           out << "#{e.message}#{q}"
         end
       end
@@ -2998,6 +3049,7 @@ end
         begin
           attempts += 1
           raise "flaky" if attempts < 3
+
           done = true
         rescue StandardError
           out << "retrying #{attempts}"
@@ -3098,10 +3150,12 @@ end
       got = [] #: Array[Integer]
       opts.each do |o|
         next unless o
+
         got << o + 1
       end
       opts.each do |o|
         next if o.nil?
+
         got << o * 2
       end
       assert_equal [2, 4, 2, 6], got
@@ -4037,6 +4091,7 @@ end
         n += 1
         next if n.odd?
         break if n > 8
+
         acc << n
       end
       assert_equal [2, 4, 6, 8], acc
@@ -4053,6 +4108,7 @@ end
           b += 1
           break if b > a
           next if b == 2
+
           out << "#{a}#{b}"
         end
         a += 1
@@ -4073,6 +4129,7 @@ end
       10.times do |t|
         next if t.even?
         break if t > 7
+
         total += t
       end
       assert_equal 16, total
@@ -4084,6 +4141,7 @@ end
       steps = [] #: Array[Integer]
       5.downto(1) do |d|
         next if d == 3
+
         steps << d
       end
       1.upto(0) { |u| steps << 100 + u }
@@ -4094,16 +4152,19 @@ end
       words.each_with_index do |s, idx|
         next if idx.zero?
         break if s == "d"
+
         got << "#{idx}:#{s}"
       end
       words.reverse_each do |s|
         next if s == "c"
+
         got << s
         break if s == "b"
       end
       h = { "x" => 1, "y" => 2, "z" => 3 } #: Hash[String, Integer]
       h.each do |key, val|
         next if val == 1
+
         got << "#{key}=#{val}"
         break if key == "y"
       end
@@ -4131,6 +4192,7 @@ end
       end
       with_cleanup(out) do |v|
         next if v == 1
+
         out << "next skipped to #{v}"
       end
       e = assert_raises(ArgumentError) do
@@ -4146,10 +4208,12 @@ end
       loops_countdown(5) do |c|
         next if c == 4
         break if c == 2
+
         out << "countdown #{c}"
       end
       loops_guarded(out) do |g|
         next if g == 2
+
         out << "guarded #{g}"
         raise "stop at #{g}" if g == 3
       end
@@ -4279,6 +4343,7 @@ end
           next if i_jump == 2
           break if i_jump == 5
           raise "odd" if i_jump.odd?
+
           seen_jump << i_jump
         rescue StandardError
           seen_jump << -i_jump
@@ -4290,6 +4355,7 @@ end
       [1, 2, 3].each do |x|
         begin
           raise "two" if x == 2
+
           out_jump << x
         rescue StandardError
           next
@@ -4307,6 +4373,7 @@ end
       mid_guarded(out) do |g|
         begin
           next if g == 2
+
           out << "in begin #{g}"
         ensure
           out << "ensure #{g}"
@@ -4416,6 +4483,7 @@ end
       while (item = queue.shift)
         guard += 1
         break if guard > 5
+
         got << item.to_s
       end
       assert_equal ["1", "2", "3"], got
@@ -4428,6 +4496,7 @@ end
       while (q_while[0] || 0) < 3
         guard += 1
         break if guard > 5
+
         shifted << q_while.shift.inspect
       end
       assert_equal ["1", "2"], shifted
@@ -4439,6 +4508,7 @@ end
       until (top = stack.pop).nil?
         guard += 1
         break if guard > 5
+
         popped << top.to_s
       end
       assert_equal ["0", "4"], popped
@@ -4457,11 +4527,13 @@ end
       xs = [1, 2, 3] #: Array[Integer]
       ys_next = xs.map do |x|
         next if x == 2
+
         x * 10
       end
       assert_equal "10,nil,30", ys_next.map { |y| y ? y.to_s : "nil" }.join(",")
       picked = xs.select do |x|
         next if x.odd?
+
         true
       end
       assert_equal [2], picked
@@ -4469,6 +4541,7 @@ end
       printed = [] #: Array[Integer]
       ws = xs.map do |x|
         next if x == 1
+
         printed << x
         nil
       end
@@ -4623,6 +4696,7 @@ end
       loop do
         x = xs[i] || 0
         return x if x > 2
+
         i += 1
       end
       -1
@@ -4673,6 +4747,7 @@ end
       begin
         i += 1
         next if i.even?
+
         odd << i
       end while i < 5
       j = 0
@@ -4718,10 +4793,12 @@ end
         while m < 3
           m += 1
           next if m == 2
+
           out << "#{k}w#{m}"
         end
         [1, 2].each do |v|
           next if v == 1
+
           out << "#{k}e#{v}"
         end
         begin
@@ -4732,6 +4809,7 @@ end
           retry
         end
         break if k == 4
+
         out << "#{k}end"
       end until k > 9
       assert_equal ["1w1", "1w3", "1e2", "3w1", "3w3", "3e2", "3end", "4w1", "4w3", "4e2"], out
@@ -4809,6 +4887,7 @@ end
       begin
         tries += 1
         raise "x" if tries < 4
+
         tries * 10
       rescue StandardError
         retry if tries < 5
@@ -4856,6 +4935,7 @@ end
       sum = 0
       for i in 1..4
         next if i == 2
+
         sum += i
         last = i
       end
@@ -4951,6 +5031,7 @@ end
         begin
           raise IOError, "io" if i == 1
           raise ArgumentError, "arg" if i == 2
+
           raise TypeError, "type"
         rescue *CONTROL_NET_ERRORS => e
           seen << [:net, e.message]
@@ -5106,6 +5187,7 @@ end
     #: (Integer) ?{ (Integer) -> Integer } -> Integer
     def control_guarded(x)
       return x unless block_given?
+
       yield x
     end
 
@@ -5308,6 +5390,7 @@ end
     #: (String?) -> Array[untyped]
     def pair(s)
       return nil, nil if s.nil?
+
       a, b = s.split(":")
       [a, b&.to_i]
     end
@@ -6105,6 +6188,7 @@ module ControlTests
       10.times do |i|
         next if i.odd?
         break if i > 6
+
         got << i
       end
       (1..10).each do |i|

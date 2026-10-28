@@ -755,6 +755,7 @@ module EnumeratorTests
       seen = [] #: Array[Integer]
       (1..10).to_a.each_cons(2) do |a, b|
         break if a.to_i > 3
+
         seen << b.to_i
       end
       assert_equal [2, 3, 4], seen
@@ -860,12 +861,14 @@ module EnumeratorTests
       a.zip(b) do |x, y|
         next if x == 2
         break if x == 4
+
         t += x + y
       end
       assert_equal 16, t
       u = 0
       a.zip(b).each do |x, y|
         break if x == 3
+
         u += y - x
       end
       assert_equal 8, u

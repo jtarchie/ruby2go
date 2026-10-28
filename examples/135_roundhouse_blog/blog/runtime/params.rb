@@ -87,11 +87,13 @@ module Params
     value = params.fetch(key, "")
     raise(ActionController::ParameterMissing.new(key)) if value.is_a?(String) && value.empty?
     raise(ActionController::ParameterMissing.new(key)) unless params.key?(key)
+
     value
   end
 
   def self.provided(sub, key)
     return false unless sub.key?(key)
+
     value = sub.fetch(key, "")
     narrowed = (value if value.is_a?(String))
     !narrowed.nil?

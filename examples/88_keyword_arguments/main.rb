@@ -36,6 +36,7 @@ def fetch(req)
   begin
     attempts += 1
     raise IOError, "timeout" if attempts <= req.retries
+
     "#{req.path} ok after #{attempts}"
   rescue IOError
     retry

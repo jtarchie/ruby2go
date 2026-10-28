@@ -247,8 +247,10 @@ module ActiveStorage
 
     def process
       return nil if processed?
+
       b = @blob
       return nil if b.nil?
+
       png = Previewer.poster(Blob.service.path_for(b.key))
       poster = Blob.create_and_upload!(png, ActiveStorage.filename_base(b.filename.to_s) + ".png", "image/png")
       ActiveRecord.adapter.insert("active_storage_attachments", {
@@ -276,6 +278,7 @@ module ActiveStorage
     def filename
       b = @blob
       return "" if b.nil?
+
       v = @variation
       ActiveStorage.filename_base(b.filename.to_s) + "." + (v.nil? ? "png" : v.output_format("image/png"))
     end
@@ -283,6 +286,7 @@ module ActiveStorage
     def url
       b = @blob
       return "" if b.nil?
+
       v = @variation
       "/rails/active_storage/representations/redirect/" + b.signed_id +
         "/" + (v.nil? ? "original" : v.encode) + "/" + ActiveStorage.url_filename(filename)
@@ -356,8 +360,10 @@ module ActiveStorage
     def self.decode(key)
       parts = key.split("-")
       return nil if parts.length != 3 || parts[0] != "limit"
+
       dims = parts[1].to_s.split("x")
       return nil if dims.length != 2
+
       Variation.new(key, dims[0].to_s.to_i, dims[1].to_s.to_i, parts[2] == "keep" ? "" : parts[2].to_s)
     end
   end
@@ -413,11 +419,13 @@ module ActiveStorage
       needle = "\"" + name + "\":"
       at = json.index(needle)
       return 0 if at.nil?
+
       i = at + needle.length
       n = 0
       while i < json.length
         c = json[i].to_s
         break if c < "0" || c > "9"
+
         n = n * 10 + c.to_i
         i += 1
       end
@@ -558,6 +566,7 @@ module ActiveStorage
         Rails.application.secret_key_base, "ActiveStorage", signed_id, "blob_id", false
       )
       return nil if json == ""
+
       find(json.to_i)
     end
 
@@ -767,9 +776,11 @@ module ActiveStorage
 
     def process
       return nil if @record_id != 0
+
       b = @blob
       v = @variation
       return nil if b.nil? || v.nil?
+
       digest = v.digest
       rows = ActiveRecord.adapter.select_rows(
         VariantWithRecord.record_select(
@@ -830,6 +841,7 @@ module ActiveStorage
     def filename
       b = @blob
       return "" if b.nil?
+
       v = @variation
       v.nil? ? b.filename.to_s : ActiveStorage.filename_base(b.filename.to_s) + "." + v.output_format(b.content_type)
     end
@@ -841,6 +853,7 @@ module ActiveStorage
     def url
       b = @blob
       return "" if b.nil?
+
       v = @variation
       "/rails/active_storage/representations/redirect/" + b.signed_id +
         "/" + (v.nil? ? "original" : v.encode) + "/" + ActiveStorage.url_filename(filename)
@@ -887,6 +900,7 @@ module ActiveStorage
     # means nothing is attached.
     def load_row
       return nil if @row_loaded
+
       @row_loaded = true
       sql = "SELECT a.id AS attachment_id, " + Blob.columns("b") +
             " FROM active_storage_attachments a " +
@@ -1029,11 +1043,13 @@ module ActiveStorage
     # and `each` from a block is not on that list.
     def find_variation(transformations)
       return nil unless transformations.is_a?(Symbol)
+
       name = transformations.to_s
       i = 0
       while i < @variations.length
         v = @variations[i]
         return v if v.name == name
+
         i += 1
       end
       raise ArgumentError, "Cannot find variant :" + name + " for " + @record_type + "#" + @name

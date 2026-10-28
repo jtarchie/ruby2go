@@ -60,6 +60,7 @@ module JsonBuilder
     return v.to_s if v.is_a?(Integer)
     return v.to_s if v.is_a?(Float)
     return "\"#{encode_string(v)}\"" if v.is_a?(String)
+
     # Fallback: stringify and quote. Call sites convert Time /
     # BigDecimal / etc. before reaching here.
     "\"#{encode_string(v.to_s)}\""
@@ -78,6 +79,7 @@ module JsonBuilder
   # Swift's emit does past a `nil?` guard.
   def self.encode_enum(labels, value)
     return "null" if value < 0 || value >= labels.length
+
     "\"#{encode_string(labels[value])}\""
   end
 
@@ -94,6 +96,7 @@ module JsonBuilder
   # which is what real-blog produces.
   def self.encode_datetime(s)
     return "null" if s.nil?
+
     # A `Time` value never reaches this primitive: the Jbuilder lowerer
     # routes a temporal column through its `<col>_raw` storage reader
     # (the stored ISO-8601 TEXT), never the parsing `<col>` reader. The
@@ -103,6 +106,7 @@ module JsonBuilder
     # with no `Time` type.
     str = s.to_s
     return "\"#{encode_string(str)}\"" if str.length < 19
+
     date = str[0, 10]
     time = str[11, 8]
     ms = "000"

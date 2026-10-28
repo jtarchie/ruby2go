@@ -49,6 +49,7 @@ module SecureRandom
 
   def self.alphanumeric(n = 16)
     return STUB_ALPHANUMERIC[0] if STUB_ALPHANUMERIC_ON[0]
+
     out = +""
     while out.length < n
       want = n - out.length
@@ -65,6 +66,7 @@ module SecureRandom
 
   def self.uuid
     return STUB_UUID[0] if STUB_UUID_ON[0]
+
     b = SecureRandom.random_bytes(16)
     h = +""
     i = 0

@@ -97,6 +97,7 @@ module Concurrent
       spawn = false
       @lock.synchronize do
         raise RejectedExecutionError, "pool is shut down" unless @running
+
         if @idle == 0 && @live < @max_threads
           spawn = true
           @live += 1
@@ -147,6 +148,7 @@ module Concurrent
       loop do
         return true if length == 0
         return false if deadline >= 0.0 && Time.now.to_f >= deadline
+
         sleep 0.005
       end
     end
@@ -160,6 +162,7 @@ module Concurrent
           task = @queue.pop
           @lock.synchronize { @idle -= 1 }
           break if task.nil?
+
           begin
             task.call
           rescue Exception => e

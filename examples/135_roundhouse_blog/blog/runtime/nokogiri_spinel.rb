@@ -85,6 +85,7 @@ module Nokogiri
       predicate.split(" or ").each do |clause|
         clause = clause.strip
         next if clause == ""
+
         # starts-with(@attr, "prefix")
         GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})") unless clause.start_with?("starts-with(@") && clause.end_with?(")")
         inner = clause[13, clause.length - 14].to_s
@@ -103,10 +104,12 @@ module Nokogiri
     # No predicate matches everything; otherwise any one clause does.
     def self.starts_with_any?(attributes, keys, prefixes)
       return true if keys.empty?
+
       i = 0
       while i < keys.length
         value = attributes.fetch(keys[i], nil)
         return true if !value.nil? && value.start_with?(prefixes[i])
+
         i += 1
       end
       false
@@ -116,11 +119,14 @@ module Nokogiri
       ActionText::Fragment.new(@html.to_s).find_all("meta").each do |node|
         charset = node["charset"]
         return charset if !charset.nil? && charset != ""
+
         equiv = node["http-equiv"]
         content = node["content"]
         next unless !equiv.nil? && equiv.downcase == "content-type" && !content.nil?
+
         at = content.downcase.index("charset=")
         next unless !at.nil?
+
         value = content[at + 8, content.length].to_s.strip
         semi = value.index(";")
         value = value[0, semi].to_s unless semi.nil?

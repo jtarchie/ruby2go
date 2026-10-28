@@ -336,6 +336,7 @@ module ActionController
     # means the app named a status no HTTP registry has.
     def resolve_status(s)
       raise "Invalid HTTP status: #{s}" unless STATUS_CODES.key?(s)
+
       STATUS_CODES.fetch(s, 200)
     end
   end

@@ -49,6 +49,7 @@ puts s[50..].inspect
 
 (1..).each do |i|
   break if i > 3
+
   print i
 end
 puts

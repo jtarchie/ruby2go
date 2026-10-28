@@ -6,6 +6,7 @@ class Boom < StandardError; end
 def deep(n)
   puts "enter #{n}"
   raise Boom, "boom at #{n}" if n.zero?
+
   deep(n - 1)
 ensure
   puts "unwind #{n}"

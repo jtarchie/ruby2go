@@ -44,6 +44,7 @@ module ActionController
     def self.session
       c = Thread.current[:ac_current_controller]
       return nil if c.nil?
+
       c.session
     end
   end
@@ -91,6 +92,7 @@ module ActionView
 
     def self.csrf_token_hidden_input
       return "" if Thread.current[:view_broadcast_rendering] == true
+
       %(<input type="hidden" name="authenticity_token" value="#{form_authenticity_token}">)
     end
 
@@ -224,6 +226,7 @@ module ActiveJob
         work = PENDING.shift if PENDING.length > 0
       end
       break if work.nil?
+
       begin
         work.call
         ran += 1
@@ -244,6 +247,7 @@ module TypedStore
     cached_key = Thread.current[:typed_store_key]
     cached = Thread.current[:typed_store_val]
     return cached if !cached_key.nil? && s == cached_key && !cached.nil?
+
     h = {}
     lines = s.split("\n")
     i = 0
@@ -251,8 +255,10 @@ module TypedStore
       line = lines[i].to_s
       i += 1
       next if ["---", ""].include?(line)
+
       c0 = line[0, 1].to_s
       next if [" ", "-", "#"].include?(c0)
+
       sep = line.index(": ")
       if sep.nil?
         h[line[0, line.length - 1].to_s] = nil if line.end_with?(":")

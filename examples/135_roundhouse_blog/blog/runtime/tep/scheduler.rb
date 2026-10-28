@@ -101,6 +101,7 @@ module Tep
         i += 1
       end
       return false if best < 0
+
       Tep::APP.sched_current = best
       Tep::APP.sched_wake_at[best] = -1
       Tep::APP.sched_fibers[best].f.resume
@@ -132,6 +133,7 @@ module Tep
         i += 1
       end
       return 0 if added == 0
+
       Sock.sphttp_poll_run(timeout_ms)
       now = Sock.sphttp_now_us
       i = 0
@@ -168,6 +170,7 @@ module Tep
       deadline = Sock.sphttp_now_us + (seconds * 1000000).to_i
       while Sock.sphttp_now_us < deadline
         next unless !Scheduler.tick(0)
+
         # Nothing ready this pass. Compute the next deadline:
         # min(next_wake, overall_deadline). If any fiber is
         # parked on I/O, block in poll() until that or the
@@ -200,6 +203,7 @@ module Tep
         i += 1
       end
       return -1 if best < 0
+
       Tep::APP.sched_wake_at[best]
     end
 
@@ -212,6 +216,7 @@ module Tep
            Tep::APP.sched_io_ready[i] == 0
           return true
         end
+
         i += 1
       end
       false
@@ -227,6 +232,7 @@ module Tep
       n = Tep::APP.sched_fibers.length
       while i < n
         return true if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now
+
         i += 1
       end
       false

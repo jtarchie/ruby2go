@@ -9,6 +9,7 @@ module Tep
       # See matz/spinel#532; spinel 0210389 fixed the prior -1 sentinel.
       end_of_headers = blob.index("\r\n\r\n")
       return nil if end_of_headers.nil?
+
       headers_blob = blob[0, end_of_headers]
       lines = headers_blob.split("\r\n")
       return nil if lines.length == 0
@@ -56,6 +57,7 @@ module Tep
         cookie_blob.split(";").each do |pair|
           eq = pair.index("=")
           next unless !eq.nil? && eq > 0
+
           cname  = pair[0, eq].strip
           cvalue = pair[eq + 1, pair.length - eq - 1].strip
           req.cookies[cname] = Url.unescape(cvalue)

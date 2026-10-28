@@ -139,6 +139,7 @@ def sum_until_negative(h)
   total = 0
   h.each_value do |v|
     break if v < 0
+
     total += v
   end
   total
@@ -1329,10 +1330,12 @@ module HashTests
       out = []
       h.each_pair do |k, v|
         next if v.odd?
+
         out << "even #{k}"
       end
       h.each_key do |k|
         next unless k > "b"
+
         out << "late #{k}"
       end
       assert_equal ["even c", "late c", "late d"], out
@@ -1431,6 +1434,7 @@ module HashTests
       w.each do |k, v|
         begin
           raise "x#{k}" if v.odd?
+
           out << "ok #{k}"
         rescue StandardError => re
           out << re.message

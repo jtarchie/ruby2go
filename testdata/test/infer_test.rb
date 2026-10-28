@@ -86,6 +86,7 @@ module InferTests
 
     def first_or(fallback)
       return fallback unless block_given?
+
       yield @names.first
       fallback
     end

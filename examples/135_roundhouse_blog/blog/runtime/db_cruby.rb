@@ -130,6 +130,7 @@ module Db
   # while a lease is held.
   def self.adopt_after_fork
     return if @pool.nil? || @owner_pid == Process.pid
+
     @mutex.synchronize do
       # Re-checked under the lock: every worker thread in a fresh child
       # reaches this together on the first request.
@@ -151,6 +152,7 @@ module Db
   def self.current_dbh
     h = Fiber[:db_handle]
     return h unless h.nil?
+
     # Only the UNLEASED path pays the fork check — boot, tests, and
     # single-threaded dev. Under a lease the line above has already
     # returned, so the per-query cost of all this is zero.
@@ -196,6 +198,7 @@ module Db
 
   def self.close
     return if @pool.nil?
+
     i = 0
     while i < @pool.free.length
       conn = @pool.free[i]
@@ -220,6 +223,7 @@ module Db
       current_dbh.execute(sql)
     rescue StandardError => e
       raise ActiveRecord::RecordNotUnique, e.message if Db.unique_violation?(e.message)
+
       raise
     end
   end
@@ -315,6 +319,7 @@ module Db
         cache.each_key do |k|
           candidate = cache[k]
           next if @rows.any? { |_, e| e[:stmt].equal?(candidate) }
+
           live = k
           break
         end
@@ -346,6 +351,7 @@ module Db
         return true
       end
       return false if hit[:eof]
+
       # Cached prefix exhausted without eof (original consumer stopped
       # early) — promote to a real transient statement, fast-forwarded
       # past the rows already replayed.
@@ -430,12 +436,14 @@ module Db
   def self.column_count(stmt_id)
     e = @rows[stmt_id]
     return e[:replay][:names].length if e[:replay]
+
     e[:stmt].columns.length
   end
 
   def self.column_name(stmt_id, i)
     e = @rows[stmt_id]
     return e[:replay][:names][i] if e[:replay]
+
     e[:stmt].columns[i]
   end
 
@@ -450,6 +458,7 @@ module Db
     entry = @rows.delete(stmt_id)
     return unless entry
     return if entry[:replay] # replay handle — nothing to release
+
     if (c = entry[:capture])
       qcache = Fiber[:rh_qcache]
       qcache[c[:sql]] = c if !qcache.nil? && !qcache.key?(c[:sql])

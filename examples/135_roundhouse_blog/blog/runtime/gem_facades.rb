@@ -511,15 +511,18 @@ module WebPush
     raise TooManyRequests.new(nil, "") if name == "WebPush::TooManyRequests"
     raise PushServiceError.new(nil, "") if name == "WebPush::PushServiceError"
     raise ResponseError.new(nil, "") if name == "WebPush::ResponseError"
+
     raise name
   end
 
   def self.verify_payload_send_expectations
     expected = EXPECTED[0]
     return nil if expected < 0
+
     got = CALLS[0]
     EXPECTED[0] = -1
     raise "WebPush.payload_send was expected #{expected} time(s), got #{got}" if got != expected
+
     nil
   end
 

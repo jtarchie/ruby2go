@@ -56,6 +56,7 @@ module Tep
       lc = @req_headers["connection"].downcase
       return false if lc == "close"
       return true if lc == "keep-alive"
+
       @http_version == "HTTP/1.1"
     end
 
@@ -95,6 +96,7 @@ module Tep
     def scheme
       proto = @req_headers["x-forwarded-proto"]
       return proto.downcase if proto.length > 0
+
       "http"
     end
 
@@ -160,10 +162,12 @@ module Tep
         if ready == 0
           break   # timeout -- client never finished sending
         end
+
         chunk = Sock.sphttp_recv_some(client_fd, cl - @raw_body.bytesize)
         if chunk.bytesize == 0
           break   # peer closed mid-body
         end
+
         @raw_body += chunk
       end
       parse_body_params
@@ -185,10 +189,12 @@ module Tep
         if ready.nil?
           break   # timeout -- client never finished sending
         end
+
         chunk = Sock.sphttp_recv_some(client_fd, cl - @raw_body.bytesize)
         if chunk.bytesize == 0
           break   # peer closed mid-body
         end
+
         @raw_body += chunk
       end
       parse_body_params

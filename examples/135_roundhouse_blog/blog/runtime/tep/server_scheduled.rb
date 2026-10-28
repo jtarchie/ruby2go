@@ -132,6 +132,7 @@ module Tep
           # squatting on the port, accepting connections into the
           # backlog and serving none of them. Ctrl-C must mean exit.
           break if Sock.sphttp_shutdown_requested != 0
+
           Tep::Scheduler.tick(1000)
         end
         0
@@ -148,12 +149,15 @@ module Tep
           # process for workers=1) emits the aggregated run_end after
           # all workers exit (#128).
           break if Sock.sphttp_shutdown_requested != 0
+
           # Bounded wait so the flag check above runs once per second
           # even when traffic is idle (was -1 = wait forever).
           ready = Tep::Scheduler.io_wait(sfd, Tep::Scheduler::READ, 1)
           next if ready == 0
+
           client = Sock.sphttp_accept_nb(sfd)
           next if client < 0
+
           Sock.sphttp_set_nonblock(client)
           conn = Fiber.new { Tep::Server::Scheduled.handle_connection(client) }
           Tep::Scheduler.spawn_fiber(conn)
@@ -181,6 +185,7 @@ module Tep
       def self.handle_one(client)
         blob = Tep::Server::Scheduled.read_request_blob(client, KEEPALIVE_TIMEOUT)
         return false if blob.length == 0
+
         req = Parser.parse(blob)
         if req == nil
           Tep::Server::Scheduled.send_simple(client, 400, "bad request")
@@ -222,10 +227,13 @@ module Tep
         while buf.length < MAX_REQUEST_BYTES
           remaining = deadline - Time.now.to_i
           return "" if remaining <= 0
+
           ready = Tep::Scheduler.io_wait(fd, Tep::Scheduler::READ, remaining)
           return "" if ready == 0
+
           chunk = Sock.sphttp_recv_some(fd, 4096)
           return "" if chunk.length == 0
+
           buf << chunk
           return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
         end

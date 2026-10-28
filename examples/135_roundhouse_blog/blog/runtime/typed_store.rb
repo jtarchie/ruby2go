@@ -24,6 +24,7 @@ module TypedStore
   def self.parse(serialized)
     s = serialized.to_s
     return @cache_val if s == @cache_key
+
     h = {}
     lines = s.split("\n")
     i = 0
@@ -31,9 +32,11 @@ module TypedStore
       line = lines[i].to_s
       i += 1
       next if ["---", ""].include?(line)
+
       # Indented / list / comment lines: structured values, skipped.
       c0 = line[0, 1].to_s
       next if [" ", "-", "#"].include?(c0)
+
       sep = line.index(": ")
       if sep.nil?
         # `key:` with no value — an explicit empty scalar (nil).

@@ -88,6 +88,7 @@ module Tep
     pos = start
     while pos <= slen - nlen
       return pos if s[pos, nlen] == needle
+
       pos += 1
     end
     -1

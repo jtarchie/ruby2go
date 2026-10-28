@@ -40,6 +40,7 @@ module ActionController
     def self.session
       c = @controller
       return nil if c.nil?
+
       c.session
     end
   end

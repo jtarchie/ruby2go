@@ -151,6 +151,7 @@ module Tep
       # `code == 0` we emit an empty payload.
       def self.encode_close_payload(code, reason)
         return "" if code == 0
+
         out = Tep::WebSocket::Frame.byte_to_chr((code >> 8) & 0xff) +
               Tep::WebSocket::Frame.byte_to_chr(code & 0xff)
         if reason.bytesize > 123

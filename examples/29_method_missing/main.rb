@@ -24,6 +24,7 @@ class Settings
   def method_missing(name, *args)
     value = @values[name.to_s]
     return value if value
+
     "(no #{name}, #{args.size} args)"
   end
 

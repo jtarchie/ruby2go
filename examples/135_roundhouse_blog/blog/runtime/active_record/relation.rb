@@ -129,12 +129,14 @@ module ActiveRecord
     def add_condition(condition, args, negate)
       @records = nil
       return false if condition.nil?
+
       sql = if condition.is_a?(Hash)
               hash_conditions(condition)
             else
               substitute_binds(condition.to_s, args)
             end
       return false if sql == ""
+
       @wheres << (negate ? "NOT (#{sql})" : "(#{sql})")
       true
     end
@@ -160,6 +162,7 @@ module ActiveRecord
       terms.each { |t| @orders << t }
       loaded = @records
       return self if loaded.nil?
+
       # An explicit copy rather than `dup`: built by pushes, the copy has
       # the records array's own type where a `dup` of a nilable read does
       # not, and it is assigned back into `@records` below. An index loop
@@ -185,6 +188,7 @@ module ActiveRecord
       while i >= 0
         col = order_column(terms[i])
         return false if col.nil?
+
         desc = order_descending?(terms[i])
         # Keys once per row, not once per comparison: `attributes` builds
         # a Hash on every call.
@@ -198,8 +202,10 @@ module ActiveRecord
           while k >= 0
             cmp = compare_order_keys(keys[k], key)
             return false if cmp.nil?
+
             cmp = -cmp if desc
             break if cmp <= 0
+
             sorted[k + 1] = sorted[k]
             keys[k + 1] = keys[k]
             k -= 1
@@ -219,6 +225,7 @@ module ActiveRecord
     # database orders them); `id` is read off the record itself.
     def order_key_of(record, col)
       return record.id if col == "id"
+
       record.attributes[col]
     end
 
@@ -228,10 +235,12 @@ module ActiveRecord
     def order_column(term)
       words = term.strip.split(/\s+/)
       return nil if words.length == 0 || words.length > 2
+
       col = words[0]
       dot = col.rindex(".")
       col = col[(dot + 1)..] unless dot.nil?
       return nil unless col.match?(/\A[A-Za-z_][A-Za-z0-9_]*\z/)
+
       if words.length == 2
         dir = words[1].upcase
         return nil unless ["ASC", "DESC"].include?(dir)
@@ -252,6 +261,7 @@ module ActiveRecord
       return 0 if a.nil? && b.nil?
       return -1 if a.nil?
       return 1 if b.nil?
+
       a <=> b
     end
 
@@ -317,6 +327,7 @@ module ActiveRecord
 
     def join_fragment(spec)
       return spec if spec.is_a?(String)
+
       raise("joins(#{spec}): an association join is resolved at transpile " \
             "time and this one was not — the receiver's class has no entry " \
             "in the association registry (an STI subclass, a habtm, or an " \
@@ -358,6 +369,7 @@ module ActiveRecord
     # the query. Raise instead.
     def select(*specs)
       raise ArgumentError, "select: no columns (a block form reached the projection)" if specs.empty?
+
       @records = nil
       cols = []
       specs.each do |spec|
@@ -487,6 +499,7 @@ module ActiveRecord
     def to_a
       cached = @records
       return cached.dup unless cached.nil?
+
       records = load_records
       @model.preload_associations(records, @includes) if @includes.length > 0
       @records = records
@@ -548,6 +561,7 @@ module ActiveRecord
       theirs = other.is_a?(ActiveRecord::Relation) ? other.to_a : other
       return false unless theirs.is_a?(Array)
       return false if mine.length != theirs.length
+
       i = 0
       same = true
       while i < mine.length
@@ -609,6 +623,7 @@ module ActiveRecord
     # `Array[Integer]`, so the comparison stays typed end to end.
     def include?(record)
       return false if record.nil?
+
       ids.include?(record.id)
     end
 
@@ -722,6 +737,7 @@ module ActiveRecord
     def first!
       record = first
       raise RecordNotFound, "Couldn't find record in #{@table}" if record.nil?
+
       record
     end
 
@@ -840,6 +856,7 @@ module ActiveRecord
     # rust2 does not narrow an `Option` across `unless x.nil?`.
     def exists?(id = nil)
       return count > 0 if id.nil?
+
       # Popped for the same reason `find` and `find_by` pop: a terminal
       # that answered a question must not narrow the relation it was
       # asked on.
@@ -935,6 +952,7 @@ module ActiveRecord
     def scoped_write_where
       return "" if @wheres.length == 0 && @joins.length == 0
       return " WHERE #{@wheres.join(" AND ")}" if @joins.length == 0
+
       key = "#{@table}.#{@model.primary_key}"
       inner = "SELECT #{key} FROM #{@table} #{@joins.join(" ")}"
       inner = "#{inner} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
@@ -1002,6 +1020,7 @@ module ActiveRecord
       record = first
       @wheres.pop
       raise RecordNotFound, "Couldn't find record in #{@table} with id=#{id}" if record.nil?
+
       record
     end
 
@@ -1029,6 +1048,7 @@ module ActiveRecord
     def find_by!(conditions)
       record = find_by(conditions)
       raise RecordNotFound, "Couldn't find record in #{@table}" if record.nil?
+
       record
     end
 
@@ -1071,6 +1091,7 @@ module ActiveRecord
     def find_or_create_by(conditions)
       record = find_by(conditions)
       return record unless record.nil?
+
       created = @model.new(scope_attributes.merge(conditions))
       created.save
       created

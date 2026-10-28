@@ -119,10 +119,12 @@ module CgiIo
   def self.parse_cookies(header)
     out = {}
     return out if header.nil? || header.empty?
+
     header.split(";").each do |pair|
       pair = pair.strip
       eq = pair.index("=")
       next if eq.nil?
+
       name = url_decode(pair[0, eq].strip)
       val  = url_decode(pair[(eq + 1)..].to_s.strip)
       out[name.to_sym] = val unless name.empty?
@@ -137,8 +139,10 @@ module CgiIo
   # sources (query string + body) can be merged.
   def self.parse_form_into(input, into)
     return if input.empty?
+
     input.split("&").each do |pair|
       next if pair.empty?
+
       eq = pair.index("=")
       raw_key = eq.nil? ? pair : pair[0, eq]
       raw_val = eq.nil? ? ""   : pair[(eq + 1)..]
@@ -175,10 +179,12 @@ module CgiIo
     while rest.start_with?("[")
       close_bracket = rest.index("]")
       return if close_bracket.nil?
+
       segments.push(rest[1...close_bracket])
       rest = rest[(close_bracket + 1)..]
     end
     return unless rest.empty?
+
     current = into
     key = raw_key[0, open_bracket]
     segments.each do |segment|
@@ -226,6 +232,7 @@ module CgiIo
     # and cookie name) — returning the input as-is is byte-identical to
     # the scan below for `%`/`+`-free strings, at zero allocation.
     return s unless s.include?("%") || s.include?("+")
+
     # Scan by byte: getbyte returns an Integer, so literal bytes cost no
     # per-character String allocation (the old `s[i]` allocated one for
     # every character, the dominant cost when decoding the ~124-char

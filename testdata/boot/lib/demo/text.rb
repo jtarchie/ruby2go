@@ -4,6 +4,7 @@ module Demo
     ALLOWED_FORWARDED_PARAMS = %w[by for host proto].map { |name| [name, name.to_sym] }.to_h.freeze
     def forwarded_values(forwarded_header)
       return unless forwarded_header
+
       header = forwarded_header.to_s.tr("\n", ";")
       header.sub!(/\A[\s;,]+/, "")
       num_params = num_escapes = 0
@@ -46,6 +47,7 @@ module Demo
             # Only allow up to max escapes, to avoid potential denial of service
             num_escapes += 1
             return if num_escapes > max_escapes
+
             escaped_char = header.slice!(0, 1)
             value << escaped_char
           end
@@ -78,6 +80,7 @@ module Demo
       param = header.slice!(0, 3)
       param.strip!
       return unless param = ALLOWED_FORWARDED_PARAMS[param]
+
       [param, header]
     end
   end

@@ -43,6 +43,7 @@ module ActionDispatch
       @notice_was = nil
       @alert_was  = nil
       return if other.nil?
+
       # Iterate rather than index: the persisted store is partial ({} /
       # notice-only / alert-only), and strict targets (Crystal) raise
       # KeyError on a missing Hash key. `each` only visits present keys
@@ -87,6 +88,7 @@ module ActionDispatch
       k = key.to_s
       return @notice if k == "notice"
       return @alert  if k == "alert"
+
       nil
     end
 
@@ -103,6 +105,7 @@ module ActionDispatch
     def fetch(key, default = nil)
       v = self[key]
       return v unless v.nil?
+
       default
     end
 

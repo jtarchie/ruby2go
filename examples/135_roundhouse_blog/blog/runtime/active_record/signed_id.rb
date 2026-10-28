@@ -70,6 +70,7 @@ module ActiveRecord
         Rails.application.secret_key_base, SALT, token, purpose, false
       )
       return 0 if json == ""
+
       json.to_i
     end
   end

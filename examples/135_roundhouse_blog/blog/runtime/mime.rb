@@ -217,6 +217,7 @@ module Mime
         canonical = CANONICAL[base]
         return new(canonical, SYMBOLS[canonical]) unless canonical.nil?
         raise InvalidMimeType, "#{string.inspect} is not a valid MIME type" unless valid?(base)
+
         return new(base, nil)
       end
       new(canonical, SYMBOLS[canonical])
@@ -237,12 +238,15 @@ module Mime
     def self.valid?(string)
       return false if string.nil? || string == ""
       return true if string == "*/*"
+
       parts = string.split("/")
       return false unless parts.length == 2
+
       left = parts[0]
       right = parts[1]
       return false if left.nil? || left == "" || right.nil? || right == ""
       return false if left.include?(" ") || right.include?(" ")
+
       true
     end
   end

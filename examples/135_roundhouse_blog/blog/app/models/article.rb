@@ -319,6 +319,7 @@ class Article < ApplicationRecord
 
   def comments
     return __comments_cache if @comments_loaded
+
     stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE article_id = " + Db.escape_int(@id))
     results = []
     results << Comment.from_stmt(stmt) while Db.step?(stmt)

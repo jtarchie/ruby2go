@@ -23,6 +23,7 @@ end
 #: (String) -> String
 def validate(s)
   raise ValidationError.new("name", "too short") if s.size < 3
+
   s
 end
 
@@ -39,6 +40,7 @@ def classify(n)
   begin
     raise ArgumentError, "negative" if n < 0
     return "zero" if n == 0
+
     "positive"
   rescue ArgumentError => e
     "error(#{e.message})"

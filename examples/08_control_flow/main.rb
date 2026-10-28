@@ -28,6 +28,7 @@ total = 0
 10.times do |i|
   next if i.odd?
   break if i > 6
+
   total += i
 end
 puts total

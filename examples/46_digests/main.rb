@@ -26,8 +26,10 @@ class BlobStore
   def get(key)
     enc = @blobs[key]
     return nil if enc.nil?
+
     data = Base64.strict_decode64(enc)
     raise "corrupt #{key}" unless Zlib.crc32(data) == @crcs[key]
+
     data
   end
 end

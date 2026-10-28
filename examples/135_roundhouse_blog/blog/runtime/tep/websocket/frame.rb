@@ -210,6 +210,7 @@ module Tep
         return false if op == Tep::WebSocket::OPCODE_CLOSE
         return false if op == Tep::WebSocket::OPCODE_PING
         return false if op == Tep::WebSocket::OPCODE_PONG
+
         true
       end
 

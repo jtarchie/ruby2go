@@ -26,14 +26,17 @@ module ActionController
 
     def self.blocked?(user_agent, floors)
       return false if user_agent.nil? || user_agent.empty?
+
       parsed = UserAgent.parse(user_agent)
       reported = parsed.version
       return false if reported.empty?
+
       name = parsed.browser.downcase
       name = "ie" if name == "internet explorer"
       floor = floors[name]
       return false if floor.nil?
       return false if parsed.bot?
+
       floor == "false" || UserAgent.version_below?(reported, floor)
     end
   end

@@ -27,6 +27,7 @@ class Settings
 
   def describe_home
     return "home unset" if @home.nil?
+
     "home is #{@home.length} chars"
   end
 end

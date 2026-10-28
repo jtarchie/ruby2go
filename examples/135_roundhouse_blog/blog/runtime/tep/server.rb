@@ -14,6 +14,7 @@ module Tep
     return "Forbidden" if status == 403
     return "Not Found" if status == 404
     return "Internal Server Error" if status == 500
+
     "OK"
   end
 
@@ -109,6 +110,7 @@ module Tep
       loop do
         client = Sock.sphttp_accept(sfd)
         next if client < 0
+
         handle_connection(client)
       end
     end
@@ -138,6 +140,7 @@ module Tep
       while buf.length < 65535
         chunk = Sock.sp_net_recv_some(client, 4096)
         return "" if chunk.length == 0
+
         buf += chunk
         return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
       end
@@ -147,6 +150,7 @@ module Tep
     def handle_one(client)
       blob = read_request_blocking(client)
       return false if blob.length == 0
+
       req = Parser.parse(blob)
       if req == nil
         send_simple(client, 400, "bad request")

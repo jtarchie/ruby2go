@@ -152,6 +152,7 @@ module Net
       target = @ipaddr.empty? ? @address : @ipaddr
       TcpSocketStub.check(target, @port)
       return TCPSocket.new(target, @port) if limit <= 0
+
       s = Socket.new(Socket::AF_INET, Socket::SOCK_STREAM, 0)
       begin
         s.connect_nonblock(target, @port)

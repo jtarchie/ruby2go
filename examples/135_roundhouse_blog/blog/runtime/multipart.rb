@@ -107,6 +107,7 @@ module ActionDispatch
       def self.boundary(content_type)
         at = content_type.index("boundary=")
         return "" if at.nil?
+
         rest = content_type[at + 9, content_type.length - at - 9].to_s
         semi = rest.index(";")
         rest = rest[0, semi].to_s unless semi.nil?
@@ -121,9 +122,11 @@ module ActionDispatch
         needle = attr + "=\""
         at = header.index(needle)
         return "" if at.nil?
+
         from = at + needle.length
         close = header.index("\"", from)
         return "" if close.nil?
+
         header[from, close - from].to_s
       end
 
@@ -131,22 +134,27 @@ module ActionDispatch
         form = Form.new
         b = boundary(content_type)
         return form if b.length == 0
+
         delimiter = "--" + b
         n = body.bytesize
         pos = body.byteindex(delimiter)
         return form if pos.nil?
+
         pos += delimiter.bytesize
         while pos < n
           # The delimiter is followed by CRLF for a part, or by "--"
           # for the closing delimiter.
           return form if body.byteslice(pos, 2) == "--"
+
           pos += 2 if body.byteslice(pos, 2) == "\r\n"
           header_end = body.byteindex("\r\n\r\n", pos)
           return form if header_end.nil?
+
           headers = body.byteslice(pos, header_end - pos).to_s
           content_start = header_end + 4
           next_delim = body.byteindex("\r\n" + delimiter, content_start)
           return form if next_delim.nil?
+
           content = body.byteslice(content_start, next_delim - content_start).to_s
           add_part(form, headers, content)
           pos = next_delim + 2 + delimiter.bytesize
@@ -163,6 +171,7 @@ module ActionDispatch
         headers.split("\r\n").each do |line|
           colon = line.index(":")
           next if colon.nil?
+
           hname = line[0, colon].to_s.strip.downcase
           hvalue = line[colon + 1, line.length - colon - 1].to_s.strip
           if hname == "content-disposition"
@@ -173,9 +182,11 @@ module ActionDispatch
         end
         name = disposition_param(disposition, "name")
         return nil if name.length == 0
+
         if disposition.include?("filename=")
           filename = disposition_param(disposition, "filename")
           return nil if filename.length == 0
+
           # A browser sends the basename; a client that sends a path
           # gets the same treatment Rack gives it.
           slash = filename.rindex("/")

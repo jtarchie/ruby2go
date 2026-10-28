@@ -154,17 +154,20 @@ module HttpStub
     while i < STUB_URLS.length
       if STUB_VERBS[i] == v && STUB_URLS[i] == url
         return i if STUB_MATCHER_JSON[i] == ""
+
         saw_matcher = true
         return i if body_matches?(body, STUB_MATCHER_JSON[i])
       end
       i += 1
     end
     raise "WebMock: #{v} #{url} was stubbed with a body matcher the request body did not satisfy: #{body}" if saw_matcher
+
     -1
   end
 
   def self.body_matches?(body, matcher_json)
     return false if body.nil? || body.to_s == ""
+
     subset?(JSON.parse(body.to_s), JSON.parse(matcher_json))
   end
 
@@ -174,6 +177,7 @@ module HttpStub
   # written with Symbols and the wire carries Strings.
   def self.subset?(actual, expected)
     return false if !actual.is_a?(Hash) || !expected.is_a?(Hash)
+
     ok = true
     expected.each do |k, v|
       key = k.to_s

@@ -26,6 +26,7 @@ module ActionView
     def self.form_authenticity_token
       session = ActionController::Current.session
       return "" if session.nil?
+
       token = session[:_csrf_token]
       if token.nil?
         token = CsrfRand.sp_crypto_random_b64url(32)

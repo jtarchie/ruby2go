@@ -46,6 +46,7 @@ puts count
 clamp = lambda do |x|
   return 0 if x < 0
   next 100 if x > 100
+
   x
 end #: ^(Integer) -> Integer
 puts [-5, 50, 500].map(&clamp).inspect

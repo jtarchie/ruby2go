@@ -210,6 +210,7 @@ module ActionView
         unless include_seconds
           return distance_in_minutes == 0 ? "less than a minute" : "1 minute"
         end
+
         case distance_in_seconds
         when 0..4   then "less than 5 seconds"
         when 5..9   then "less than 10 seconds"
@@ -477,6 +478,7 @@ module ActionView
       while i < n
         c = raw[i, 1].to_s
         break if sanitize_space?(c) || c == "/"
+
         i += 1
       end
       raw[0, i].to_s.downcase
@@ -617,12 +619,14 @@ module ActionView
       while j < n && depth > 0
         lt = s.index("<", j)
         return n if lt.nil?
+
         if s[lt, 4] == "<!--"
           close = s.index("-->", lt + 4)
           j = close.nil? ? n : close + 3
         elsif tag_open_at?(s, lt)
           te = tag_end_index(s, lt)
           return n if te.nil?
+
           raw = s[lt + 1, te - lt - 2].to_s
           if raw[0, 1].to_s == "/"
             depth -= 1 if sanitize_tag_name(raw[1, raw.length - 1].to_s) == name
@@ -646,6 +650,7 @@ module ActionView
       while j < n
         lt = s.index("</", j)
         return n if lt.nil?
+
         if s[lt + 2, name.length].to_s.downcase == name
           d = s[lt + 2 + name.length, 1].to_s
           return lt if d == "" || d == ">" || d == "/" || sanitize_space?(d)
@@ -672,6 +677,7 @@ module ActionView
       while i < n
         c = raw[i, 1].to_s
         break if sanitize_space?(c)
+
         i += 1
       end
       while i < n
@@ -683,6 +689,7 @@ module ActionView
           while i < n
             c = raw[i, 1].to_s
             break if sanitize_space?(c) || c == "="
+
             i += 1
           end
           aname = raw[astart, i - astart].to_s.downcase
@@ -721,6 +728,7 @@ module ActionView
       n = value.length
       while i < n
         return false if value[i, 1].to_s.ord > 32
+
         i += 1
       end
       true
@@ -808,22 +816,27 @@ module ActionView
       n = t.length
       c = t[0, 1].to_s
       return true unless c != "" && "abcdefghijklmnopqrstuvwxyz".include?(c)
+
       i = 1
       while i < n
         c = t[i, 1].to_s
         break unless c != "" && "abcdefghijklmnopqrstuvwxyz0123456789+-.".include?(c)
+
         i += 1
       end
       sep = sanitize_uri_separator_length(t, i)
       return true if sep == 0
+
       protocol = t[0, i].to_s
       return false unless sanitize_allowed_protocols.include?(protocol)
+
       if protocol == "data"
         m = +""
         j = i + sep
         while j < n
           c = t[j, 1].to_s
           break if [";", ","].include?(c)
+
           m += c
           j += 1
         end
@@ -839,8 +852,10 @@ module ActionView
     def self.sanitize_uri_separator_length(t, i)
       return 1 if t[i, 1].to_s == ":"
       return 3 if t[i, 3] == "%3a"
+
       if t[i, 2] == "&#"
         return 7 if t[i + 2, 5] == "37;3a"
+
         j = i + 2
         if t[j, 1].to_s == "x"
           j += 1
@@ -954,12 +969,14 @@ module ActionView
     # nil = keep the reference as written (out of range / surrogate).
     def self.sanitize_codepoint_char(cp)
       return "" if cp <= 32 || cp == 127 || (cp >= 128 && cp <= 257)
+
       if cp >= 33 && cp <= 126
         ascii = "!\"\#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
         return ascii[cp - 33, 1].to_s
       end
       return nil if cp >= 55296 && cp <= 57343
       return nil if cp > 1114111
+
       "?"
     end
 
@@ -971,6 +988,7 @@ module ActionView
     def self.tag_open_at?(s, i)
       c = s[i + 1, 1].to_s
       return true if ["!", "?"].include?(c)
+
       c = s[i + 2, 1].to_s if c == "/"
       # Inline literal, not a module const: a module-const receiver
       # reads as an unresolved class in the strict typer (same reason
@@ -1027,6 +1045,7 @@ module ActionView
       j += 1 while j < n && digits.include?(s[j, 1].to_s) && s[j, 1].to_s != ""
       return 0 if j == start
       return 0 unless s[j, 1].to_s == ";"
+
       j + 1 - i
     end
 
@@ -1112,6 +1131,7 @@ module ActionView
     def self.auto_link(text, html: {}, link: :all, sanitize: false)
       s = text.to_s
       return "" if s.empty?
+
       do_urls = link != :email_addresses
       do_emails = link != :urls
       out = +""
@@ -1180,6 +1200,7 @@ module ActionView
     # one.
     def self.auto_link_anchor_open?(tag)
       return false unless tag[0, 2].to_s.downcase == "<a"
+
       c = tag[2, 1].to_s
       c == ">" || !auto_link_word_char?(c)
     end
@@ -1197,9 +1218,11 @@ module ActionView
       n = s.length
       j = auto_link_url_prefix_end(s, i)
       return 0 if j == 0
+
       k = j
       k += 1 while k < n && auto_link_url_char?(s[k, 1].to_s)
       return 0 if k == j
+
       k - i
     end
 
@@ -1207,10 +1230,12 @@ module ActionView
     # neither opens at `i`.
     def self.auto_link_url_prefix_end(s, i)
       return i + 5 if s[i, 4].to_s.downcase == "www." && auto_link_word_char?(s[i + 4, 1].to_s)
+
       colon = s.index(":", i)
       return 0 if colon.nil?
       return 0 unless s[colon, 3].to_s == "://"
       return 0 unless auto_link_scheme?(s[i, colon - i].to_s.downcase)
+
       colon + 3
     end
 
@@ -1221,6 +1246,7 @@ module ActionView
     # spells its alphabet out.
     def self.auto_link_scheme?(name)
       return false if name.empty?
+
       "|ed2k|ftp|http|https|irc|mailto|news|gopher|nntp|telnet|webcal|" \
       "xmpp|callto|feed|svn|urn|aim|rsync|tag|ssh|sftp|rtsp|afs|file|"
         .include?("|" + name + "|")
@@ -1231,6 +1257,7 @@ module ActionView
       return false if c == ""
       return false if [" ", "\t", "\r", "\n"].include?(c)
       return false if ["\f", "\v"].include?(c)
+
       c != "<" && c != "\""
     end
 
@@ -1243,6 +1270,7 @@ module ActionView
     def self.auto_link_word_char?(c)
       return false if c == ""
       return true if c.ord >= 128
+
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_".include?(c)
     end
 
@@ -1270,6 +1298,7 @@ module ActionView
         punctuation.push(last)
         opening = auto_link_bracket_opening(last)
         next unless opening != "" && auto_link_count(href, opening) > auto_link_count(href, last)
+
         # `href << punctuation.pop` in the gem. Split, and the pop is a
         # STATEMENT: used as a value it types as an Option on the
         # strict targets, and `last` is the same character anyway.
@@ -1323,6 +1352,7 @@ module ActionView
       return "[" if c == "]"
       return "(" if c == ")"
       return "{" if c == "}"
+
       ""
     end
 
@@ -1369,46 +1399,55 @@ module ActionView
       n = s.length
       return 0 if i > 0 && auto_link_email_local_char?(s[i - 1, 1].to_s)
       return 0 unless auto_link_email_start_char?(s[i, 1].to_s)
+
       j = i + 1
       j += 1 if s[j, 1].to_s == "."
       j += 1 while j < n && auto_link_email_local_char?(s[j, 1].to_s)
       return 0 unless s[j, 1].to_s == "@"
+
       j += 1
       k = j
       k += 1 while k < n && auto_link_email_domain_char?(s[k, 1].to_s)
       return 0 if k == j
+
       # `(?:\.[\w-]+)+` — one label is not a domain.
       labels = 0
       more = true
       while more
         more = false
         next unless s[k, 1].to_s == "."
+
         m = k + 1
         m += 1 while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
         next unless m > k + 1
+
         k = m
         labels += 1
         more = true
       end
       return 0 if labels == 0
+
       k - i
     end
 
     # `[\w.!#\$%&'*\/=?^`{|}~+-]`
     def self.auto_link_email_local_char?(c)
       return false if c == ""
+
       auto_link_word_char?(c) || ".!\#$%&'*/=?^`{|}~+-".include?(c)
     end
 
     # `[\w.!#\$%+-]` — the narrower set the local part may OPEN with.
     def self.auto_link_email_start_char?(c)
       return false if c == ""
+
       auto_link_word_char?(c) || ".!\#$%+-".include?(c)
     end
 
     # `[\w-]`
     def self.auto_link_email_domain_char?(c)
       return false if c == ""
+
       auto_link_word_char?(c) || c == "-"
     end
 

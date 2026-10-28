@@ -201,6 +201,7 @@ module ObjectTests
     #: (Integer) -> bool
     def withdraw(n)
       return false if balance - n < limit
+
       self.balance = balance - n
       @history << -n
       true
@@ -237,6 +238,7 @@ module ObjectTests
     def display_name
       n = nick
       return n.upcase if n
+
       owner
     end
   end
@@ -273,6 +275,7 @@ module ObjectTests
     #: () -> String
     def shout
       return "anon" unless nick
+
       nick.upcase
     end
 
@@ -294,6 +297,7 @@ module ObjectTests
     #: () -> String
     def reset
       return "none" unless nick
+
       first = nick.upcase
       self.nick = nil
       "#{first} then #{nick.inspect}"
@@ -402,6 +406,7 @@ module ObjectTests
     def <=>(other)
       c = major <=> other.major
       return c unless c == 0
+
       minor <=> other.minor
     end
 
@@ -878,6 +883,7 @@ module ObjectTests
     def self.dispatch(name)
       k = REGISTRY[name]
       return "none" unless k
+
       k.new.run
     end
 
@@ -3204,6 +3210,7 @@ module ObjectTests
       saw = [] #: Array[String]
       bag.each do |n|
         next if n == 1
+
         saw << "saw #{n}"
       end
       assert_equal ["saw 3", "saw 2"], saw
@@ -3551,6 +3558,7 @@ module ObjectTests
       pe.each_two { |i| twos << "two #{i}" }
       jr.each_two do |i|
         next if i == 1
+
         twos << "junior two #{i}"
       end
       assert_equal ["two 1", "two 2", "junior two 2"], twos
@@ -5059,6 +5067,7 @@ module ObjectTests
 
     def guarded
       return "none" unless @v
+
       @v.upcase
     end
 
@@ -5086,6 +5095,7 @@ module ObjectTests
 
     def nil_guard
       return 0 if @v.nil?
+
       @v.size
     end
   end

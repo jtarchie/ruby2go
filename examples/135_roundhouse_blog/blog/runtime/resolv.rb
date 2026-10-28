@@ -176,9 +176,11 @@ class Resolv
 
   def self.getaddresses(host)
     return STUB_WHERE_ADDRS[0] if STUB_WHERE.length > 0 && STUB_WHERE[0].call(host)
+
     failure = STUB_RAISE_NAME[0]
     if failure != ""
       raise ResolvError, failure if failure == "Resolv::ResolvError"
+
       raise failure
     end
     i = 0
@@ -192,9 +194,11 @@ class Resolv
     i = 0
     while i < STUB_HOSTS.length
       return STUB_ADDRS[i] if STUB_HOSTS[i] == host
+
       i += 1
     end
     return STUB_ANY[0] if STUB_ANY_ON[0]
+
     resolve(host)
   end
 

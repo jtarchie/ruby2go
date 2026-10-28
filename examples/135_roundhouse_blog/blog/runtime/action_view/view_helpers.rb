@@ -263,6 +263,7 @@ module ActionView
 
     def self.truncate(s, length: 30, omission: "...")
       return s if s.length <= length
+
       cutoff = length - omission.length
       cutoff = 0 if cutoff < 0
       "#{s[0, cutoff]}#{omission}"
@@ -531,6 +532,7 @@ module ActionView
       return source if skip_pipeline
       return source if source.start_with?("/")
       return source if source.include?("://")
+
       "/assets/#{source}"
     end
 
@@ -550,6 +552,7 @@ module ActionView
       return source if skip_pipeline
       return source if source.start_with?("/")
       return source if source.include?("://")
+
       "/assets/#{source}"
     end
 
@@ -572,6 +575,7 @@ module ActionView
       return source if skip_pipeline
       return source if source.start_with?("/")
       return source if source.include?("://")
+
       "/assets/#{source}"
     end
 
@@ -584,6 +588,7 @@ module ActionView
       return source if skip_pipeline
       return source if source.start_with?("/")
       return source if source.include?("://")
+
       name = source.include?(".") ? source : "#{source}.js"
       "/assets/#{name}"
     end
@@ -596,6 +601,7 @@ module ActionView
       return source if skip_pipeline
       return source if source.start_with?("/")
       return source if source.include?("://")
+
       name = source.include?(".") ? source : "#{source}.js"
       "/assets/#{name}"
     end
@@ -746,6 +752,7 @@ module ActionView
       # on that lane). The explicit comparison is false for every
       # target's unset shape and for `false` alike.
       return "" if @broadcast_rendering == true
+
       %(<input type="hidden" name="authenticity_token" value="#{form_authenticity_token}">)
     end
 
@@ -879,6 +886,7 @@ module ActionView
     # a `next unless` — the same kotlin gap sits latent there.)
     def self.render_attrs(attrs)
       return "" if attrs.empty?
+
       pairs = []
       attrs.each do |k, v|
         # The name bindings sit ABOVE the nil guards on purpose: the
@@ -893,6 +901,7 @@ module ActionView
             v.each do |inner_k, inner_v|
               inner_name = inner_k.to_s.tr("_", "-")
               next if inner_v.nil?
+
               # Coerce untyped Hash values to String before
               # html_escape; html_escape's contract is
               # `(String) -> String` and the untyped values flowing

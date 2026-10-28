@@ -17,6 +17,7 @@ def count_all(xs = []) = xs.size
 #: (Array[Integer]) -> Array[Integer]
 def evens(nums)
   return [] if nums.empty?
+
   nums.select(&:even?)
 end
 
@@ -34,6 +35,7 @@ end
 def first_long(words)
   words.each do |w|
     next if w.size < 4
+
     return w
   end
   "none"
@@ -664,6 +666,7 @@ module ArrayTests
       until queue.empty?
         x = queue.shift
         next unless x
+
         seen << x
         queue << x * 2 << x * 2 + 1 if x < 4
       end
@@ -747,6 +750,7 @@ module ArrayTests
       nums.each do |n|
         next if n < 10
         break if n > 20
+
         out << "mid #{n}"
       end
       assert_equal ["mid 15", "mid 16"], out
@@ -756,6 +760,7 @@ module ArrayTests
       out = []
       nums.each_with_index do |n, i|
         break if i > 1
+
         out << "ewi #{n}"
       end
       assert_equal ["ewi 4", "ewi 8"], out
@@ -766,6 +771,7 @@ module ArrayTests
       nums.reverse_each do |n|
         next if n.odd?
         break if n < 16
+
         out << "revbreak #{n}"
       end
       assert_equal ["revbreak 42", "revbreak 16"], out
@@ -794,6 +800,7 @@ module ArrayTests
       out = [] #: Array[String]
       array_each_even(nums) do |n|
         break if n > 10
+
         out << "even #{n}"
       end
       assert_equal ["even 4", "even 8"], out
@@ -818,6 +825,7 @@ module ArrayTests
       pairs_upto(5) do |i, s|
         next if i == 1
         break if i == 3
+
         out << "#{i}|#{s}"
       end
       assert_equal ["0|00", "2|22"], out
@@ -840,6 +848,7 @@ module ArrayTests
       out = []
       bag.each do |s|
         break if s.size > 1
+
         out << "bag first #{s}"
       end
       assert_equal ["bag first x"], out
@@ -914,6 +923,7 @@ module ArrayTests
         row.each do |v|
           next if v.even?
           break if v > 4
+
           out << v.to_s
         end
         out << "|"
@@ -928,6 +938,7 @@ module ArrayTests
         small.each do |m|
           next if m == 2
           break if m > n
+
           r += m
         end
         r
@@ -948,9 +959,11 @@ module ArrayTests
         pairs_upto(3) do |i, s|
           break if i > 1
           next if i.zero?
+
           out << "nest #{n} #{s}"
         end
         break if n > 10
+
         out << "after #{n}"
       end
       assert_equal ["nest 2 11", "after 2", "nest 4 11", "after 4", "nest 12 11"], out
@@ -1216,6 +1229,7 @@ module ArrayTests
       cd.each do |n|
         next if n == 3
         break if n == 1
+
         out << "cd2 #{n}"
       end
       assert_equal ["cd 4", "cd 3", "cd 2", "cd 1", "cd2 4", "cd2 2"], out
@@ -1249,6 +1263,7 @@ module ArrayTests
       cd.each_with_index { |n, i| out << "#{i}:#{n}" }
       cd.each_with_index do |n, i|
         break if i == 2
+
         out << "ewi #{n}"
       end
       cd.each_entry { |n| out << "e#{n}" }
@@ -1337,12 +1352,14 @@ module ArrayTests
       ints = []
       nat.each do |n|
         break if n > 2
+
         ints << n
       end
       assert_equal [0, 1, 2], ints
       out = []
       nat.each_with_index do |n, i|
         break if i >= 2
+
         out << "#{i}:#{n}"
       end
       assert_equal ["0:0", "1:1"], out
@@ -2434,6 +2451,7 @@ module ArrayTests
       r = []
       r << "a"
       return r if n > 5
+
       r.push("b")
       r
     end
@@ -2442,6 +2460,7 @@ module ArrayTests
       h = {}
       h[:a] = n
       return h if n > 1
+
       h
     end
 
@@ -3169,6 +3188,7 @@ module ArrayTests
       odd = [1, 2, 3, 4].count do |x|
         next true if x.even?
         next if x == 3
+
         x > 0
       end
       assert_equal 3, odd
@@ -3205,6 +3225,7 @@ module ArrayTests
       assert_equal 12, [1, 2, 3].sum { |x| x * 2 }
       skipped = [1, 2, 3].sum do |x|
         next 10 if x == 2
+
         x
       end
       assert_equal 14, skipped
@@ -3233,6 +3254,7 @@ module ArrayTests
       [1, 2, 3].count do |x|
         n += x
         break if x == 2
+
         true
       end
       assert_equal 3, n
@@ -3240,6 +3262,7 @@ module ArrayTests
       Array.new(4) do |i|
         seen << i
         break if i == 1
+
         i
       end
       assert_equal [0, 1], seen
@@ -3251,6 +3274,7 @@ module ArrayTests
         x.times do |i|
           next if i.odd?
           break if i > 2
+
           t += i
         end
         t
@@ -3264,6 +3288,7 @@ module ArrayTests
       assert_equal [], none
       marked = Array.new(3) do |i|
         next -1 if i == 1
+
         i
       end
       assert_equal [0, -1, 2], marked

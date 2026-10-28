@@ -133,6 +133,7 @@ class UserAgent
       rest = s[matched.length, s.length - matched.length]
       s = rest.nil? ? "" : rest.strip
       break if s.empty?
+
       matched = s[MATCHER, 0]
     end
     new(tokens, classify(tokens))
@@ -150,6 +151,7 @@ class UserAgent
   # adding a row here plus a row in the comparison corpus.
   def self.classify(tokens)
     return "base" if tokens.empty?
+
     last = tokens.last
     # Read the product ONCE, here, rather than re-testing `last` below.
     # `return "edge" if !last.nil? && last.product == "Edge"` narrows
@@ -160,6 +162,7 @@ class UserAgent
     # docs/pipeline/analyze.md; hoisting the read is correct either way.
     last_product = last.nil? ? "" : last.product
     return "edge" if last_product == "Edge"
+
     app = base_application(tokens)
     if !app.nil? && !app.comment.empty?
       second = app.comment[1]
@@ -174,12 +177,14 @@ class UserAgent
     return "chrome" if product?(tokens, "Chrome") || product?(tokens, "CriOS")
     return "webkit" if webkit?(tokens)
     return "gecko" if !app.nil? && app.product == "Mozilla"
+
     "base"
   end
 
   def self.webkit?(tokens)
     tokens.each do |t|
       return true if t.product.match?(/\AAppleWebKit\z/i)
+
       t.comment.each do |c|
         return true if c.match?(/\A(AppleWebKit)\/([\d\.]+)/i)
       end
@@ -262,6 +267,7 @@ class UserAgent
       last.nil? ? "" : last.version
     when "internet_explorer"
       return "" if app.nil?
+
       app.comment.join("; ")[/(MSIE\s|rv:)([\d\.]+)/, 2].to_s
     when "chrome"
       t = UserAgent.find_product(@tokens, "CriOS")
@@ -288,8 +294,10 @@ class UserAgent
   def webkit_version
     t = UserAgent.find_product(@tokens, "Version")
     return t.version unless t.nil?
+
     ios = os[/iOS ([\d\.]+)/, 1].to_s
     return ios.tr("_", ".") if !ios.empty? && browser == "Safari"
+
     build = webkit_build
     v = BUILD_VERSIONS[build]
     v.nil? ? "" : v
@@ -298,6 +306,7 @@ class UserAgent
   def webkit_build
     t = UserAgent.find_product(@tokens, "AppleWebKit")
     return t.version unless t.nil?
+
     @tokens.each do |tok|
       tok.comment.each do |c|
         v = c[/\A(AppleWebKit)\/([\d\.]+)/i, 2].to_s
@@ -314,27 +323,34 @@ class UserAgent
   def platform
     app = application
     return "" if app.nil?
+
     case @kind
     when "edge", "internet_explorer" then "Windows"
     when "chrome"
       return "" if app.comment.empty?
+
       first = app.comment[0]
       return "Windows" if !first.nil? && first.match?(/Windows/)
       return "ChromeOS" if app.comment.any? { |c| c.match?(/CrOS/) }
       return "Android" if app.comment.any? { |c| c.match?(/Android/) }
+
       first.nil? ? "" : first
     when "webkit"
       return "" if app.comment.empty?
+
       first = app.comment[0]
       return "Windows" if !first.nil? && first.match?(/Windows/)
       return "BlackBerry" if first == "BB10"
       return "Android" if app.comment.any? { |c| c.match?(/Android/) }
+
       first.nil? ? "" : first
     when "gecko"
       return "" if app.comment.empty?
+
       first = app.comment[0]
       return "" if ["compatible", "Mobile"].include?(first)
       return "Windows" if !first.nil? && first.match?(/\AWindows /)
+
       first.nil? ? "" : first
     else
       ""
@@ -344,6 +360,7 @@ class UserAgent
   def os
     app = application
     return "" if app.nil?
+
     case @kind
     when "edge"
       UserAgent.normalize_os(comment_match(/Windows NT [\d\.]+|Windows Phone (OS )?[\d\.]+/))
@@ -364,25 +381,32 @@ class UserAgent
 
   def chrome_os(app)
     return "" if app.comment.empty?
+
     first = app.comment[0]
     return UserAgent.normalize_os(first) if !first.nil? && first.match?(/Windows NT/)
+
     second = app.comment[1]
     third = app.comment[2]
     return UserAgent.normalize_os(second.nil? ? "" : second) if third.nil?
     return UserAgent.normalize_os(second) if !second.nil? && second.match?(/Android/)
+
     UserAgent.normalize_os(third)
   end
 
   def webkit_os(app)
     return "" if app.comment.empty?
+
     first = app.comment[0]
     return UserAgent.normalize_os(first) if !first.nil? && first.match?(/Windows NT/)
+
     second = app.comment[1]
     third = app.comment[2]
     return UserAgent.normalize_os(second.nil? ? "" : second) if third.nil?
     return UserAgent.normalize_os(second) if !second.nil? && second.match?(/Android/)
+
     ios = app.comment.find { |c| c.match?(IOS_VERSION_REGEX) }
     return UserAgent.normalize_os(ios) unless ios.nil?
+
     UserAgent.normalize_os(third)
   end
 
@@ -391,6 +415,7 @@ class UserAgent
   # `Android` puts it first.
   def gecko_os(app)
     return "" if app.comment.empty?
+
     first = app.comment[0]
     second = app.comment[1]
     lead = first.nil? ? "" : first
@@ -404,6 +429,7 @@ class UserAgent
               1
             end
     return "" if index < 0
+
     slot = app.comment[index]
     UserAgent.normalize_os(slot.nil? ? "" : slot)
   end
@@ -428,6 +454,7 @@ class UserAgent
     return true if app.nil?
     return true unless comment_match(/bot/i).empty?
     return true if UserAgent.product?(@tokens, "Chrome-Lighthouse")
+
     app.product.include?("bot")
   end
 
@@ -445,6 +472,7 @@ class UserAgent
     a = version_sequence(reported)
     b = version_sequence(floor)
     return false if a.empty? || b.empty?
+
     i = 0
     while i < a.length || i < b.length
       x = i < a.length ? a[i] : "0"
@@ -473,6 +501,7 @@ class UserAgent
   # bytes is a shape every target's emit answers.
   def self.version_sequence(str)
     return [] unless str.match?(/\A\d+(\.|\z)/)
+
     parts = []
     run = ""
     i = 0
@@ -498,8 +527,10 @@ class UserAgent
   # three version-bearing families, then the string as written.
   def self.normalize_os(os)
     return "" if os.nil? || os.empty?
+
     named = WINDOWS_NAMES[os]
     return named unless named.nil?
+
     # `String#[](regex, capture)` rather than `match` + `MatchData`:
     # the analyzer types `match` as gradual on purpose ("we don't model
     # MatchData structurally"), and every read off it was a
@@ -516,8 +547,10 @@ class UserAgent
     end
     v = os[IOS_VERSION_REGEX, 1].to_s
     return "iOS #{v.tr("_", ".")}" unless v.empty?
+
     v = os[/CrOS\s([^\s]+)\s(\d+(\.\d+)*)/, 2].to_s
     return "ChromeOS #{v}" unless v.empty?
+
     os
   end
 end

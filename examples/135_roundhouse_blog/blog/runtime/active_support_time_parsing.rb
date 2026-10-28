@@ -91,6 +91,7 @@ module ActiveSupport
   def self.parse_db_time(str)
     return nil if str.nil?
     return nil if str.length < 19
+
     # The stored TEXT carries fractional seconds — Rails' datetime(6)
     # writes ".418418" and so does our own db_now — and the CRuby
     # overlay's twin reads them (usec, via its regex). Reading whole
@@ -108,6 +109,7 @@ module ActiveSupport
       while digits < 6
         c = str[20 + digits, 1]
         break if c.nil? || c.empty? || c < "0" || c > "9"
+
         digits += 1
       end
       micros = "#{str[20, digits]}000000"[0, 6].to_i if digits > 0
@@ -149,6 +151,7 @@ module ActiveSupport
   def self.json_time(str)
     t = parse_db_time(str)
     return nil if t.nil?
+
     t.strftime("%Y-%m-%dT%H:%M:%S.000%:z")
   end
 
@@ -183,6 +186,7 @@ module ActiveSupport
   # fixed by matz/spinel#3492, merged 2026-08-01 as 53feb9df.
   def self.rfc2822(t)
     return nil if t.nil?
+
     t.strftime("%a, %d %b %Y %H:%M:%S %z")
   end
 
@@ -194,6 +198,7 @@ module ActiveSupport
   # ordered.
   def self.format_db_time(value)
     return nil if value.nil?
+
     if value.is_a?(Time)
       t = value.utc
       # `usec`, not float arithmetic on `to_f`: a double near 2e9

@@ -153,6 +153,7 @@ module Main
 
   def self.configure_default_adapter!
     return unless ActiveRecord.adapter.nil?
+
     path = Main.default_db_path
     # SqliteAdapter.configure delegates to Db.configure (single shared
     # connection); both the legacy AR-adapter dispatch path and the
@@ -168,6 +169,7 @@ module Main
   # before the path is concatenated onto the static/ root.
   def self.static_asset?(path)
     return false if path.include?("..")
+
     path.start_with?("/assets/") || path == "/icon.png" || path == "/icon.svg"
   end
 

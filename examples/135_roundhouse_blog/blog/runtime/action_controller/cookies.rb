@@ -73,6 +73,7 @@ module ActionController
       # delete-from-inside-each guards).
       return @out[k] if @out.key?(k)
       return @inbound[k] if @inbound.key?(k)
+
       ""
     end
 
@@ -182,6 +183,7 @@ module ActionController
     def [](key)
       raw = @jar.raw(key)
       return nil if raw == ""
+
       verified = ActionController::MessageVerifier.verified(
         Rails.application.secret_key_base,
         ActionController::MessageVerifier::SIGNED_COOKIE_SALT,
@@ -224,6 +226,7 @@ module ActionController
     # own String-typed surface.
     def self.value_of(value)
       return value[:value].to_s if value.is_a?(Hash)
+
       value.to_s
     end
   end

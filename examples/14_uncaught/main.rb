@@ -6,6 +6,7 @@ class Boom < StandardError; end
 def go(n)
   puts "step #{n}"
   raise Boom, "boom at #{n}" if n == 2
+
   go(n + 1)
 end
 

@@ -179,6 +179,7 @@ module RegexpTests
       toks = [] #: Array[String]
       until ss.eos?
         next if ss.skip(/\s+/)
+
         t = ss.scan(/\d+/) || ss.scan(/[a-z_]+/) || ss.scan(/[=+;]/) || ss.getch
         toks << t if t
       end

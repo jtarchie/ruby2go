@@ -130,10 +130,13 @@ module Tep
         lio = IO.for_fd(sfd, autoclose: false)
         while true
           break if Sock.sphttp_shutdown_requested != 0
+
           ready = lio.wait_readable(1)
           next if ready.nil?
+
           client = Sock.sphttp_accept_nb(sfd)
           next if client < 0
+
           Sock.sphttp_set_nonblock(client)
           Thread.new(client) do |c|
             Tep::Server::Threaded.handle_connection(c)
@@ -161,6 +164,7 @@ module Tep
       def self.handle_one(client, io)
         blob = Tep::Server::Threaded.read_request_blob(client, io, KEEPALIVE_TIMEOUT)
         return false if blob.length == 0
+
         req = Parser.parse(blob)
         if req == nil
           Tep::Server::Threaded.send_simple(client, 400, "bad request")
@@ -200,10 +204,13 @@ module Tep
         while buf.length < MAX_REQUEST_BYTES
           remaining = deadline - Time.now.to_i
           return "" if remaining <= 0
+
           ready = io.wait_readable(remaining)
           return "" if ready.nil?
+
           chunk = Sock.sphttp_recv_some(fd, 4096)
           return "" if chunk.length == 0
+
           buf << chunk
           return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
         end

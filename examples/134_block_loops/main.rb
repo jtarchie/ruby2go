@@ -11,6 +11,7 @@ def neighbours(cells, x, y)
   OFFSETS.sum do |dy|
     OFFSETS.count do |dx|
       next false if dx == 0 && dy == 0
+
       cells[((y + dy) % H) * W + (x + dx) % W] == 1
     end
   end
@@ -22,6 +23,7 @@ def step(cells)
     n = neighbours(cells, i % W, i / W)
     next 1 if n == 3
     next cells[i].to_i if n == 2
+
     0
   end
 end

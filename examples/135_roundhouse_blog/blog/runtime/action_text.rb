@@ -123,6 +123,7 @@ module ActionText
       value = verified_value(sgid)
       at = value.index("/")
       return "" if at.nil?
+
       value[0, at]
     end
 
@@ -133,6 +134,7 @@ module ActionText
       value = verified_value(sgid)
       at = value.index("/")
       return 0 if at.nil?
+
       value[at + 1, value.length - at - 1].to_i
     end
 
@@ -350,6 +352,7 @@ module ActionText
     # attachment node without building a Content first.
     def self.wrap(value)
       return value if value.is_a?(ActionText::Fragment)
+
       ActionText::Fragment.new(value.to_s)
     end
 
@@ -481,6 +484,7 @@ module ActionText
     def self.element_end(html, _at, tag_end, name, raw)
       return tag_end + 1 if raw[raw.length - 1, 1].to_s == "/"
       return tag_end + 1 if void_element(name)
+
       depth = 1
       i = tag_end + 1
       n = html.length
@@ -522,6 +526,7 @@ module ActionText
     def self.parse_selector(selector)
       text = selector.to_s.strip
       return Selector.new("not", "", not_names(text), [], [], []) if text.start_with?(":not(")
+
       head = text.split("[")[0].to_s
       # A plain element NAME, refused otherwise. Combinators, classes
       # and ids are shapes this scanner does not read, and one that
@@ -529,6 +534,7 @@ module ActionText
       # filter that had nothing to do — inside a rescue, from a message
       # with no content at all.
       raise "ActionText::Fragment: unsupported selector #{selector.inspect}" unless element_name?(head)
+
       keys = []
       values = []
       ops = []
@@ -538,6 +544,7 @@ module ActionText
         pred = parts[i].to_s.split("]")[0].to_s
         eq = pred.index("=")
         raise "ActionText::Fragment: unsupported predicate #{pred.inspect}" if eq.nil?
+
         substring = pred[eq - 1, 1].to_s == "*"
         op = substring ? "*=" : "="
         key = pred[0, substring ? eq - 1 : eq].to_s
@@ -556,12 +563,14 @@ module ActionText
     # name, `div > span` and `.cls` are not.
     def self.element_name?(text)
       return false if text == ""
+
       i = 0
       while i < text.length
         c = text[i, 1].to_s
         ok = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") ||
              (c >= "0" && c <= "9") || c == "-" || c == "_"
         return false unless ok
+
         i += 1
       end
       true
@@ -577,12 +586,14 @@ module ActionText
         i += 1
       end
       raise "ActionText::Fragment: unsupported selector #{text.inspect}" if out.length == 0
+
       out
     end
 
     def self.matches?(name, attrs, matcher)
       return !matcher.excluded.include?(name) if matcher.kind == "not"
       return false if matcher.name != name
+
       keys = matcher.keys
       values = matcher.values
       ops = matcher.ops
@@ -874,6 +885,7 @@ module ActionText
         # its own line.
         return list_names.length > 0 ? "\n" + inner + "\n\n" : inner + "\n\n"
       end
+
       # `<li>`: indent by nesting depth, then the bullet its list type
       # dictates. Its own list is still on the stack, so depth 1 is a
       # top-level item and gets no indent.
@@ -889,6 +901,7 @@ module ActionText
     def self.quote_wrap(text)
       first = first_non_space_index(text)
       return "“”" if first < 0
+
       last = last_non_space_index(text)
       text[0, first].to_s + "“" + text[first, last - first + 1].to_s + "”" +
         text[last + 1, text.length - last - 1].to_s
@@ -898,6 +911,7 @@ module ActionText
       i = 0
       while i < text.length
         return i unless space_at(text, i)
+
         i += 1
       end
       -1
@@ -907,6 +921,7 @@ module ActionText
       i = text.length - 1
       while i >= 0
         return i unless space_at(text, i)
+
         i -= 1
       end
       -1
@@ -948,6 +963,7 @@ module ActionText
       while i < n
         c = text[i, 1].to_s
         break if [" ", "\t", "\n", "\r", "/"].include?(c)
+
         i += 1
       end
       text[0, i].to_s.downcase
@@ -968,6 +984,7 @@ module ActionText
         i += 1 while i < n && !Content.space_at(raw, i) && raw[i, 1].to_s != "="
         name = raw[name_start, i - name_start].to_s.downcase
         break if name == ""
+
         value = ""
         if raw[i, 1].to_s == "="
           i += 1
@@ -1007,6 +1024,7 @@ module ActionText
         c = html[i, 1].to_s
         return i if c == ";"
         return start if [" ", "<", "&"].include?(c)
+
         i += 1
       end
       start
@@ -1040,6 +1058,7 @@ module ActionText
     def self.decode_entity(entity)
       known = ENTITIES.fetch(entity, "")
       return known if known != ""
+
       if entity.start_with?("&#") && entity.length > 3
         digits = entity[2, entity.length - 3].to_s
         hex = digits.start_with?("x") || digits.start_with?("X")
@@ -1063,14 +1082,17 @@ module ActionText
     # `to_i(base)` so it prices the same on every target.
     def self.numeric_reference(digits, base)
       return -1 if digits == ""
+
       table = base == 16 ? "0123456789abcdef" : "0123456789"
       value = 0
       i = 0
       while i < digits.length
         d = table.index(digits[i, 1].to_s.downcase)
         return -1 if d.nil?
+
         value = value * base + d
         return -1 if value > 1114111
+
         i += 1
       end
       value

@@ -39,6 +39,7 @@ module ActiveSupport
     return true if value == false
     return value.empty? if value.is_a?(Array)
     return value.empty? if value.is_a?(Hash)
+
     value.to_s.strip.empty?
   end
 
@@ -150,6 +151,7 @@ module ActiveSupport
     return "" if n == 0
     return list[0].to_s if n == 1
     return "#{list[0]} and #{list[1]}" if n == 2
+
     head = +""
     i = 0
     while i < n - 1

@@ -13,6 +13,7 @@ module ActionDispatch
     def initialize(other = nil)
       @data = {}
       return if other.nil?
+
       keys = other.keys
       i = 0
       while i < keys.length
@@ -26,6 +27,7 @@ module ActionDispatch
     def [](key)
       k = key.to_s
       return @data[k] if @data.key?(k)
+
       nil
     end
 
@@ -37,6 +39,7 @@ module ActionDispatch
     def fetch(key, default = nil)
       k = key.to_s
       return @data[k] if @data.key?(k)
+
       default
     end
 

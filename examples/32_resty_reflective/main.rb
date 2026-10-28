@@ -186,6 +186,7 @@ module Resty
 
       def body
         return "" unless resource
+
         if resource.is_a?(Array)
           resource.map { |r| self.class.new(r).body }.join
         else
@@ -284,11 +285,13 @@ module Resty
       #: () -> Integer
       def status
         return 404 if controller.constant == NullController
+
         resource ? 201 : 422
       end
 
       def headers
         return {} unless resource
+
         {
           "Location" => "/#{controller_name}/#{resource.id}#{format}"
         }
@@ -501,6 +504,7 @@ module Resty
 
       def headers
         return {} unless resource
+
         {
           "Location" => "/#{controller_name}/#{resource.id}#{format}"
         }
@@ -617,6 +621,7 @@ module ExampleApp
     #: (untyped) -> void
     def attributes=(attrs)
       return unless attrs.is_a?(Hash)
+
       id = attrs["id"]
       @id = id.to_s.to_i if id
       title = attrs["title"]
@@ -635,6 +640,7 @@ module ExampleApp
     #: () -> bool
     def save
       return false unless title
+
       key = (@id ||= RECORDS.size + 1)
       RECORDS[key] = self
       true
@@ -703,6 +709,7 @@ module ExampleApp
       def resource
         post = Post.find(params["id"])
         return nil unless post
+
         post.attributes = params["post"]
         post.save
         post

@@ -54,6 +54,7 @@ module Tep
 
     def self.hex_char(n)
       return ("0".bytes[0] + n).chr if n < 10
+
       ("A".bytes[0] + n - 10).chr
     end
 
@@ -61,6 +62,7 @@ module Tep
       return c.bytes[0] - "0".bytes[0] if c >= "0" && c <= "9"
       return c.bytes[0] - "a".bytes[0] + 10 if c >= "a" && c <= "f"
       return c.bytes[0] - "A".bytes[0] + 10 if c >= "A" && c <= "F"
+
       -1
     end
 
@@ -130,9 +132,11 @@ module Tep
     def self.parse_query(s)
       h = Tep.str_hash
       return h if s.length == 0
+
       pairs = s.split("&")
       pairs.each do |pair|
         next unless pair.length > 0
+
         eq = pair.index("=")
         if eq.nil?
           h[Url.unescape(pair)] = +""

@@ -47,6 +47,7 @@ module GenericClassTests
     def top_box
       x = @items.last
       return nil if x.nil?
+
       Box.new(x)
     end
   end
@@ -103,6 +104,7 @@ module GenericClassTests
     def pop
       best = @items.min_by { |pair| pair[1] }
       return nil if best.nil?
+
       @items.delete(best)
       best[0]
     end

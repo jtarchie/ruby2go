@@ -20,6 +20,7 @@ class Ingredient
     rest = qty - whole
     return "#{whole} #{name}" if rest.zero?
     return "#{rest} #{name}" if whole.zero?
+
     "#{whole} #{rest} #{name}"
   end
 end

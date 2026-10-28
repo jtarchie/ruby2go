@@ -1226,6 +1226,7 @@ B
       m = "héllo world".match(/(?<first>l+)(?<o>o)? (?<w>w)(?<x>x)?/)
       refute_nil m
       return unless m
+
       assert_equal [5, 5, "héllo world"], [m.size, m.length, m.string]
       assert_equal %w[first o w x], m.names
       assert_equal({ "first" => "ll", "o" => "o", "w" => "w", "x" => nil }, m.named_captures)

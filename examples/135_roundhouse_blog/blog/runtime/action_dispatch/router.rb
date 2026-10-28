@@ -158,6 +158,7 @@ module ActionDispatch
       i = 0
       while i < known.length
         return true if known[i] == ext
+
         i += 1
       end
       false
@@ -249,6 +250,7 @@ module ActionDispatch
           # through `to_s` first hands `digits_only` a definite String.
           seg = ap.to_s
           return nil if int_constrained(int_params, name) && !digits_only(seg)
+
           params[name] = ap
         elsif pp != ap
           return nil
@@ -283,10 +285,12 @@ module ActionDispatch
     # identifier — `int_constrained?__loop` would fail to parse.
     def self.int_constrained(int_params, name)
       return false if int_params.empty?
+
       parts = int_params.split(" ")
       i = 0
       while i < parts.length
         return true if parts[i] == name
+
         i += 1
       end
       false
@@ -302,6 +306,7 @@ module ActionDispatch
     # `==` against single-char literals is a proven strict-emitter shape.
     def self.digits_only(s)
       return false if s.empty?
+
       i = 0
       while i < s.length
         c = s[i, 1].to_s
@@ -309,6 +314,7 @@ module ActionDispatch
            c != "5" && c != "6" && c != "7" && c != "8" && c != "9"
           return false
         end
+
         i += 1
       end
       true

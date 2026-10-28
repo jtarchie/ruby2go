@@ -384,6 +384,7 @@ class Comment < ApplicationRecord
     Broadcasts.append(stream: "article_#{@article_id}_comments", target: "comments", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Comments.comment(self)))
     parent = article
     return if parent.nil?
+
     Broadcasts.replace(stream: "articles", target: "#{parent.dom_prefix}_#{parent.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Articles.article(parent)))
   end
 
@@ -395,6 +396,7 @@ class Comment < ApplicationRecord
     Broadcasts.remove(stream: "article_#{@article_id}_comments", target: "#{dom_prefix}_#{dom_record_key}")
     parent = article
     return if parent.nil?
+
     Broadcasts.replace(stream: "articles", target: "#{parent.dom_prefix}_#{parent.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Articles.article(parent)))
   end
 

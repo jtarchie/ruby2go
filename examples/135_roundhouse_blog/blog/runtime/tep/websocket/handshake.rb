@@ -83,6 +83,7 @@ module Tep
       # `Connection: keep-alive, Upgrade` capitalised.
       def self.icontains(hay, needle)
         return false if hay.length == 0 || needle.length == 0
+
         hl = Handshake.downcase(hay)
         nl = Handshake.downcase(needle)
         Tep.str_find(hl, nl, 0) >= 0
@@ -109,6 +110,7 @@ module Tep
         out = [""]
         out.pop
         return out if s.length == 0
+
         pos = 0
         while pos < s.length
           comma = Tep.str_find(s, ",", pos)
@@ -128,6 +130,7 @@ module Tep
         j = s.length - 1
         j -= 1 while j >= i && ([" ", "\t"].include?(s[j]))
         return "" if j < i
+
         s[i, j - i + 1]
       end
 

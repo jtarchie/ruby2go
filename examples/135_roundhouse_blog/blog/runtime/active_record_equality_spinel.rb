@@ -23,6 +23,7 @@ module ActiveRecord
   class Base
     def ==(other)
       return true if equal?(other)
+
       other.instance_of?(self.class) && persisted? && other.id == id
     end
   end

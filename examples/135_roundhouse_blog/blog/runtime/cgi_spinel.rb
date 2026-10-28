@@ -66,6 +66,7 @@ module CGI
     return ">" if ent == "gt"
     return "\"" if ent == "quot"
     return "'" if ent == "apos"
+
     if ent.length > 1 && ent[0, 1] == "#"
       num = ent[1, ent.length - 1].to_i
       return num.chr if num > 0 && num < 128

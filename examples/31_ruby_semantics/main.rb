@@ -29,6 +29,7 @@ end
 def maybe(flag)
   begin
     raise ArgumentError, "kept" if flag
+
     "body"
   ensure
     return "early" unless flag
@@ -76,6 +77,7 @@ class Shape
   #: () -> String
   def describe
     return "unlabeled" unless label
+
     "shape #{label.upcase} (#{area})"
   end
 end

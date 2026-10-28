@@ -5,6 +5,7 @@
 #: (untyped) -> String
 def render(resource)
   return "none" unless resource
+
   if resource.is_a?(Array)
     "[" + resource.map { |r| render(r) }.join(",") + "]"
   elsif resource.is_a?(Integer)

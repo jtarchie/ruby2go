@@ -33,6 +33,7 @@ module ActiveStorage
       built = +""
       path.split("/").each do |seg|
         next if seg.length == 0
+
         built = built.length == 0 ? seg : built + "/" + seg
         Dir.mkdir(built) unless Dir.exist?(built)
       end
@@ -85,10 +86,12 @@ module ActiveStorage
     def self.dimensions(data, _content_type)
       n = data.bytesize
       return [0, 0] if n < 10
+
       b0 = data.getbyte(0).to_i
       b1 = data.getbyte(1).to_i
       return [be32(data, 16), be32(data, 20)] if b0 == 0x89 && b1 == 0x50 && n >= 24
       return [le16(data, 6), le16(data, 8)] if b0 == 0x47 && b1 == 0x49
+
       if b0 == 0x42 && b1 == 0x4D && n >= 26
         h = le32(data, 22)
         h = 4294967296 - h if h > 2147483647
@@ -96,6 +99,7 @@ module ActiveStorage
       end
       return jpeg_dimensions(data) if b0 == 0xFF && b1 == 0xD8
       return webp_dimensions(data) if b0 == 0x52 && b1 == 0x49 && n >= 30 && data.byteslice(8, 4) == "WEBP"
+
       [0, 0]
     end
 
@@ -127,6 +131,7 @@ module ActiveStorage
       i = 2
       while i + 9 < n
         return [0, 0] if data.getbyte(i).to_i != 0xFF
+
         marker = data.getbyte(i + 1).to_i
         if marker == 0xFF
           i += 1
@@ -139,6 +144,7 @@ module ActiveStorage
         sof = (marker >= 0xC0 && marker <= 0xC3) || (marker >= 0xC5 && marker <= 0xC7) ||
               (marker >= 0xC9 && marker <= 0xCB) || (marker >= 0xCD && marker <= 0xCF)
         return [be16(data, i + 7), be16(data, i + 5)] if sof
+
         i += 2 + be16(data, i + 2)
       end
       [0, 0]
@@ -150,11 +156,13 @@ module ActiveStorage
     def self.webp_dimensions(data)
       kind = data.byteslice(12, 4).to_s
       return [le16(data, 26) & 0x3FFF, le16(data, 28) & 0x3FFF] if kind == "VP8 "
+
       if kind == "VP8L"
         bits = le32(data, 21)
         return [(bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1]
       end
       return [le24(data, 24) + 1, le24(data, 27) + 1] if kind == "VP8X"
+
       [0, 0]
     end
   end
@@ -223,8 +231,10 @@ module ActiveStorage
         Rails.application.secret_key_base, "ActiveStorage", token, "disk_key", false
       )
       return ["", ""] if json == ""
+
       parts = ActionController::MessageVerifier.json_value(json).split("|")
       return ["", ""] if parts.length != 2
+
       [parts[0].to_s, parts[1].to_s]
     end
 

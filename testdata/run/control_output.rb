@@ -37,6 +37,7 @@ ok_skip or puts "or skipped"
 #: (Integer) -> Integer
 def risky(n)
   raise ArgumentError, "neg" if n < 0
+
   n
 end
 
@@ -197,6 +198,8 @@ p ctrl_c
 
 xs = [1] #: Array[Integer]
 return if xs.empty?
+
 puts "not returned"
 return unless xs.empty?
+
 puts "never printed"

@@ -521,6 +521,7 @@ end
 class DemoBlocked
   def initialize(args, &task)
     raise ArgumentError, "no block given" unless block_given?
+
     @task = task
     @args = args
   end
@@ -537,6 +538,7 @@ end
 class DemoExec
   def post(*args, &task)
     raise ArgumentError, "no block given" unless block_given?
+
     ns_execute(*args, &task)
   end
 
@@ -576,6 +578,7 @@ ENV.extend(DemoEnvSensitive)
 class DemoPostExec
   def post(*args, &task)
     raise ArgumentError, "no block given" unless block_given?
+
     task.call(*args)
   end
 
@@ -585,6 +588,7 @@ end
 class DemoTimerSet < DemoPostExec
   def post(delay, *args, &task)
     raise ArgumentError, "no block given" unless block_given?
+
     [delay, task.call(*args)]
   end
 end

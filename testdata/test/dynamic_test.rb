@@ -310,24 +310,28 @@ end
 #: (String?) -> Integer
 def len_unless(s)
   return -1 unless s
+
   s.size
 end
 
 #: (String?) -> Integer
 def len_nil_guard(s)
   return -2 if s.nil?
+
   s.size + 1000
 end
 
 #: (String?) -> Integer
 def len_bang_guard(s)
   return -3 unless s
+
   s.size + 2000
 end
 
 #: (String?) -> Integer
 def len_raise_guard(s)
   raise ArgumentError, "need a string" unless s
+
   s.size
 end
 
@@ -357,12 +361,14 @@ end
 def narrow_area_of(s)
   return "#{s.name}: #{s.radius * s.radius * 3}" if s.is_a?(DynamicTests::NCircle)
   return "#{s.name}: #{s.side * s.side}" if s.is_a?(DynamicTests::NSquare)
+
   "#{s.name}: ?"
 end
 
 #: (DynamicTests::NShape) -> Integer
 def diameter_guard(s)
   return -1 unless s.is_a?(DynamicTests::NCircle)
+
   s.diameter
 end
 
@@ -404,6 +410,7 @@ def total_len(ws)
   sum = 0
   ws.each do |w|
     next if w.nil?
+
     sum += strict_len(w)
   end
   sum
@@ -420,6 +427,7 @@ end
 #: (String?, String?) -> Integer
 def both_or(a, b)
   return -1 unless a && b
+
   strict_len(a) + strict_len(b)
 end
 
@@ -455,6 +463,7 @@ end
 #: (Integer?) -> String
 def describe_opt(n)
   return "nothing" if n.nil?
+
   "got #{n + 0}"
 end
 
@@ -1058,6 +1067,7 @@ module DynamicTests
     def method_missing(name, *args)
       value = @values[name.to_s]
       return value if value
+
       "(no #{name}: #{args.inspect})"
     end
 
@@ -1381,6 +1391,7 @@ module DynamicTests
     #: (Symbol, *untyped) -> String
     def method_missing(name, *args)
       return "ok #{name}" if name.to_s.start_with?("get_")
+
       super
     end
 
@@ -1663,6 +1674,7 @@ module DynamicTests
     #: () -> String
     def guarded
       return "no next" unless next_node
+
       "guarded=#{next_node.value + 100}"
     end
 
@@ -1789,6 +1801,7 @@ module DynamicTests
       got = [] #: Array[String]
       [dynamic_word(1), nil, dynamic_word(3)].each do |w|
         next unless w
+
         got << w.upcase
       end
       assert_equal ["W", "WWW"], got
@@ -1828,6 +1841,7 @@ module DynamicTests
       pairs = [["a", dynamic_word(2)], ["b", nil]] #: Array[[String, String?]]
       pairs.each do |k, pv|
         next unless pv
+
         got << "#{k}=#{strict_len(pv)}"
       end
       assert_equal ["1", "3", "a=2"], got

@@ -39,6 +39,7 @@ module SchematizedJson
   def self.parse_object(serialized)
     out = {}
     return out if serialized.nil?
+
     s = serialized.to_s
     n = s.length
     i = 0
@@ -99,6 +100,7 @@ module SchematizedJson
   # Index just past the value starting at `start`.
   def self.scan_value(s, start)
     return scan_string(s, start) if s[start, 1].to_s == "\""
+
     n = s.length
     i = start
     done = false
@@ -121,6 +123,7 @@ module SchematizedJson
   def self.decode_string(raw)
     s = raw.to_s
     return s if s.length < 2 || s[0, 1].to_s != "\""
+
     out = ""
     i = 1
     last = s.length - 1
@@ -155,6 +158,7 @@ module SchematizedJson
   # characters, so nothing valid renders as the empty string.
   def self.read_raw(data, key)
     return "" unless data.key?(key)
+
     data[key].to_s
   end
 
@@ -165,18 +169,21 @@ module SchematizedJson
   def self.read_boolean(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
     return fallback if ["", "null"].include?(raw)
+
     raw == "true"
   end
 
   def self.read_integer(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
     return fallback if ["", "null"].include?(raw)
+
     raw.to_i
   end
 
   def self.read_string(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
     return fallback if ["", "null"].include?(raw)
+
     decode_string(raw)
   end
 
@@ -212,6 +219,7 @@ module SchematizedJson
   def self.assign(serialized, value, schema)
     return nil if value.nil?
     return value.to_s unless value.is_a?(Hash)
+
     out = serialized
     value.each do |k, v|
       key = k.to_s

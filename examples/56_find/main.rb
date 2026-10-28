@@ -35,6 +35,7 @@ Dir.mktmpdir do |dir|
   puts "== break at top.txt =="
   Find.find(dir) do |path|
     break if File.basename(path) == "top.txt"
+
     puts rel(dir, path)
   end
 

@@ -83,6 +83,7 @@ module Tep
             # sequences — mask-dependent, so it flakes per connection.
             r = Tep::WebSocket::Frame.parse_from_buf(inbuf, 0, inbuf.bytesize)
             break if r.outcome == "need"
+
             if r.outcome == "close"
               @driver.close(r.close_code, "protocol error")
               Connection.dispatch_close(@driver, r.close_code, "protocol error")

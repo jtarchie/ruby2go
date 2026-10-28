@@ -70,6 +70,7 @@ class IPAddr
     octets = IPAddr.parse_octets(text)
     bits = octets.length * 8
     raise InvalidAddressError, "invalid address: #{addr}" if prefix > bits
+
     prefix = bits if prefix < 0
     @prefix = prefix
     @octets = IPAddr.mask(octets, prefix)
@@ -100,9 +101,11 @@ class IPAddr
   # the tests here reduce to the v4 ones on the last four octets.
   def ipv4_mapped?
     return false unless ipv6?
+
     i = 0
     while i < 10
       return false if @octets[i] != 0
+
       i += 1
     end
     @octets[10] == 0xff && @octets[11] == 0xff
@@ -116,9 +119,11 @@ class IPAddr
   # true).
   def ipv4_compat?
     return false unless ipv6?
+
     i = 0
     while i < 12
       return false if @octets[i] != 0
+
       i += 1
     end
     value = ((@octets[12] * 256 + @octets[13]) * 256 + @octets[14]) * 256 + @octets[15]
@@ -133,10 +138,12 @@ class IPAddr
   def include?(other)
     o = other.octets
     return false if o.length != @octets.length
+
     masked = IPAddr.mask(o, @prefix)
     i = 0
     while i < @octets.length
       return false if masked[i] != @octets[i]
+
       i += 1
     end
     true
@@ -146,9 +153,11 @@ class IPAddr
   def loopback?
     return @octets[0] == 127 if ipv4?
     return v4_loopback?(12) if ipv4_mapped?
+
     i = 0
     while i < 15
       return false if @octets[i] != 0
+
       i += 1
     end
     @octets[15] == 1
@@ -159,6 +168,7 @@ class IPAddr
   def private?
     return v4_private?(0) if ipv4?
     return v4_private?(12) if ipv4_mapped?
+
     (@octets[0] & 0xfe) == 0xfc
   end
 
@@ -166,11 +176,13 @@ class IPAddr
   def link_local?
     return v4_link_local?(0) if ipv4?
     return v4_link_local?(12) if ipv4_mapped?
+
     @octets[0] == 0xfe && (@octets[1] & 0xc0) == 0x80
   end
 
   def to_s
     return "#{@octets[0]}.#{@octets[1]}.#{@octets[2]}.#{@octets[3]}" if ipv4?
+
     parts = []
     i = 0
     while i < 16
@@ -190,6 +202,7 @@ class IPAddr
   def self.parse_octets(addr)
     raise InvalidAddressError, "invalid address: #{addr}" if addr.length == 0
     return parse_v6(addr) if addr.include?(":")
+
     parse_v4(addr)
   end
 
@@ -201,11 +214,13 @@ class IPAddr
   def self.parse_prefix(part, addr)
     raise InvalidAddressError, "invalid address: #{addr}" if part.length == 0
     raise InvalidAddressError, "invalid address: #{addr}" if part.length > 3
+
     value = 0
     i = 0
     while i < part.length
       d = digit_value(part[i, 1], 10)
       raise InvalidAddressError, "invalid address: #{addr}" if d < 0
+
       value = value * 10 + d
       i += 1
     end
@@ -237,6 +252,7 @@ class IPAddr
   def self.parse_v4(text)
     parts = text.split(".", -1)
     raise InvalidAddressError, "invalid address: #{text}" if parts.length != 4
+
     out = []
     i = 0
     while i < 4
@@ -249,15 +265,18 @@ class IPAddr
   def self.parse_dec_octet(part, text)
     raise InvalidAddressError, "invalid address: #{text}" if part.length == 0
     raise InvalidAddressError, "invalid address: #{text}" if part.length > 3
+
     value = 0
     i = 0
     while i < part.length
       d = digit_value(part[i, 1], 10)
       raise InvalidAddressError, "invalid address: #{text}" if d < 0
+
       value = value * 10 + d
       i += 1
     end
     raise InvalidAddressError, "invalid address: #{text}" if value > 255
+
     value
   end
 
@@ -301,6 +320,7 @@ class IPAddr
   def self.parse_v6_groups(part, text)
     out = []
     return out if part.length == 0
+
     groups = part.split(":", -1)
     i = 0
     while i < groups.length
@@ -308,6 +328,7 @@ class IPAddr
       if group.include?(".")
         # A trailing dotted quad is only legal as the last group.
         raise InvalidAddressError, "invalid address: #{text}" if i != groups.length - 1
+
         out.concat(parse_v4(group))
       else
         out.concat(parse_hex_group(group, text))
@@ -320,11 +341,13 @@ class IPAddr
   def self.parse_hex_group(group, text)
     raise InvalidAddressError, "invalid address: #{text}" if group.length == 0
     raise InvalidAddressError, "invalid address: #{text}" if group.length > 4
+
     value = 0
     i = 0
     while i < group.length
       d = digit_value(group[i, 1], 16)
       raise InvalidAddressError, "invalid address: #{text}" if d < 0
+
       value = value * 16 + d
       i += 1
     end
@@ -342,6 +365,7 @@ class IPAddr
       n = ch.ord - 55 if ch >= "A" && ch <= "F"
     end
     return -1 if n < 0 || n >= base
+
     n
   end
 
@@ -366,6 +390,7 @@ class IPAddr
   def v4_private?(at)
     return true if @octets[at] == 10
     return true if @octets[at] == 172 && (@octets[at + 1] & 0xf0) == 16
+
     @octets[at] == 192 && @octets[at + 1] == 168
   end
 

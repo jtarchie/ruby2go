@@ -161,6 +161,7 @@ module ProcessTests
         Find.find(r1) do |p|
           seen << p.delete_prefix(r1)
           next unless p == File.join(r1, "a")
+
           Find.find(r2) { |q| Find.prune if q.end_with?("/a") }
         end
         assert_equal ["", "/a", "/a/1", "/a/deep", "/a/deep/2", "/b", "/b/3", "/top"], seen

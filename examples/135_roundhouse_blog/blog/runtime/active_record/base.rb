@@ -134,6 +134,7 @@ module ActiveRecord
     def self._adapter_find_by_id(id)
       row = ActiveRecord.adapter.find(table_name, id)
       return nil if row.nil?
+
       instantiate(row)
     end
 
@@ -335,6 +336,7 @@ module ActiveRecord
     def self.find(id)
       result = _adapter_find_by_id(id)
       raise RecordNotFound, "Couldn't find #{name} with id=#{id}" if result.nil?
+
       result
     end
 
@@ -352,6 +354,7 @@ module ActiveRecord
       # but the adapter's `where` slot is typed `Hash(Symbol, _)`.
       rows = ActiveRecord.adapter.where(table_name, conditions.to_h)
       return nil if rows.length == 0
+
       instantiate(rows[0])
     end
 
@@ -360,6 +363,7 @@ module ActiveRecord
     def self.find_by!(conditions)
       result = find_by(conditions)
       raise RecordNotFound, "Couldn't find #{name}" if result.nil?
+
       result
     end
 
@@ -435,6 +439,7 @@ module ActiveRecord
     def self.create!(attrs = {})
       instance = new(attrs)
       raise RecordInvalid, instance unless instance.save
+
       instance
     end
 
@@ -588,6 +593,7 @@ module ActiveRecord
 
     def save!
       raise RecordInvalid, self unless save
+
       self
     end
 
@@ -641,6 +647,7 @@ module ActiveRecord
 
     def destroy
       return self unless persisted?
+
       before_destroy
       _adapter_delete
       @persisted = false

@@ -30,8 +30,10 @@ module Inflector
   # rules only (the corpus' inflected words are lowercase).
   def self.pluralize_word(word, count)
     return word if count == 1
+
     n = word.length
     return "s" if n == 0
+
     last = word[n - 1, 1]
     if last == "y" && n > 1
       prev = word[n - 2, 1]

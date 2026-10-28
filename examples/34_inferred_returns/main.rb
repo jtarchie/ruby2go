@@ -14,6 +14,7 @@ class Rect
 
   def label
     return "square" if w == h
+
     "rect #{area}"
   end
 
@@ -27,6 +28,7 @@ class Rect
   # An early `return nil` joins with the Integer below: Integer?.
   def half_width
     return nil if w.odd?
+
     w / 2
   end
 

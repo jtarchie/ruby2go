@@ -72,6 +72,7 @@ module Rails
     def shard_of(k)
       n = k.bytesize
       return 0 if n == 0
+
       ((k.getbyte(n - 1) * 31) + k.getbyte(n / 2)) % SHARD_COUNT
     end
 

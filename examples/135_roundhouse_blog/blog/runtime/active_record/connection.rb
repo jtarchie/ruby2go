@@ -259,6 +259,7 @@ module ActiveRecord
       time_columns = self.class.schema_time_columns
       only.each do |k|
         next unless columns.include?(k)
+
         h[k.to_s] = if time_columns.include?(k)
                       ActiveSupport.json_time(self[k])
                     else

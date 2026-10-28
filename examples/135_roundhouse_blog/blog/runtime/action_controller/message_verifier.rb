@@ -96,6 +96,7 @@ module ActionController
       # for nil — the same idiom the cookie jar uses, and it keeps a
       # nilable local off spinel's `const char *` path.
       return derived_keys[cache_key] if derived_keys.key?(cache_key)
+
       key = MessageDigest.pbkdf2_sha256(secret, salt, ITERATIONS, KEY_SIZE)
       derived_keys[cache_key] = key
       key
@@ -148,6 +149,7 @@ module ActionController
     def self.verified(secret, salt, signed, purpose, sha1)
       json = verified_json(secret, salt, signed, purpose, sha1)
       return "" if json == ""
+
       json_value(json)
     end
 
@@ -158,18 +160,23 @@ module ActionController
     def self.verified_json(secret, salt, signed, purpose, sha1)
       sep = signed.index("--")
       return "" if sep.nil?
+
       payload = signed[0, sep]
       supplied = signed[sep + 2, signed.length - sep - 2]
       return "" if supplied != digest_for(secret, salt, payload, sha1)
+
       env = Base64.strict_decode64(payload)
       return "" if extract(env, "\"pur\":\"") != purpose
+
       # `"exp":null` does not match the quoted prefix, so an
       # unexpiring message reads "" here and skips the compare — which
       # is every signed cookie this file writes.
       exp = extract(env, "\"exp\":\"")
       return "" if exp != "" && exp <= iso8601_ms(Time.now)
+
       message = extract(env, "\"message\":\"")
       return "" if message == ""
+
       Base64.strict_decode64(message)
     end
 
@@ -198,13 +205,17 @@ module ActionController
     def self.verified_data_json(secret, salt, signed, purpose, sha1)
       sep = signed.index("--")
       return "" if sep.nil?
+
       payload = signed[0, sep]
       supplied = signed[sep + 2, signed.length - sep - 2]
       return "" if supplied != digest_for(secret, salt, payload, sha1)
+
       env = Base64.urlsafe_decode64(payload)
       return "" if extract(env, "\"pur\":\"") != purpose
+
       exp = extract(env, "\"exp\":\"")
       return "" if exp != "" && exp <= iso8601_ms(Time.now)
+
       extract_raw(env, "\"data\":")
     end
 
@@ -215,6 +226,7 @@ module ActionController
     def self.extract_raw(envelope, prefix)
       at = envelope.index(prefix)
       return "" if at.nil?
+
       rest = at + prefix.length
       comma = envelope.index(",", rest)
       brace = envelope.index("}", rest)
@@ -228,12 +240,14 @@ module ActionController
                  end)
               end
       return "" if close.nil?
+
       envelope[rest, close - rest]
     end
 
     def self.digest_for(secret, salt, payload, sha1)
       key = derive_key(secret, salt)
       return MessageDigest.hmac_sha1_hex(key, payload) if sha1
+
       MessageDigest.hmac_sha256_hex(key, payload)
     end
 
@@ -245,9 +259,11 @@ module ActionController
     def self.extract(envelope, prefix)
       at = envelope.index(prefix)
       return "" if at.nil?
+
       rest = at + prefix.length
       close = envelope.index("\"", rest)
       return "" if close.nil?
+
       envelope[rest, close - rest]
     end
 
@@ -262,6 +278,7 @@ module ActionController
     def self.json_value(json)
       return json if json.length < 2
       return json if json[0, 1] != "\""
+
       json[1, json.length - 2]
     end
   end
