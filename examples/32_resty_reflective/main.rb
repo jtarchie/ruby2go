@@ -269,7 +269,7 @@ module Resty
     class Create < Base
       def self.matches?(request)
         request.post? &&
-        Controller.exists_on_request?(request)
+          Controller.exists_on_request?(request)
       end
 
       #: () -> Integer
@@ -349,8 +349,8 @@ module Resty
     class Edit < Base
       def self.matches?(request)
         request.get? &&
-        request.path =~ %r{\/edit(\.\w+)?/?$} &&
-        !Resource.find_by_request(request).id.nil?
+          request.path =~ %r{\/edit(\.\w+)?/?$} &&
+          !Resource.find_by_request(request).id.nil?
       end
 
       #: () -> Integer
@@ -385,8 +385,8 @@ module Resty
     class Index < Base
       def self.matches?(request)
         request.get? &&
-        request.path !~ %r{/(edit|new)(\.\w+)?/?$} &&
-        Resource.find_by_request(request).id.nil?
+          request.path !~ %r{/(edit|new)(\.\w+)?/?$} &&
+          Resource.find_by_request(request).id.nil?
       end
 
       #: () -> Integer
@@ -442,8 +442,8 @@ module Resty
       def self.matches?(request)
         resource = Resource.find_by_request(request)
         request.get? &&
-        !resource.id.nil? &&
-        request.path =~ %r{/#{resource.id}(\.\w+)?/?$}
+          !resource.id.nil? &&
+          request.path =~ %r{/#{resource.id}(\.\w+)?/?$}
       end
 
       #: () -> Integer

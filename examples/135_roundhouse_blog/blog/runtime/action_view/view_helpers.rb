@@ -674,10 +674,10 @@ module ActionView
       if pins.nil? || pins.empty?
         json = "{\n  \"imports\": {\n    \"@hotwired/turbo\": \"/assets/turbo.min.js\"\n  }\n}"
         return %(<script type="importmap" data-turbo-track="reload">) + json + %(</script>) +
-          "\n" +
-          %(<link rel="modulepreload" href="/assets/turbo.min.js">) +
-          "\n" +
-          %(<script type="module">import "@hotwired/turbo"</script>)
+               "\n" +
+               %(<link rel="modulepreload" href="/assets/turbo.min.js">) +
+               "\n" +
+               %(<script type="module">import "@hotwired/turbo"</script>)
       end
       import_lines = pins.map { |p| "    \"#{p[:name]}\": \"#{p[:path]}\"" }.join(",\n")
       json = "{\n  \"imports\": {\n" + import_lines + "\n  }\n}"

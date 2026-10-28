@@ -326,7 +326,7 @@ module ActiveStorage
         return nil
       end
       @headers["Content-Disposition"] = disposition + "; filename=\"" +
-        ActiveStorage.url_filename(blob.filename.to_s) + "\""
+                                        ActiveStorage.url_filename(blob.filename.to_s) + "\""
       @headers["Cache-Control"] = "max-age=3600, public"
       send_data(service.download(key), type: blob.content_type, disposition: disposition)
       nil

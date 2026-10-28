@@ -571,7 +571,7 @@ module ActionText
       while i < text.length
         c = text[i, 1].to_s
         ok = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") ||
-          (c >= "0" && c <= "9") || c == "-" || c == "_"
+             (c >= "0" && c <= "9") || c == "-" || c == "_"
         return false unless ok
         i = i + 1
       end

@@ -112,7 +112,7 @@ module RugarooBoot
           "owner" => safe_name(named), "singleton" => singleton, "name" => name.to_s, "file" => path, "line" => line,
           "source" => nil, "from" => safe_name(from), "private" => owner.private_method_defined?(name),
           "module_function" => !singleton && named.singleton_class.method_defined?(name) &&
-            named.singleton_class.instance_method(name).source_location == m&.source_location,
+                               named.singleton_class.instance_method(name).source_location == m&.source_location,
           "captures" => captures(b)
         }
       end
