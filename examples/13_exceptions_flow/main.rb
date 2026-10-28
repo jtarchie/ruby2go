@@ -37,7 +37,7 @@ end
 
 #: (Integer) -> String
 def classify(n)
-  begin
+  
     raise ArgumentError, "negative" if n < 0
     return "zero" if n == 0
 
@@ -46,7 +46,7 @@ def classify(n)
     "error(#{e.message})"
   ensure
     puts "classified #{n}"
-  end
+  
 end
 
 puts classify(-1), classify(0), classify(1)

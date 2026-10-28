@@ -83,11 +83,11 @@ module Resty
 
     #: (Request) -> String?
     def self.exists_on_request?(request)
-      begin
+      
         request.path.match(%r{^/(\w+)(\.\w+)?/?$})[1]
       rescue StandardError
         nil
-      end
+      
     end
 
     #: () -> untyped

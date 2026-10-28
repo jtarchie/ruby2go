@@ -499,12 +499,12 @@ module Cable
     # tell. Same posture as the overlay's `Cable::Dispatch.unsubscribe`.
     def unsubscribe_all
       @channels.each do |channel|
-        begin
+        
           channel.unsubscribed
           channel.after_unsubscribe
         rescue StandardError => e
           warn "[cable] unsubscribe raised: " + e.message
-        end
+        
       end
       @channels = []
       0

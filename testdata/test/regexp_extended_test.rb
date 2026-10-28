@@ -140,12 +140,12 @@ module RegexpTests
       bad = big[0, big.size - 1] + "\xFF"
       raised = [] #: Array[bool]
       [big, bad, big, bad].each do |s|
-        begin
+        
           s.match?(/\Aabc/)
           raised << false
         rescue ArgumentError
           raised << true
-        end
+        
       end
       assert_equal [false, true, false, true], raised
       assert_equal [true, 0, "abc"], [bad.b.match?(/\Aabc/n), big =~ /abc/, big.match(/\Aabc/)&.[](0)]
