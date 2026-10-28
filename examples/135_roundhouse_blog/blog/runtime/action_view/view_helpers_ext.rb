@@ -170,9 +170,9 @@ module ActionView
     # targets, and THIS FILE is already ruby-family-only (see the header:
     # it is deliberately absent from runtime_loader's tables). So the
     # boundary it describes is the boundary this file already sits on.
-    MINUTES_IN_YEAR = 525600
-    MINUTES_IN_QUARTER_YEAR = 131400
-    MINUTES_IN_THREE_QUARTERS_YEAR = 394200
+    MINUTES_IN_YEAR = 525_600
+    MINUTES_IN_QUARTER_YEAR = 131_400
+    MINUTES_IN_THREE_QUARTERS_YEAR = 394_200
 
     def self.time_ago_in_words(from_time, include_seconds: false)
       distance_of_time_in_words(from_time, Time.now, include_seconds: include_seconds)
@@ -223,11 +223,11 @@ module ActionView
       when 45...90      then "about 1 hour"
       when 90...1440    then "about #{(distance_in_minutes.to_f / 60.0).round} hours"
       when 1440...2520  then "1 day"
-      when 2520...43200 then "#{(distance_in_minutes.to_f / 1440.0).round} days"
-      when 43200...86400
-        months = (distance_in_minutes.to_f / 43200.0).round
+      when 2520...43_200 then "#{(distance_in_minutes.to_f / 1440.0).round} days"
+      when 43_200...86_400
+        months = (distance_in_minutes.to_f / 43_200.0).round
         months == 1 ? "about 1 month" : "about #{months} months"
-      when 86400...525600 then "#{(distance_in_minutes.to_f / 43200.0).round} months"
+      when 86_400...525_600 then "#{(distance_in_minutes.to_f / 43_200.0).round} months"
       else
         from_year = earlier.year
         from_year += 1 if earlier.month >= 3
@@ -974,8 +974,8 @@ module ActionView
         ascii = "!\"\#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
         return ascii[cp - 33, 1].to_s
       end
-      return nil if cp >= 55296 && cp <= 57343
-      return nil if cp > 1114111
+      return nil if cp >= 55_296 && cp <= 57_343
+      return nil if cp > 1_114_111
 
       "?"
     end

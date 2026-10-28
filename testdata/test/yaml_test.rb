@@ -29,7 +29,7 @@ module YamlTests
     end
 
     def test_sexagesimal
-      assert_equal [5400, 45045, "1.5:30"], YAML.load("- 1:30\n- 12:30:45\n- 1.5:30")
+      assert_equal [5400, 45_045, "1.5:30"], YAML.load("- 1:30\n- 12:30:45\n- 1.5:30")
     end
 
     def test_tags
@@ -55,8 +55,8 @@ module YamlTests
       assert_equal "2001-12-14", d["d"].to_s
       assert_equal({ "x" => "2001-02-30" }, YAML.unsafe_load("x: 2001-02-30"))
       t = YAML.unsafe_load("a: 2001-12-14t21:59:43.10Z\nb: 2001-12-14 21:59:43.10 -5") #: Hash[String, untyped]
-      assert_equal [true, 1008367183, 100000], [t["a"].utc?, t["a"].to_i, t["a"].usec]
-      assert_equal [-18000, 1008385183], [t["b"].utc_offset, t["b"].to_i]
+      assert_equal [true, 1_008_367_183, 100_000], [t["a"].utc?, t["a"].to_i, t["a"].usec]
+      assert_equal [-18_000, 1_008_385_183], [t["b"].utc_offset, t["b"].to_i]
     end
   end
 

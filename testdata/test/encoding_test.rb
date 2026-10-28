@@ -279,7 +279,7 @@ module EncodingTests
       assert_equal [383, 803, 775], "\u1e9b\u0323".unicode_normalize(:nfd).codepoints
       assert_equal [7785], "\u1e9b\u0323".unicode_normalize(:nfkc).codepoints
       assert_equal [115, 803, 775], "\u1e9b\u0323".unicode_normalize(:nfkd).codepoints
-      assert_equal [44033], "\u1100\u1161\u11a8".unicode_normalize.codepoints
+      assert_equal [44_033], "\u1100\u1161\u11a8".unicode_normalize.codepoints
       assert_equal [4352, 4449, 4520], "각".unicode_normalize(:nfd).codepoints
       assert_equal "1", "①".unicode_normalize(:nfkc)
       assert_equal "fi", "ﬁ".unicode_normalize(:nfkd)

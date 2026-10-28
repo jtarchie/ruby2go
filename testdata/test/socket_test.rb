@@ -191,7 +191,7 @@ module SocketTests
       client.close
       client = TCPSocket.new("127.0.0.1", server.addr[1])
       server.accept.close
-      raised = socket_raised { loop { client.write("x" * 65536) } }
+      raised = socket_raised { loop { client.write("x" * 65_536) } }
       assert ["Errno::EPIPE Broken pipe", "Errno::ECONNRESET Connection reset by peer"].include?("#{raised[0]} #{raised[1]}") # which one is a race
       client.close
       server.close

@@ -61,7 +61,7 @@ module Net
     # of its tests exist only to exercise that path — a `read_body` that
     # handed the whole String over in one yield would pass the happy
     # path and silently break all three.
-    READ_BODY_CHUNK = 16384
+    READ_BODY_CHUNK = 16_384
 
     # `response.read_body { |chunk| ... }` — CRuby streams the body from
     # the socket here; this package has already read it whole, so the

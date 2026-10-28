@@ -167,7 +167,7 @@ module Tep
       # All bookkeeping is in microseconds (Sock.sphttp_now_us), matching
       # wake_at; poll() and sleep take ms / s respectively, so convert at
       # the call sites.
-      deadline = Sock.sphttp_now_us + (seconds * 1000000).to_i
+      deadline = Sock.sphttp_now_us + (seconds * 1_000_000).to_i
       while Sock.sphttp_now_us < deadline
         next unless !Scheduler.tick(0)
 
@@ -188,7 +188,7 @@ module Tep
         elsif next_at < 0
           return 0
         elsif gap > 0
-          sleep(gap / 1000000.0)
+          sleep(gap / 1_000_000.0)
         end
       end
       0
@@ -251,7 +251,7 @@ module Tep
         sleep(seconds)
         return 0
       end
-      Tep::APP.sched_wake_at[idx] = Sock.sphttp_now_us + (seconds * 1000000).to_i
+      Tep::APP.sched_wake_at[idx] = Sock.sphttp_now_us + (seconds * 1_000_000).to_i
       Fiber.yield
       0
     end
@@ -276,9 +276,9 @@ module Tep
       Tep::APP.sched_wake_at[idx] = if timeout_seconds < 0
         # "Wait forever for I/O": -1 would mean "ready now" to the
         # tick picker, so use a far-future wake_at as the sentinel.
-                                      Sock.sphttp_now_us + 86400 * 1000000
+                                      Sock.sphttp_now_us + 86_400 * 1_000_000
                                     else
-        Sock.sphttp_now_us + (timeout_seconds * 1000000).to_i
+        Sock.sphttp_now_us + (timeout_seconds * 1_000_000).to_i
                                     end
       Fiber.yield
       ready = Tep::APP.sched_io_ready[idx]

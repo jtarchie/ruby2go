@@ -687,10 +687,10 @@ module ArrayTests
       end
       assert_equal 28, total
       assert_equal [], seen
-      big = [9223372036854775807, -9223372036854775808, 0] #: Array[Integer]
-      assert_equal [9223372036854775807, -9223372036854775808, 0], big
-      assert_equal 9223372036854775807, big[0]
-      assert_equal(-9223372036854775808, big.fetch(1))
+      big = [9_223_372_036_854_775_807, -9_223_372_036_854_775_808, 0] #: Array[Integer]
+      assert_equal [9_223_372_036_854_775_807, -9_223_372_036_854_775_808, 0], big
+      assert_equal 9_223_372_036_854_775_807, big[0]
+      assert_equal(-9_223_372_036_854_775_808, big.fetch(1))
       grid = [[1], [2]] #: Array[Array[Integer]]
       gcopy = grid.dup
       gcopy[0]&.push(9)
@@ -1559,11 +1559,11 @@ module ArrayTests
       assert_equal "", nada.join(",")
       assert_equal "[]", nada.inspect
       assert_equal "[]", nada.to_s
-      floats = [1.0, 2.5, -0.0, 1e20, 1.0e-5, 100.0, 3.14159, 1e16, 123456789.123] #: Array[Float]
+      floats = [1.0, 2.5, -0.0, 1e20, 1.0e-5, 100.0, 3.14159, 1e16, 123_456_789.123] #: Array[Float]
       assert_equal "[1.0, 2.5, -0.0, 1.0e+20, 1.0e-05, 100.0, 3.14159, 1.0e+16, 123456789.123]", floats.inspect
       assert_equal "1.0 2.5 -0.0 1.0e+20 1.0e-05 100.0 3.14159 1.0e+16 123456789.123", floats.join(" ")
       assert_equal "[0.30000000000000004, 0.3333333333333333]", [0.1 + 0.2, 1.0 / 3].inspect
-      ints = [0, -1, 42, 1_000_000, 9223372036854775807, -9223372036854775808] #: Array[Integer]
+      ints = [0, -1, 42, 1_000_000, 9_223_372_036_854_775_807, -9_223_372_036_854_775_808] #: Array[Integer]
       assert_equal "[0, -1, 42, 1000000, 9223372036854775807, -9223372036854775808]", ints.inspect
       assert_equal "0,-1,42,1000000,9223372036854775807,-9223372036854775808", ints.join(",")
       syms = [:a, :"b c", :c?, :d!, :e=, :+] #: Array[Symbol]

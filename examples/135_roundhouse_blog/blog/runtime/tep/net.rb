@@ -66,7 +66,7 @@ module Sock
   # spinel exposes a native monotonic clock (Process.clock_gettime →
   # sp_process_clock_gettime / CLOCK_MONOTONIC). Float seconds → µs Int.
   def self.sphttp_now_us
-    (Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000000.0).to_i
+    (Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1_000_000.0).to_i
   end
 
   # ── Protocol/IO helpers reimplemented in Ruby on sp_net + File ──

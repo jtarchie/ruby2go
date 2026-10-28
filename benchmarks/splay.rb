@@ -101,8 +101,8 @@ end
 # Deterministic: insert keys 0..24999 in scrambled order
 tree = SplayTree.new
 idx = 0
-while idx < 25000
-  key = (idx * 7919) % 100000
+while idx < 25_000
+  key = (idx * 7919) % 100_000
   tree.insert(key, idx)
   idx += 1
 end
@@ -110,8 +110,8 @@ end
 # Find known keys
 found = 0
 idx = 0
-while idx < 25000
-  key = (idx * 7919) % 100000
+while idx < 25_000
+  key = (idx * 7919) % 100_000
   result = tree.find(key)
   found += 1 if result == key
   idx += 1

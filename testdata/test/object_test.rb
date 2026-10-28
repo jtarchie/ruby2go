@@ -2633,7 +2633,7 @@ module ObjectTests
       accounts.each { |x| x.balance = x.balance * 2 }
       assert_equal [84, 0], accounts.map(&:balance)
       big = Account.new("big", 9_223_372_036_854_775_000)
-      assert_equal 9223372036854775000, big.balance
+      assert_equal 9_223_372_036_854_775_000, big.balance
       root = Profile.new(nil)
       kid = Profile.new("kid", root)
       baby = Profile.new("baby", kid)
@@ -3815,7 +3815,7 @@ module ObjectTests
       assert_equal true, (m == Money.new(1999, "EUR"))
       assert_equal false, (m == m.with(currency: "GBP"))
       assert_equal "{cents: 1999, currency: \"EUR\"}", m.to_h.inspect
-      assert_equal 9000000000000, Money.new(9_000_000_000_000, "JPY").cents
+      assert_equal 9_000_000_000_000, Money.new(9_000_000_000_000, "JPY").cents
       points = [SdPoint.new(2, 1), SdPoint.new(1, 2), SdPoint.new(1, 1)] #: Array[SdPoint]
       assert_equal [[1, 1], [1, 2], [2, 1]], points.sort_by { |q| (q.x * 10) + q.y }.map(&:to_a)
       assert_equal [2, 1, 1], points.map(&:x)

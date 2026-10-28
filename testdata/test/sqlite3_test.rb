@@ -39,7 +39,7 @@ module Sqlite3Tests
       assert_equal [[2, "b"]], db.execute("select id, name from t where name = ?", "b")
       assert_equal [[3, "c"]], db.execute("select id, name from t where name = :n", { "n" => "c" })
       assert_equal [[3, "c"]], db.execute("select id, name from t where name = :n", { n: "c" })
-      assert_equal [[4611686018427387904, 1.0e300, "é"]], db.execute("select ?, ?, ?", [2**62, 1e300, "é"])
+      assert_equal [[4_611_686_018_427_387_904, 1.0e300, "é"]], db.execute("select ?, ?, ?", [2**62, 1e300, "é"])
       assert_equal [["a\0b"]], db.execute("select ?", ["a\0b"])
       assert_equal [["blob", "text"]], db.execute("select typeof(?), typeof(?)", [SQLite3::Blob.new("ab"), "ab"])
       assert_equal [["blob", "text"]], db.execute("select typeof(:b), typeof(:t)", { "b" => SQLite3::Blob.new("ab"), "t" => "ab" })

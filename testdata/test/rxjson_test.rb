@@ -1081,7 +1081,7 @@ b/
     # Float#to_json uses the shortest round-trip digits
     def test_float_to_json_uses_the
       assert_equal "9.999999999999999e+22", 1e23.to_json
-      assert_equal "1234567890123456.7", 1234567890123456.8.to_json
+      assert_equal "1234567890123456.7", 1_234_567_890_123_456.8.to_json
       assert_equal "[9.999999999999999e+22]", [1e23].to_json
       assert_equal "-9.999999999999999e+22", JSON.generate(-1e23)
       assert_equal "5.3261726645502314e-12", 5.326172664550231e-12.to_json
@@ -1367,7 +1367,7 @@ b/
       assert_equal ["1", "2"], "1,2,,".split(/,/)
       assert_equal ["", "a"], ",a".split(/,/)
       assert_equal ["one", "", "two"], "one  two".split(/ /)
-      assert_equal "1,234,567", 1234567.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
+      assert_equal "1,234,567", 1_234_567.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
     end
 
     # Regexp.escape quotes metacharacters, space and whitespace escapes (MRI's rb_reg_quote).
@@ -1419,8 +1419,8 @@ b/
       assert_equal "0", 0.to_json
       assert_equal "-1", -1.to_json
       assert_equal "42", 42.to_json
-      assert_equal "123456789012345678", 123456789012345678.to_json
-      assert_equal "-9223372036854775807", -9223372036854775807.to_json
+      assert_equal "123456789012345678", 123_456_789_012_345_678.to_json
+      assert_equal "-9223372036854775807", -9_223_372_036_854_775_807.to_json
       assert_equal "7", JSON.generate(7)
       assert_equal "0", JSON.generate(-0)
       assert_equal "true", true.to_json
@@ -1456,8 +1456,8 @@ b/
         1.5e16, 1e16, 1.5e17, 1e17, 1.5e18, 1e18, 1.5e19, 1e19,
         1.5e20, 1e20, 1.5e21, 1e21, 1.5e22, 1e22, 1.5e23, 1.5e24, 1e24,
         1.2345678901234567e-7, 1.2345678901234567e14, 1.2345678901234567e16, 1.2345678901234567e22, 0.2,
-        123.456, 1e300, 1e-300, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 9007199254740993.0, 99999999999999.9,
-        999999999999999.9, 0.00001234, 12345678.9, 3.14159, 100.0, 12.5
+        123.456, 1e300, 1e-300, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 9_007_199_254_740_993.0, 99_999_999_999_999.9,
+        999_999_999_999_999.9, 0.00001234, 12_345_678.9, 3.14159, 100.0, 12.5
       ] #: Array[Float]
       # each float and its negation, one to_json call apiece
       each_json = [

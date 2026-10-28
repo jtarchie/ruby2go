@@ -826,7 +826,7 @@ module NumberTests
       assert_equal "8.104774656527117e-177", ((2.0 / 3.0)**1000.0).inspect
       assert_equal "2.3365249867684727e-308", ((2.0 / 3.0)**1747.0).inspect
       assert_equal "1.9423975992963885e+130", (1.0000001**3.0e9).inspect
-      assert_equal "1.43959991515206e+304", (0.999**-700000.0).inspect
+      assert_equal "1.43959991515206e+304", (0.999**-700_000.0).inspect
       assert_equal "3.4336838202925124e+30", (3.0**64.0).inspect
       assert_equal "0.002243200793301555", (1.1**-64.0).inspect
       assert_equal "-405.26506222962956", ((-1.1)**63.0).inspect
@@ -853,13 +853,13 @@ module NumberTests
       assert_equal "1.0e+15", 1e15.inspect
       assert_equal "1.5e+15", 1.5e15.inspect
       assert_equal "-1.2e+15", -1.2e15.inspect
-      assert_equal "1.234567890123456e+15", 1234567890123456.0.to_s
-      assert_equal "9.999999999999998e+15", 9999999999999998.0.inspect
+      assert_equal "1.234567890123456e+15", 1_234_567_890_123_456.0.to_s
+      assert_equal "9.999999999999998e+15", 9_999_999_999_999_998.0.inspect
       assert_equal "9.007199254740992e+15", 9_007_199_254_740_993.to_f.inspect
       assert_equal "2.0e+15", "#{2e15}"
-      assert_equal "1234567890123456.8", 1234567890123456.7.inspect
-      assert_equal "999999999999999.9", 999999999999999.9.inspect
-      assert_equal "100000000000000.0", 100000000000000.0.inspect
+      assert_equal "1234567890123456.8", 1_234_567_890_123_456.7.inspect
+      assert_equal "999999999999999.9", 999_999_999_999_999.9.inspect
+      assert_equal "100000000000000.0", 100_000_000_000_000.0.inspect
     end
 
     # Integer/Float mixed operators on typed locals, and an Integer accumulator fed Floats
@@ -1271,7 +1271,7 @@ module NumberTests
       assert_equal 1, 1.99.to_i
       assert_equal(-1, -1.99.to_i)
       assert_equal 0, -0.5.to_i
-      assert_equal 10000000000, 1e10.to_i
+      assert_equal 10_000_000_000, 1e10.to_i
       assert_equal 2, x.floor
       assert_equal(-2, y.floor)
       assert_equal 3, 3.0.floor
@@ -1295,7 +1295,7 @@ module NumberTests
       assert_equal 0, 0.49999999999999994.round
       assert_equal 3, 2.5000000000000004.round
       assert_equal 0, -0.4.round
-      assert_equal 4503599627370497, 4503599627370497.0.round
+      assert_equal 4_503_599_627_370_497, 4_503_599_627_370_497.0.round
 
       # predicates and to_f
       assert_equal "2.5", x.to_f.inspect
@@ -1321,12 +1321,12 @@ module NumberTests
       assert_equal "1000.0", 1e3.inspect
       assert_equal "0.02", 2E-2.inspect
       assert_equal "3.14159", 3.14159.inspect
-      assert_equal "123456789.12345679", 123456789.123456789.inspect
-      assert_equal "123456789012345.6", 123456789012345.6.inspect
-      assert_equal "999999999999999.0", 999999999999999.0.inspect
-      assert_equal "100000000000000.5", 100000000000000.5.inspect
-      assert_equal "1234567890123456.8", 1234567890123456.7.inspect
-      assert_equal "-999999999999999.9", -999999999999999.9.inspect
+      assert_equal "123456789.12345679", 123_456_789.123456789.inspect
+      assert_equal "123456789012345.6", 123_456_789_012_345.6.inspect
+      assert_equal "999999999999999.0", 999_999_999_999_999.0.inspect
+      assert_equal "100000000000000.5", 100_000_000_000_000.5.inspect
+      assert_equal "1234567890123456.8", 1_234_567_890_123_456.7.inspect
+      assert_equal "-999999999999999.9", -999_999_999_999_999.9.inspect
       assert_equal "1.0e+16", 1e16.inspect
       assert_equal "-1.0e+16", -1e16.inspect
       assert_equal "1.0e+20", 1.0e20.inspect
@@ -1414,7 +1414,7 @@ module NumberTests
       assert_equal 1, (1**100)
       assert_equal(-343, b**3)
       assert_equal 49, (b**2)
-      assert_equal 4611686018427387904, (2**62)
+      assert_equal 4_611_686_018_427_387_904, (2**62)
 
       # abs, succ, pred
       assert_equal 7, a.abs
@@ -1503,7 +1503,7 @@ module NumberTests
       assert_equal [0], 0.chr.bytes # MRI's chr is US-ASCII and inspects as "\x00"; rugaroo's strings are all UTF-8 ("\u0000")
 
       # literals
-      assert_equal 1000000, 1_000_000
+      assert_equal 1_000_000, 1_000_000
       assert_equal 255, 0xff
       assert_equal 255, 0xFF
       assert_equal 10, 0b1010
@@ -1511,9 +1511,9 @@ module NumberTests
       assert_equal 15, 0o17
       assert_equal(-16, -0x10)
       assert_equal 0, 0
-      assert_equal 9223372036854775807, 9_223_372_036_854_775_807
-      assert_equal(-9223372036854775807, -9_223_372_036_854_775_807)
-      assert_equal(-9223372036854775808, -9_223_372_036_854_775_807 - 1)
+      assert_equal 9_223_372_036_854_775_807, 9_223_372_036_854_775_807
+      assert_equal(-9_223_372_036_854_775_807, -9_223_372_036_854_775_807)
+      assert_equal(-9_223_372_036_854_775_808, -9_223_372_036_854_775_807 - 1)
 
       # op-assign
       x = 10
@@ -1730,28 +1730,28 @@ module NumberTests
       n = -9_223_372_036_854_775_808 #: Integer
       t = -2 #: Integer
       o = -1 #: Integer
-      assert_equal 9223372036854775807, (m + 0)
-      assert_equal(-9223372036854775808, n + 0)
-      assert_equal 9223372036854775807, (m - 0)
-      assert_equal(-9223372036854775808, (n + 1) - 1)
+      assert_equal 9_223_372_036_854_775_807, (m + 0)
+      assert_equal(-9_223_372_036_854_775_808, n + 0)
+      assert_equal 9_223_372_036_854_775_807, (m - 0)
+      assert_equal(-9_223_372_036_854_775_808, (n + 1) - 1)
       assert_equal(-1, m + n)
       assert_equal(-1, n - -m)
-      assert_equal(-9223372036854775807, 0 - m)
-      assert_equal 9223372030926249001, (3_037_000_499 * 3_037_000_499)
-      assert_equal(-9223372030926249001, -3_037_000_499 * 3_037_000_499)
-      assert_equal(-9223372036854775808, -4_611_686_018_427_387_904 * 2)
-      assert_equal 9223372036854775806, (4_611_686_018_427_387_903 * 2)
-      assert_equal(-9223372036854775808, n * 1)
-      assert_equal(-9223372036854775807, m * -1)
-      assert_equal(-9223372036854775807, -1 * m)
-      assert_equal 4611686016279904256, (2_147_483_648 * 2_147_483_647)
-      assert_equal 4611686018427387904, (-2_147_483_648 * -2_147_483_648)
-      assert_equal 4611686018427387904, (1_099_511_627_776 * 4_194_304)
-      assert_equal(-9223372036854775808, -1_099_511_627_776 * 8_388_608)
-      assert_equal 4611686018427387904, (2**62)
-      assert_equal(-9223372036854775808, t**63)
-      assert_equal 4052555153018976267, (3**39)
-      assert_equal 1000000000000000000, (10**18)
+      assert_equal(-9_223_372_036_854_775_807, 0 - m)
+      assert_equal 9_223_372_030_926_249_001, (3_037_000_499 * 3_037_000_499)
+      assert_equal(-9_223_372_030_926_249_001, -3_037_000_499 * 3_037_000_499)
+      assert_equal(-9_223_372_036_854_775_808, -4_611_686_018_427_387_904 * 2)
+      assert_equal 9_223_372_036_854_775_806, (4_611_686_018_427_387_903 * 2)
+      assert_equal(-9_223_372_036_854_775_808, n * 1)
+      assert_equal(-9_223_372_036_854_775_807, m * -1)
+      assert_equal(-9_223_372_036_854_775_807, -1 * m)
+      assert_equal 4_611_686_016_279_904_256, (2_147_483_648 * 2_147_483_647)
+      assert_equal 4_611_686_018_427_387_904, (-2_147_483_648 * -2_147_483_648)
+      assert_equal 4_611_686_018_427_387_904, (1_099_511_627_776 * 4_194_304)
+      assert_equal(-9_223_372_036_854_775_808, -1_099_511_627_776 * 8_388_608)
+      assert_equal 4_611_686_018_427_387_904, (2**62)
+      assert_equal(-9_223_372_036_854_775_808, t**63)
+      assert_equal 4_052_555_153_018_976_267, (3**39)
+      assert_equal 1_000_000_000_000_000_000, (10**18)
       assert_equal(-27, (t - 1)**3)
       assert_equal 1, (7**0)
       assert_equal 1, (1**1_000_000_000_000)
@@ -1759,16 +1759,16 @@ module NumberTests
       assert_equal 1, (o**-4)
       assert_equal(-1, o**-3)
       assert_equal 1, (1**-5)
-      assert_equal 9223372036854775807, (-m).abs
-      assert_equal 9223372036854775807, m.pred.succ
-      assert_equal(-9223372036854775808, n / 1)
-      assert_equal(-4611686018427387904, n / 2)
+      assert_equal 9_223_372_036_854_775_807, (-m).abs
+      assert_equal 9_223_372_036_854_775_807, m.pred.succ
+      assert_equal(-9_223_372_036_854_775_808, n / 1)
+      assert_equal(-4_611_686_018_427_387_904, n / 2)
       assert_equal 0, (n % -1)
-      assert_equal 9223372036854775807, (-m / -1)
-      assert_equal 9200000000000000000, 9.2e18.to_i
-      assert_equal(-9200000000000000000, -9.2e18.floor)
-      assert_equal(-9223372036854775808, "-9223372036854775808".to_i)
-      assert_equal 9223372036854775807, "9223372036854775807".to_i
+      assert_equal 9_223_372_036_854_775_807, (-m / -1)
+      assert_equal 9_200_000_000_000_000_000, 9.2e18.to_i
+      assert_equal(-9_200_000_000_000_000_000, -9.2e18.floor)
+      assert_equal(-9_223_372_036_854_775_808, "-9223372036854775808".to_i)
+      assert_equal 9_223_372_036_854_775_807, "9223372036854775807".to_i
     end
 
     # Integer and Float library methods
@@ -1797,7 +1797,7 @@ module NumberTests
       assert_equal "ff", 255.to_s(16)
       assert_equal "-73", -255.to_s(36)
       assert_equal 4, Integer.sqrt(17)
-      assert_equal 1000000, Integer.sqrt(10**12)
+      assert_equal 1_000_000, Integer.sqrt(10**12)
       assert_equal true, 3.integer?
       assert_equal true, 3.finite?
       assert_equal [1, 4, 7, 10], 1.step(10, 3).to_a
@@ -1908,7 +1908,7 @@ module NumberTests
       assert_equal false, 12.divisible_by?(5)
       assert_equal 1, 0.factorial
       assert_equal 120, 5.factorial
-      assert_equal 2432902008176640000, 20.factorial
+      assert_equal 2_432_902_008_176_640_000, 20.factorial
       assert_equal(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "101st", "111th", "0th"], [1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111, 0].map { |i| i.ordinal })
       assert_equal true, 4.5.above_zero?
       assert_equal false, -0.5.above_zero?
@@ -2146,7 +2146,7 @@ module NumberTests
 
     def test_float_strings
       got = ["3.5", " 3.5 ", "1e5", "1E-2", "-1.5", "+1.5", "1_000.5", ".5", "5.", "1.e5", "0x1A", "0x1.8p1", "3", "1e5_0", "017", "1e+5", "0.1_2"].map { |s| Float(s) }
-      assert_equal [3.5, 3.5, 100000.0, 0.01, -1.5, 1.5, 1000.5, 0.5, 5.0, 100000.0, 26.0, 3.0, 3.0, 1.0e+50, 17.0, 100000.0, 0.12], got
+      assert_equal [3.5, 3.5, 100_000.0, 0.01, -1.5, 1.5, 1000.5, 0.5, 5.0, 100_000.0, 26.0, 3.0, 3.0, 1.0e+50, 17.0, 100_000.0, 0.12], got
     end
 
     def test_float_bad_strings
@@ -2270,7 +2270,7 @@ module NumberTests
     end
 
     def test_gamma
-      assert_equal [1.77245385090552, 0.88622692545276, 1.32934038817914, 2.36327180120736, 24.0, 362880.0, 1.21645100408832e+17],
+      assert_equal [1.77245385090552, 0.88622692545276, 1.32934038817914, 2.36327180120736, 24.0, 362_880.0, 1.21645100408832e+17],
                    [Math.gamma(0.5).round(14), Math.gamma(1.5).round(14), Math.gamma(2.5).round(14), Math.gamma(-1.5).round(14), Math.gamma(5.0), Math.gamma(10.0), Math.gamma(20.0)]
       assert_equal [Float::INFINITY, -Float::INFINITY, Float::INFINITY], [Math.gamma(0.0), Math.gamma(-0.0), Math.gamma(172.0)]
       assert_raises(Math::DomainError) { Math.gamma(-1.0) }
@@ -2568,7 +2568,7 @@ module NumberTests
   # #102: Float rounding to digits <= 0, zero modulus, digits past a C int
   class NumberFloatDigitsTest < Minitest::Test
     def test_float_round_nonpositive_digits
-      assert_equal [12300, 12300, 12400, 3, -3, 1, 0], [12345.67.round(-2), 12345.67.floor(-2), 12345.67.ceil(-2), 2.5.round(0), -2.5.round(0), 1.5.floor(0), 4.2.round(-1)]
+      assert_equal [12_300, 12_300, 12_400, 3, -3, 1, 0], [12_345.67.round(-2), 12_345.67.floor(-2), 12_345.67.ceil(-2), 2.5.round(0), -2.5.round(0), 1.5.floor(0), 4.2.round(-1)]
     end
 
     def test_zero_modulus
@@ -2636,7 +2636,7 @@ module NumberTests
   # decision 367: Float#rationalize, MRI's simplest rational
   class FloatRationalizeTest < Minitest::Test
     def test_rationalize
-      assert_equal Rational(4806858197361, 1421), 3382729202.92822.rationalize
+      assert_equal Rational(4_806_858_197_361, 1421), 3_382_729_202.92822.rationalize
       assert_equal [Rational(1, 3), Rational(1, 3), Rational(3, 10), Rational(-3, 10)],
                    [0.3.rationalize(Rational(1, 10)), 0.3.rationalize(0.05), 0.3.rationalize(0.001), -0.3.rationalize(0.001)]
       assert_equal Rational(333, 1000), 0.333.rationalize
@@ -2671,8 +2671,8 @@ module NumberTests
       a = 0
       b = 1
       100.times { a, b = b, a + b }
-      assert_equal 354224848179261915075, a
-      assert_equal 1267650600228229401496703205376, 2**100
+      assert_equal 354_224_848_179_261_915_075, a
+      assert_equal 1_267_650_600_228_229_401_496_703_205_376, 2**100
       assert_equal [0, 1], [(2**64) % 2, (2**64 + 1) % 2]
       assert_equal true, a > 2**63
       assert_equal Integer, f.class

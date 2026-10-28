@@ -1091,7 +1091,7 @@ module ActionText
         return -1 if d.nil?
 
         value = value * base + d
-        return -1 if value > 1114111
+        return -1 if value > 1_114_111
 
         i += 1
       end

@@ -90,7 +90,7 @@ puts "x", "y"
 puts "no double newline\n"
 
 # puts calls to_s: numbers, booleans, symbols, nil.
-puts 1, -2, 3.0, -0.0, 1e20, 1.5e-7, 12345678901234567.0, 2**40
+puts 1, -2, 3.0, -0.0, 1e20, 1.5e-7, 12_345_678_901_234_567.0, 2**40
 puts true, false, :sym, nil
 puts Named.new, Line.new, Custom.new
 

@@ -54,7 +54,7 @@ module Tep
         plen = @payload.bytesize
         if plen <= 125
           head << plen
-        elsif plen <= 65535
+        elsif plen <= 65_535
           head << 126
           head << ((plen >> 8) & 0xff)
           head << (plen & 0xff)

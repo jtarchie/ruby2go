@@ -38,7 +38,7 @@ module Tep
       # Max bytes accepted from a single request's start-line +
       # headers. Bigger requests get 413; matches the blocking
       # server's SPHTTP_BUFSIZE cap (64 KiB).
-      MAX_REQUEST_BYTES = 65535
+      MAX_REQUEST_BYTES = 65_535
 
       # Idle keep-alive timeout between requests on the same
       # connection. 30s matches nginx; bump from app code as needed.

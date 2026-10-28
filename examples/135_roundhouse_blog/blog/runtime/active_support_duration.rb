@@ -21,10 +21,10 @@ module ActiveSupport
   class Duration
     SECONDS_PER_MINUTE = 60
     SECONDS_PER_HOUR = 3600
-    SECONDS_PER_DAY = 86400
-    SECONDS_PER_WEEK = 604800
-    SECONDS_PER_MONTH = 2629746
-    SECONDS_PER_YEAR = 31556952
+    SECONDS_PER_DAY = 86_400
+    SECONDS_PER_WEEK = 604_800
+    SECONDS_PER_MONTH = 2_629_746
+    SECONDS_PER_YEAR = 31_556_952
 
     def initialize(seconds)
       @seconds = seconds

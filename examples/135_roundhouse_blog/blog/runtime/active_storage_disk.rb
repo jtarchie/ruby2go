@@ -94,7 +94,7 @@ module ActiveStorage
 
       if b0 == 0x42 && b1 == 0x4D && n >= 26
         h = le32(data, 22)
-        h = 4294967296 - h if h > 2147483647
+        h = 4_294_967_296 - h if h > 2_147_483_647
         return [le32(data, 18), h]
       end
       return jpeg_dimensions(data) if b0 == 0xFF && b1 == 0xD8
@@ -108,7 +108,7 @@ module ActiveStorage
     end
 
     def self.be32(data, at)
-      be16(data, at) * 65536 + be16(data, at + 2)
+      be16(data, at) * 65_536 + be16(data, at + 2)
     end
 
     def self.le16(data, at)
@@ -116,11 +116,11 @@ module ActiveStorage
     end
 
     def self.le24(data, at)
-      data.getbyte(at + 2).to_i * 65536 + le16(data, at)
+      data.getbyte(at + 2).to_i * 65_536 + le16(data, at)
     end
 
     def self.le32(data, at)
-      le16(data, at + 2) * 65536 + le16(data, at)
+      le16(data, at + 2) * 65_536 + le16(data, at)
     end
 
     # Walk the marker segments to the first SOFn frame header, which

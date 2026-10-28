@@ -593,7 +593,7 @@ module HashTests
       assert_equal "big", ints[4_611_686_018_427_387_904]
       assert_nil ints[1]
       ints[-1] = "minus one"
-      assert_equal [3, -1, 0, 4611686018427387904], ints.keys
+      assert_equal [3, -1, 0, 4_611_686_018_427_387_904], ints.keys
       assert_equal "minus one", ints[-1]
     end
 
@@ -1271,7 +1271,7 @@ module HashTests
     def test_string_keys_and_values_go
       strs = { "héllo" => "wörld", "日本" => "語", "😀" => "", "tab\there" => "q\"uote", "nl\n" => "back\\slash", "" => "\e", "#" => "\#{x}" } #: Hash[String, String]
       assert_equal "{\"héllo\" => \"wörld\", \"日本\" => \"語\", \"😀\" => \"\", \"tab\\there\" => \"q\\\"uote\", \"nl\\n\" => \"back\\\\slash\", \"\" => \"\\e\", \"#\" => \"\\\#{x}\"}", strs.inspect
-      assert_equal "{\"f\" => 1.5, \"g\" => 100.0, \"h\" => 1.0e-05, \"i\" => -0.0, \"j\" => 1.0e+20, \"k\" => 123456789.125}", { "f" => 1.5, "g" => 100.0, "h" => 1.0e-5, "i" => -0.0, "j" => 1e20, "k" => 123456789.125 }.inspect
+      assert_equal "{\"f\" => 1.5, \"g\" => 100.0, \"h\" => 1.0e-05, \"i\" => -0.0, \"j\" => 1.0e+20, \"k\" => 123456789.125}", { "f" => 1.5, "g" => 100.0, "h" => 1.0e-5, "i" => -0.0, "j" => 1e20, "k" => 123_456_789.125 }.inspect
       assert_equal "{3 => \"c\", -1 => \"neg\", 0 => \"zero\", 4611686018427387904 => \"big\"}", { 3 => "c", -1 => "neg", 0 => "zero", 4_611_686_018_427_387_904 => "big" }.inspect
       assert_equal "{true => \"t\", false => \"f\"}", { true => "t", false => "f" }.inspect
       assert_equal "{0.5 => :half, -2.0 => :neg}", { 0.5 => :half, -2.0 => :neg }.inspect
@@ -1392,8 +1392,8 @@ module HashTests
         big[(i * 7919) % 20_000] = i
         i += 1
       end
-      assert_equal 20000, big.size
-      assert_equal [0, 7919, 15838, 3757, 11676], big.keys.first(5)
+      assert_equal 20_000, big.size
+      assert_equal [0, 7919, 15_838, 3757, 11_676], big.keys.first(5)
       assert_equal [0, 1, 2, 3, 4], big.values.first(5)
       j = 0
       while j < 20_000
@@ -1401,13 +1401,13 @@ module HashTests
         j += 1
       end
       assert_equal 6667, big.size
-      assert_equal [[0, 0], [11676, 4], [11271, 9], [10866, 14]], big.first(4)
+      assert_equal [[0, 0], [11_676, 4], [11_271, 9], [10_866, 14]], big.first(4)
       total = 0
       big.each_key { |k| total += k }
-      assert_equal 66663333, total
+      assert_equal 66_663_333, total
       last = nil #: Integer?
       big.each_key { |k| last = k }
-      assert_equal 12081, last
+      assert_equal 12_081, last
     end
 
     def test_named_blocks_and_mutation
@@ -1913,7 +1913,7 @@ module HashTests
       got = zz + 1 if zz
       assert_equal 3, got
       m = Memo.new
-      assert_equal 102334155, m.fib(40)
+      assert_equal 102_334_155, m.fib(40)
       assert_equal 41, m.cached
       s = Settings.new
       s.opts["color"] = "red"

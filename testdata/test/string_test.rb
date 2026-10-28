@@ -158,8 +158,8 @@ module StringTests
       assert_equal 7, "007".to_i
       assert_equal 0, "-0".to_i
       assert_equal 3, "3.9".to_i
-      assert_equal 9223372036854775807, "9223372036854775807".to_i
-      assert_equal(-9223372036854775808, "-9223372036854775808".to_i)
+      assert_equal 9_223_372_036_854_775_807, "9223372036854775807".to_i
+      assert_equal(-9_223_372_036_854_775_808, "-9223372036854775808".to_i)
       assert_equal 43, ("42".to_i + 1)
       assert_equal 12, "12 34".to_i
     end
@@ -185,7 +185,7 @@ module StringTests
     def test_ord_is_the_first_character
       assert_equal 97, "a".ord
       assert_equal 233, "é".ord
-      assert_equal 128512, "😀".ord
+      assert_equal 128_512, "😀".ord
       assert_equal 97, "abc".ord
       assert_equal 10, "\n".ord
     end
@@ -384,7 +384,7 @@ continued"
       assert_equal "ll", "hello".delete("^l")
       e = assert_raises(ArgumentError) { "x".ljust(3, "") }
       assert_equal "zero width padding", e.message
-      assert_equal "03.14|ab  |ff|FF|10|101|0xff|0b101|+3| 3|1.234568e+04|1.200000E-04|1.23457e+06|100000|0.0001|A|h|%|nil|sym", format("%05.2f|%-4s|%x|%X|%o|%b|%#x|%#b|%+d|% d|%e|%E|%g|%g|%g|%c|%c|%%|%p|%s", 3.14159, "ab", 255, 255, 8, 5, 255, 5, 3, 3, 12345.678, 0.00012, 1234567.0, 100000.0, 0.0001, 65, "hey", nil, :sym)
+      assert_equal "03.14|ab  |ff|FF|10|101|0xff|0b101|+3| 3|1.234568e+04|1.200000E-04|1.23457e+06|100000|0.0001|A|h|%|nil|sym", format("%05.2f|%-4s|%x|%X|%o|%b|%#x|%#b|%+d|% d|%e|%E|%g|%g|%g|%c|%c|%%|%p|%s", 3.14159, "ab", 255, 255, 8, 5, 255, 5, 3, 3, 12_345.678, 0.00012, 1_234_567.0, 100_000.0, 0.0001, 65, "hey", nil, :sym)
       assert_equal "hi        |     there|ab| 99.5%", format("%-10s|%10s|%.2s|%5.1f%%", "hi", "there", "abc", 99.5)
       assert_equal "x and 002.2", format("%<a>s and %<b>05.1f", a: "x", b: 2.25)
       assert_equal "1-", format("%<a>s-%<b>s", a: 1, b: nil)
@@ -422,9 +422,9 @@ continued"
       assert_equal 511, "777".oct
       assert_equal 3, "0b11".oct
       assert_equal 0, "junk".hex
-      assert_equal 9223372036854775807, "7fffffffffffffff".hex
-      assert_equal(-9223372036854775807, "-7fffffffffffffff".hex)
-      assert_equal 9223372036854775807, "777777777777777777777".oct
+      assert_equal 9_223_372_036_854_775_807, "7fffffffffffffff".hex
+      assert_equal(-9_223_372_036_854_775_807, "-7fffffffffffffff".hex)
+      assert_equal 9_223_372_036_854_775_807, "777777777777777777777".oct
       assert_equal "ba", "az".succ
       assert_equal "aaa", "zz".succ
       assert_equal "b0", "a9".succ
@@ -1084,7 +1084,7 @@ continued"
     # to_i accepts underscores between digits
     def test_to_i_accepts_underscores_between
       assert_equal 1000, "1_000".to_i
-      assert_equal 12345, "12_345xyz".to_i
+      assert_equal 12_345, "12_345xyz".to_i
     end
 
     # tr with a repeated from-char uses its first mapping
@@ -1290,7 +1290,7 @@ continued"
   class StringRubySpecUnpackTest < Minitest::Test
     def test_unpack_integers
       assert_equal [[97, 98, 99], [97, 98], [-1, 1], [97, 98, nil]], ["abc".unpack("C*"), "abc".unpack("c2"), "\xff\x01".b.unpack("c*"), "ab".unpack("C3")]
-      assert_equal [[513, 1027], [258], [513], [16909060], [67305985], [16909060], [-1]],
+      assert_equal [[513, 1027], [258], [513], [16_909_060], [67_305_985], [16_909_060], [-1]],
                    ["\x01\x02\x03\x04".unpack("S*"), "\x01\x02".unpack("n"), "\x01\x02".unpack("v"), "\x01\x02\x03\x04".unpack("N"), "\x01\x02\x03\x04".unpack("V"), "\x01\x02\x03\x04".unpack("L>"), "\xff\xff".b.unpack("s")]
       assert_equal [[1], [-1]], ["\x01\x00\x00\x00\x00\x00\x00\x00".unpack("Q"), "\xff\xff\xff\xff\xff\xff\xff\xff".b.unpack("q")]
     end
@@ -1315,7 +1315,7 @@ continued"
                    [["10110011001"].pack("B*"), ["10110011001"].pack("b10"), ["10110011001"].pack("B9"), ["1"].pack("B"),
                     ["a1F"].pack("H5"), ["a1F"].pack("h*"), ["xyz"].pack("H*"), ["2a3"].pack("B*")].map(&:bytes)
       assert_equal [[104, 195, 169, 240, 159, 152, 128], [0, 1, 127, 0x81, 0, 0xff, 0x7f, 0x81, 0x80, 0, 0xa0, 0x80, 0x80, 0x80, 0x80, 0]],
-                   [[104, 233, 0x1F600].pack("U*").bytes, [0, 1, 127, 128, 16383, 16384, 2**40].pack("w*").bytes]
+                   [[104, 233, 0x1F600].pack("U*").bytes, [0, 1, 127, 128, 16_383, 16_384, 2**40].pack("w*").bytes]
       assert_equal [237, 160, 128, 244, 144, 128, 128, 253, 191, 191, 191, 191, 191], [0xD800, 0x110000, 0x7fffffff].pack("U*").bytes # MRI's rb_uv_to_utf8
     end
 
@@ -1336,8 +1336,8 @@ continued"
               q, q, q, l, l, q, q, [1, 0, 254, 255, 44, 1], q]
       assert_equal(want, %w[C* c* S* s>* L* N* n* v* V* Q>* q* J* j<* I* i!* L_* l!* S!* Q!*].map { |f| [1, -2, 300].pack(f).bytes })
       assert_equal [[1, 254, 44], [0, 1, 255, 254, 1, 44], [1, 0, 0, 0, 0, 0, 0, 0]], [[1, -2, 300].pack("C*").bytes, [1, -2, 300].pack("n*").bytes, [1].pack("Q<").bytes]
-      assert_equal [[1, -2, 300], [1, 65534, 300], [1, -2, 300], [1, -2]], [[1, -2, 300].pack("l<*").unpack("l<*"), [1, -2, 300].pack("n*").unpack("n*"), [1, -2, 300].pack("q>*").unpack("q>*"), [1.7, -2].pack("c*").unpack("c*")]
-      assert_equal [[1], [1, 0, 2], [72057594037927936]], ["\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("L_"), "\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("i*"), "\x01\x00\x00\x00\x00\x00\x00\x00".unpack("L!>")]
+      assert_equal [[1, -2, 300], [1, 65_534, 300], [1, -2, 300], [1, -2]], [[1, -2, 300].pack("l<*").unpack("l<*"), [1, -2, 300].pack("n*").unpack("n*"), [1, -2, 300].pack("q>*").unpack("q>*"), [1.7, -2].pack("c*").unpack("c*")]
+      assert_equal [[1], [1, 0, 2], [72_057_594_037_927_936]], ["\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("L_"), "\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("i*"), "\x01\x00\x00\x00\x00\x00\x00\x00".unpack("L!>")]
     end
 
     def test_pack_floats
@@ -1357,7 +1357,7 @@ continued"
 
     def test_unpack_rest
       w = [0x81, 0, 0x7f, 0xa0, 0x80, 0x80, 0x80, 0x80, 0, 0x81].pack("C*")
-      assert_equal [[128, 127, 1099511627776], [128], [128, 127]], [w.unpack("w*"), w.unpack("w"), w.unpack("w2")]
+      assert_equal [[128, 127, 1_099_511_627_776], [128], [128, 127]], [w.unpack("w*"), w.unpack("w"), w.unpack("w2")]
       assert_equal [["hello "], "h\xC3\xA9llo = w\xC3\xB6rld\tx \nnextzz=XYrest".bytes],
                    ["#:&5L\n#;&\\@\n".unpack("u"), "h=C3=A9llo =3D w=\n=C3=B6rld\tx =\n\nnext=\r\nzz=XYrest".unpack1("M").bytes]
       assert_equal [["hello"], ["hello", "hi"], ["hello"], ["hello"], ["hello"], ["a"], [""]],
@@ -1856,7 +1856,7 @@ module StringTests
       refute a.equal?(b)
       acc = ""
       2000.times { |i| acc += "row #{i}," }
-      assert_equal 16890, acc.size
+      assert_equal 16_890, acc.size
       assert_equal "1999,", acc[-5, 5]
     end
 
@@ -1904,7 +1904,7 @@ module StringTests
         ["%d", -42, "-42"],
         ["%5d", 42, "   42"],
         ["%5d", -42, "  -42"],
-        ["%2d", 12345, "12345"],
+        ["%2d", 12_345, "12345"],
         ["%i", 7, "7"],
         ["%u", 7, "7"],
         ["%d", 3.99, "3"],

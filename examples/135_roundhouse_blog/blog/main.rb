@@ -623,7 +623,7 @@ while i < ARGV.length
     exit(1)
   end
 end
-if port <= 0 || port > 65535
+if port <= 0 || port > 65_535
   warn "invalid port: " + port.to_s
   exit(1)
 end

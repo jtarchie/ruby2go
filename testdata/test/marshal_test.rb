@@ -105,7 +105,7 @@ module MarshalTests
     def test_core_values
       assert_nil round(nil)
       assert_equal [true, false], round([true, false])
-      assert_equal [0, -1, 4611686018427387904, -9223372036854775808], round([0, -1, 4611686018427387904, -9223372036854775808])
+      assert_equal [0, -1, 4_611_686_018_427_387_904, -9_223_372_036_854_775_808], round([0, -1, 4_611_686_018_427_387_904, -9_223_372_036_854_775_808])
       assert_equal [1.5, -0.25, Float::INFINITY], round([1.5, -0.25, Float::INFINITY])
       assert_equal true, round(Float::NAN).nan?
       assert_equal "-0.0", round(-0.0).to_s
