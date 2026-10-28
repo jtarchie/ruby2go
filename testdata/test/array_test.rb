@@ -2949,7 +2949,7 @@ module ArrayTests
     def test_guarded_takes_fill_a_typed_array
       src = (1..5).to_a
       dst = Array.new
-      while not src.empty?
+      until src.empty?
         dst.push(src.shift)
       end
       back = []
@@ -2960,7 +2960,7 @@ module ArrayTests
       assert_equal 15, back.sum
       words = %w[a b c]
       out = []
-      out.push(words.pop) while !words.empty?
+      out.push(words.pop) until words.empty?
       assert_equal "cba", out.join
     end
 
@@ -3015,7 +3015,7 @@ module ArrayTests
       a = [1]
       out = []
       tries = 0
-      while !a.empty?
+      until a.empty?
         out << a.shift
         tries += 1
         redo if tries == 1
