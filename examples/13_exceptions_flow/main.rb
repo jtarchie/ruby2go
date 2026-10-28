@@ -41,7 +41,7 @@ def classify(n)
     return "zero" if n == 0
     "positive"
   rescue ArgumentError => e
-    return "error(#{e.message})"
+    "error(#{e.message})"
   ensure
     puts "classified #{n}"
   end

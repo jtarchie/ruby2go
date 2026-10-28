@@ -192,7 +192,7 @@ puts $&.inspect, $1.inspect, $~.inspect
 puts "ab".match?(/(?x) a b /)
 #: () -> [Integer, Integer]
 def string_two_values
-  return 1, 2
+  [1, 2]
 end
 puts string_two_values.inspect
 

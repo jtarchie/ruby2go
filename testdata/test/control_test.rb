@@ -11,7 +11,7 @@ def big?(n) = !n.nil? && n > 10
 
 #: (Integer?, Integer) -> Integer
 def control_pick(a, b)
-  return a || b
+  a || b
 end
 
 #: (Integer) -> String
@@ -108,7 +108,7 @@ def tail_ret(out, n)
     raise "x" if n == 2
     n * 10
   rescue
-    return -1
+    -1
   ensure
     out << "ens #{n}"
   end
@@ -598,7 +598,7 @@ end
 def rescue_return(n)
   edges_risky(n)
 rescue ArgumentError
-  return -1
+  -1
 end
 
 #: (Integer) -> String
@@ -921,7 +921,7 @@ end
 
 #: () -> Integer
 def ensure_overrides
-  return 1
+  1
 ensure
   return 2
 end
@@ -5229,7 +5229,7 @@ module ControlTests
     def pair(s)
       return nil, nil if s.nil?
       a, b = s.split(":")
-      return a, b&.to_i
+      [a, b&.to_i]
     end
 
     def test_return_many
