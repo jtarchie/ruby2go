@@ -310,7 +310,7 @@ module HashTests
 
   # An alias of an inherited Hash method, like Rack::QueryParser::Params' to_params_hash (#82).
   class AliasParams < Hash
-    alias_method :to_params_hash, :to_h
+    alias to_params_hash to_h
     alias plain_keys keys
   end
 

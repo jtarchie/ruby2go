@@ -112,7 +112,7 @@ module GenericClassTests
   # @rbs generic E
   # @rbs generic P
   class MinQ < Heap #[E, P]
-    alias_method :extract_min, :dequeue
+    alias extract_min dequeue
 
     #: (E, P) -> self
     def push(e, pr)

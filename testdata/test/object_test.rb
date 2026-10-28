@@ -4194,7 +4194,7 @@ module ObjectTests
     #: () -> String
     def hello = "hi #{name}"
     alias greet hello
-    alias_method :salute, :hello
+    alias salute hello
     alias_method "title", :name
 
     #: () -> String
@@ -4215,7 +4215,7 @@ module ObjectTests
   class AliasKid < AliasGreeter
     include AliasWave
     alias kid_hello hello
-    alias_method :kid_wave, :wave
+    alias kid_wave wave
 
     #: () -> String
     def hello = "kid"
@@ -5217,7 +5217,7 @@ module ObjectTests
       attr_reader :label #: String?
 
       alias max limit
-      alias_method :max=, :limit=
+      alias max= limit=
 
       private
 
