@@ -190,12 +190,12 @@ module ProcessTests
     # The pin list was appended to from any thread without a lock.
     def test_autoclose_false_from_many_threads
       pipes = Array.new(16) { IO.pipe }
-      ts = pipes.map { |r, _w| Thread.new { 50.times { r.autoclose = false }
- true } }
+      ts = pipes.map do |r, _w| Thread.new do 50.times { r.autoclose = false }
+ true end end
       ts.each(&:join)
       assert_equal([false] * 16, pipes.map { |r, _w| r.autoclose? })
-      pipes.each { |r, w| w.close
- r.close }
+      pipes.each do |r, w| w.close
+ r.close end
     end
   end
 

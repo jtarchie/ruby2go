@@ -21,10 +21,10 @@ logger.info("also suppressed")
 logger.warn("disk 90% full")
 
 calls = 0
-logger.debug { calls += 1
- "expensive: #{calls}" }
-logger.error { calls += 1
- "expensive: #{calls}" }
+logger.debug do calls += 1
+ "expensive: #{calls}" end
+logger.error do calls += 1
+ "expensive: #{calls}" end
 puts calls
 
 logger.progname = "worker"
@@ -61,6 +61,6 @@ end
 disabled = Logger.new(nil)
 disabled.formatter = deterministic
 ran = false
-disabled.error { ran = true
- "unreachable" }
+disabled.error do ran = true
+ "unreachable" end
 puts ran

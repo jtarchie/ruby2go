@@ -1787,8 +1787,8 @@ module StdlibTests
     def test_new_thread_joins_creators_group
       g = ThreadGroup.new
       q = Queue.new #: Queue[Integer]
-      t = Thread.new { q.pop
- Thread.new { 1 }.group.equal?(g) }
+      t = Thread.new do q.pop
+ Thread.new { 1 }.group.equal?(g) end
       g.add(t)
       q << 1
       assert_equal true, t.value

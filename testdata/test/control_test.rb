@@ -1376,8 +1376,8 @@ end
 # A block's `item` before the method's own is block-local, so it does not stop narrowing the later one.
 #: () -> Integer
 def control_block_local_first
-  [1].each { |i| item = ControlTests::Counter.new
- item.n += i }
+  [1].each do |i| item = ControlTests::Counter.new
+ item.n += i end
   item = nil #: ControlTests::Counter?
   item = ControlTests::Counter.new
   item.n += 2 if item.n.positive?
@@ -2486,8 +2486,8 @@ module ControlTests
  v > 0 }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
-      assert_equal([1], nv_xs.select { |n| next false if n > 1
- true })
+      assert_equal([1], nv_xs.select do |n| next false if n > 1
+ true end)
     end
   end
 
@@ -3786,11 +3786,11 @@ module ControlTests
       end
       assert_equal "nie", ex.message
       list = [1, 2, 3] #: Array[Integer]
-      assert_equal([100, 0, 2], list.map { |v| begin
+      assert_equal([100, 0, 2], list.map do |v| begin
                                                  risky_int(v - 2)
                                                rescue StandardError
                                                  100
-      end })
+      end end)
       assert_equal 1, control_safe_fetch("a")
       assert_equal(-1, control_safe_fetch("b"))
     end
@@ -3857,8 +3857,8 @@ module ControlTests
       count = -1
       assert_equal(-1, count)
       sum = 0
-      doubled = [1, 2, 3].map { |x| sum += x
- x * 2 }
+      doubled = [1, 2, 3].map do |x| sum += x
+ x * 2 end
       assert_equal 6, sum
       assert_equal [2, 4, 6], doubled
       seen = 0
@@ -4455,10 +4455,10 @@ module ControlTests
         got << w
       end
       names = %w[ann bo] #: Array[String]
-      names.each { |n| s = n.upcase
- got << s }
-      [4, 5].each { |c| s = c * 2
- got << s.to_s }
+      names.each do |n| s = n.upcase
+ got << s end
+      [4, 5].each do |c| s = c * 2
+ got << s.to_s end
       assert_equal %w[2 4 s3 ANN BO 8 10], got
       out = [] #: Array[String]
       later_outer(out)
@@ -5964,10 +5964,10 @@ module ControlTests
 
     def test_and_or_jumps
       assert_equal %i[pos zero neg], [control_sign(3), control_sign(0), control_sign(-2)]
-      assert_equal([1, 20, 3, 40], [1, 2, 3, 4].map { |i|
+      assert_equal([1, 20, 3, 40], [1, 2, 3, 4].map do |i|
   i.even? and next i * 10
   i
-      })
+      end)
       seen = [] #: Array[Integer]
       [1, 2, 3].each do |v|
         v.odd? and next
