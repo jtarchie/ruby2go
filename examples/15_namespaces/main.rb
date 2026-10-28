@@ -44,7 +44,8 @@ module Geometry
 end
 
 # Compact form: only Geometry::Circle is in the lexical scope here.
-class Geometry::Circle < Geometry::Point
+module Geometry
+  class Circle < Geometry::Point
   attr_reader :r #: Integer
 
   #: (Integer, Integer, Integer) -> void
@@ -54,6 +55,7 @@ class Geometry::Circle < Geometry::Point
   end
 
   def to_s = "circle #{super} r=#{r}"
+  end
 end
 
 module Geometry
