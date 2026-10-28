@@ -153,7 +153,7 @@ module Main
   # bans` from a file whose `bans` table is right there on disk.
   def self.default_db_path
     db_path = ENV["BLOG_DB"]
-    (!db_path.nil? && !db_path.empty?) ? db_path : "storage/development.sqlite3"
+    !db_path.nil? && !db_path.empty? ? db_path : "storage/development.sqlite3"
   end
 
   def self.configure_default_adapter!
