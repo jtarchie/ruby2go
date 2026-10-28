@@ -14,7 +14,7 @@ module Views
       cf_head << "\">\n"
       ActionView::ViewHelpers.content_for_set(:head, cf_head)
       io << "\n<div class=\"md:w-2/3 w-full\">\n"
-      if ! notice.nil? && ! (notice || "").empty?
+      if !notice.nil? && !(notice || "").empty?
         io << "    <p class=\"py-2 px-3 bg-green-50 mb-5 text-green-500 font-medium rounded-md inline-block\" id=\"notice\">"
         io << ActionView::ViewHelpers.html_escape(notice.to_s)
         io << "</p>\n"
