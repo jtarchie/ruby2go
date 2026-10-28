@@ -2451,7 +2451,7 @@ module NumberTests
       g = [] #: Array[Integer]
       (-1).step(MN, MN) { |i| g << i }
       assert_equal [[MX - 2, MX - 1, MX], [MN + 2, MN + 1, MN], [MX - 3, MX - 1],
-                   [1], [MN + 3, MN + 1], [0, MN], [-1]], [a, b, c, d, e, f, g]
+                    [1], [MN + 3, MN + 1], [0, MN], [-1]], [a, b, c, d, e, f, g]
     end
 
     def test_upto_downto_size_and_step_enumerators

@@ -1597,7 +1597,7 @@ B
     def test_upper_z_anchor
       tail = "b"
       assert_equal [true, true, false, true, "x"], ["ab\n".match?(/b\Z/), "ab".match?(/\Ab\Z|ab\Z/), "ab\n\n".match?(/b\Z/),
-                                           Regexp.new("a#{tail}" + %r{(?:/.*)?\Z}.source).match?("ab/c"), "x\n"[/\A(\w)\Z/, 1]]
+                                                    Regexp.new("a#{tail}" + %r{(?:/.*)?\Z}.source).match?("ab/c"), "x\n"[/\A(\w)\Z/, 1]]
     end
 
     # Lookaround, backreferences, atomic groups and \Z match on regexp2 (decision 242).

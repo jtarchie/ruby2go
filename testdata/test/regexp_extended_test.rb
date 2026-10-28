@@ -83,7 +83,7 @@ module RegexpTests
     def test_binary_subject
       data = "\xFD7zXZ\x00\x01\x02".b
       assert_equal [true, 2, "z", true, false], [data.match?(/\A\xFD7zXZ\x00/n), data =~ /zX/n, data.match(/7(z)X/n)&.[](1),
-                                              /\A\xFD/n === data, "\x1f\x8b\xff".b.match?(/\A\xFD/n)]
+                                                 /\A\xFD/n === data, "\x1f\x8b\xff".b.match?(/\A\xFD/n)]
     end
   end
 end

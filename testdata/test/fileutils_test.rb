@@ -771,7 +771,7 @@ module FileUtilsTests
           msgs << "#{e.class} #{e.message}"
         end
         assert_equal ["Errno::ENOENT No such file or directory @ rb_check_realpath_internal - missing",
-          "Errno::ENOENT No such file or directory @ rb_file_s_lstat - missing"], msgs
+                      "Errno::ENOENT No such file or directory @ rb_file_s_lstat - missing"], msgs
       end
     end
   end

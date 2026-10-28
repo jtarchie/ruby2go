@@ -6160,7 +6160,7 @@ module ObjectTests
     def test_reopened_markers
       v = ENV["RUGAROO_NO_SUCH_VAR"] || false
       assert_equal [false, true, false, false, true, false], [false.object_test_present?, true.object_test_present?, v.object_test_present?,
-                                                             object_titled(nil), object_titled("x"), nil.object_test_present?]
+                                                              object_titled(nil), object_titled("x"), nil.object_test_present?]
       u = { a: nil, b: 1 } #: Hash[Symbol, untyped]
       assert_equal [false, true], u.values.map(&:object_test_present?)
     end

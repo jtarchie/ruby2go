@@ -98,8 +98,8 @@ byte = "b"
 rune = "r"
 float64 = 2.5
 puts [type, range, default, len, string, error.message, new, copy, max, min, func, go, var,
-  map.size, interface.inspect, chan, struct, package, import, fallthrough, defer, goto, const,
-  main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64].inspect
+      map.size, interface.inspect, chan, struct, package, import, fallthrough, defer, goto, const,
+      main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64].inspect
 begin
   raise "x"
 rescue => error
