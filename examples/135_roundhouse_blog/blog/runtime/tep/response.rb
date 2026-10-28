@@ -80,7 +80,7 @@ module Tep
       end
     end
 
-    def set_status(n); @status = n; end
+    def set_status(n) = @status = n
 
     def halted_close?
       @halted && @status >= 300

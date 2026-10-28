@@ -62,12 +62,12 @@ module Tep
         @subprotocol = name
       end
 
-      def set_on_open(h);    @h_open = h;    end
-      def set_on_message(h); @h_message = h; end
-      def set_on_close(h);   @h_close = h;   end
-      def set_on_ping(h);    @h_ping = h;    end
-      def set_on_pong(h);    @h_pong = h;    end
-      def set_on_error(h);   @h_error = h;   end
+      def set_on_open(h) = @h_open = h
+      def set_on_message(h) = @h_message = h
+      def set_on_close(h) = @h_close = h
+      def set_on_ping(h) = @h_ping = h
+      def set_on_pong(h) = @h_pong = h
+      def set_on_error(h) = @h_error = h
 
       # Send a text frame.
       def text(s)

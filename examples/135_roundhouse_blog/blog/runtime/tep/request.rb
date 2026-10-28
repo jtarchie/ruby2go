@@ -43,7 +43,7 @@ module Tep
       @uploads      = {}
     end
 
-    def set_passed; @passed = true; end
+    def set_passed() = @passed = true
 
     # Sinatra-compat read aliases removed in the vendored copy.
     # `req.body` collides with controller#body via spinel poly dispatch
@@ -85,12 +85,12 @@ module Tep
     # `.ip` would need a sphttp_accept_with_peer C helper before it
     # can land cleanly, so it's deferred.
 
-    def host;          @req_headers["host"];        end
-    def user_agent;    @req_headers["user-agent"];  end
-    def referer;       @req_headers["referer"];     end
-    def referrer;      @req_headers["referer"];     end   # spelling alias
-    def accept;        @req_headers["accept"];      end
-    def content_type;  @req_headers["content-type"]; end
+    def host() = @req_headers.[]("host")
+    def user_agent() = @req_headers.[]("user-agent")
+    def referer() = @req_headers.[]("referer")
+    def referrer() = @req_headers.[]("referer")   # spelling alias
+    def accept() = @req_headers.[]("accept")
+    def content_type() = @req_headers.[]("content-type")
 
     # tep doesn't terminate TLS itself; both flags reflect "is this
     # connection encrypted from the client's view?" via the

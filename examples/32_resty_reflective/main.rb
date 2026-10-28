@@ -64,7 +64,7 @@ module Resty
   module NullController
     NullAction = Struct.new(:params) do
       #: (*untyped) -> untyped
-      def method_missing(*args); nil; end
+      def method_missing(*args) = nil
     end #: [Hash[String, untyped]]
     Index   = NullAction
     Show    = NullAction

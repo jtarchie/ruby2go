@@ -40,27 +40,27 @@ module Sock
 
   # Delegators: keep the existing `Sock.sphttp_*` call sites unchanged
   # while routing them through sp_net (Stage 1 of retiring sphttp.c).
-  def self.sphttp_listen(port, reuse);      Sock.sp_net_listen(port, reuse);      end
-  def self.sphttp_accept(sfd);              Sock.sp_net_accept(sfd);              end
-  def self.sphttp_accept_nb(sfd);           Sock.sp_net_accept_nb(sfd);           end
-  def self.sphttp_set_nonblock(fd);         Sock.sp_net_set_nonblock(fd);         end
-  def self.sphttp_close(fd);                Sock.sp_net_close(fd);                end
-  def self.sphttp_write_str(fd, s);         Sock.sp_net_write_str(fd, s);         end
-  def self.sphttp_write_bytes(fd, data, n); Sock.sp_net_write_bytes(fd, data, n); end
-  def self.sphttp_recv_some(fd, n);         Sock.sp_net_recv_some(fd, n);         end
-  def self.sphttp_recv_all(fd, n);          Sock.sp_net_recv_all(fd, n);          end
-  def self.sphttp_connect(host, port);      Sock.sp_net_connect(host, port);      end
-  def self.sphttp_fork;                     Sock.sp_net_fork;                     end
-  def self.sphttp_exit(status);             Sock.sp_net_exit(status);             end
-  def self.sphttp_getpid;                   Sock.sp_net_getpid;                   end
-  def self.sphttp_wait_any;                 Sock.sp_net_wait_any;                 end
-  def self.sphttp_install_term_handlers;    Sock.sp_net_install_term_handlers;    end
-  def self.sphttp_shutdown_requested;       Sock.sp_net_shutdown_requested;       end
-  def self.sphttp_poll_reset;               Sock.sp_net_poll_reset;               end
-  def self.sphttp_poll_add(fd, mode);       Sock.sp_net_poll_add(fd, mode);       end
-  def self.sphttp_poll_run(timeout_ms);     Sock.sp_net_poll_run(timeout_ms);     end
-  def self.sphttp_poll_ready(slot);         Sock.sp_net_poll_ready(slot);         end
-  def self.sphttp_shell_capture(cmd, n);    Sock.sp_net_shell_capture(cmd, n);    end
+  def self.sphttp_listen(port, reuse) = Sock.sp_net_listen(port, reuse)
+  def self.sphttp_accept(sfd) = Sock.sp_net_accept(sfd)
+  def self.sphttp_accept_nb(sfd) = Sock.sp_net_accept_nb(sfd)
+  def self.sphttp_set_nonblock(fd) = Sock.sp_net_set_nonblock(fd)
+  def self.sphttp_close(fd) = Sock.sp_net_close(fd)
+  def self.sphttp_write_str(fd, s) = Sock.sp_net_write_str(fd, s)
+  def self.sphttp_write_bytes(fd, data, n) = Sock.sp_net_write_bytes(fd, data, n)
+  def self.sphttp_recv_some(fd, n) = Sock.sp_net_recv_some(fd, n)
+  def self.sphttp_recv_all(fd, n) = Sock.sp_net_recv_all(fd, n)
+  def self.sphttp_connect(host, port) = Sock.sp_net_connect(host, port)
+  def self.sphttp_fork() = Sock.sp_net_fork
+  def self.sphttp_exit(status) = Sock.sp_net_exit(status)
+  def self.sphttp_getpid() = Sock.sp_net_getpid
+  def self.sphttp_wait_any() = Sock.sp_net_wait_any
+  def self.sphttp_install_term_handlers() = Sock.sp_net_install_term_handlers
+  def self.sphttp_shutdown_requested() = Sock.sp_net_shutdown_requested
+  def self.sphttp_poll_reset() = Sock.sp_net_poll_reset
+  def self.sphttp_poll_add(fd, mode) = Sock.sp_net_poll_add(fd, mode)
+  def self.sphttp_poll_run(timeout_ms) = Sock.sp_net_poll_run(timeout_ms)
+  def self.sphttp_poll_ready(slot) = Sock.sp_net_poll_ready(slot)
+  def self.sphttp_shell_capture(cmd, n) = Sock.sp_net_shell_capture(cmd, n)
 
   # Monotonic clock in microseconds. Replaces the C `sphttp_now_us`:
   # spinel exposes a native monotonic clock (Process.clock_gettime →
