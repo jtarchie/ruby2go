@@ -205,7 +205,7 @@ module Db
       # Finalize cached statements before closing the connection (older
       # sqlite3-gem builds refuse to close with unfinalized statements).
       cache = conn.instance_variable_get(:@rh_stmt_cache)
-      cache.each_value { |st| st.close } if cache
+      cache&.each_value { |st| st.close }
       conn.close
       i += 1
     end
@@ -218,7 +218,7 @@ module Db
     # Any exec is (per the Db contract) DDL or a write — Rails
     # invalidates the whole query cache on write; so do we.
     qcache = Fiber[:rh_qcache]
-    qcache.clear unless qcache.nil?
+    qcache&.clear
     begin
       current_dbh.execute(sql)
     rescue StandardError => e
@@ -404,17 +404,17 @@ module Db
   # NOT NULL columns, which is most of them.
   def self.column_int_opt(stmt_id, i)
     v = @rows[stmt_id][:row][i]
-    v.nil? ? nil : v.to_i
+    v&.to_i
   end
 
   def self.column_float_opt(stmt_id, i)
     v = @rows[stmt_id][:row][i]
-    v.nil? ? nil : v.to_f
+    v&.to_f
   end
 
   def self.column_text_opt(stmt_id, i)
     v = @rows[stmt_id][:row][i]
-    v.nil? ? nil : v.to_s
+    v&.to_s
   end
 
   def self.column_bool_opt(stmt_id, i)
@@ -480,19 +480,19 @@ module Db
   # (prepare skips replay for parameterized SQL).
   def self.bind_int(stmt_id, idx, value)
     st = @rows[stmt_id][:stmt]
-    st.bind_param(idx, value) unless st.nil?
+    st&.bind_param(idx, value)
   end
 
   def self.bind_text(stmt_id, idx, value)
     st = @rows[stmt_id][:stmt]
-    st.bind_param(idx, value) unless st.nil?
+    st&.bind_param(idx, value)
   end
 
   # SQLite has no native bool — bind 0/1, matching escape_bool's inline
   # form and the INTEGER affinity `t.boolean` columns get.
   def self.bind_bool(stmt_id, idx, value)
     st = @rows[stmt_id][:stmt]
-    st.bind_param(idx, value ? 1 : 0) unless st.nil?
+    st&.bind_param(idx, value ? 1 : 0)
   end
 
   def self.last_insert_rowid
@@ -529,7 +529,7 @@ module Db
   # Funnel hook: record one SQL string into the active capture, if any.
   # No-op (single nil check) when no capture is installed.
   def self.record_query(sql)
-    @query_log.push(sql) unless @query_log.nil?
+    @query_log&.push(sql)
   end
 
   # SQL-value escaping primitives — lowerer-emitted code uses these to

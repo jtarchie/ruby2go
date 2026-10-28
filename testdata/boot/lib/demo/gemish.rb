@@ -513,7 +513,7 @@ class DemoPool < DemoAbstractExec
     @hook = block
   end
 
-  def report = [@name, @size, @hook ? @hook.call(3) : nil]
+  def report = [@name, @size, @hook&.call(3)]
 end
 
 # concurrent-ruby's promises and executors: a block typed from its callers (`{ |x| }`) forwarded with `&task` where

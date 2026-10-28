@@ -942,12 +942,12 @@ module ActiveStorage
 
     def filename
       b = blob
-      b.nil? ? nil : b.filename
+      b&.filename
     end
 
     def content_type
       b = blob
-      b.nil? ? nil : b.content_type
+      b&.content_type
     end
 
     def key

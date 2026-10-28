@@ -92,8 +92,8 @@ class Comment < ApplicationRecord
     instance = Comment.new
     instance.id = row.id
     instance.article_id = row.article_id
-    instance.commenter = row.commenter.nil? ? nil : row.commenter.to_s
-    instance.body = row.body.nil? ? nil : row.body.to_s
+    instance.commenter = row.commenter&.to_s
+    instance.body = row.body&.to_s
     instance.created_at_raw = row.created_at
     instance.updated_at_raw = row.updated_at
     instance._note_hydrated
@@ -117,8 +117,8 @@ class Comment < ApplicationRecord
     super()
     self.id = (attrs[:id] || 0).to_i
     self.article_id = attrs[:article_id] || 0
-    self.commenter = attrs[:commenter].nil? ? nil : attrs[:commenter].to_s
-    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s
+    self.commenter = attrs[:commenter]&.to_s
+    self.body = attrs[:body]&.to_s
     self.created_at_raw = attrs[:created_at] || ""
     self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].nil?
     self.updated_at_raw = attrs[:updated_at] || ""
@@ -137,9 +137,9 @@ class Comment < ApplicationRecord
     when :article_id
       @article_id
     when :commenter
-      @commenter.nil? ? nil : @commenter.to_s
+      @commenter&.to_s
     when :body
-      @body.nil? ? nil : @body.to_s
+      @body&.to_s
     when :created_at
       @created_at_raw
     when :updated_at
@@ -154,9 +154,9 @@ class Comment < ApplicationRecord
     when :article_id
       @article_id = value.to_i
     when :commenter
-      @commenter = value.nil? ? nil : value.to_s
+      @commenter = value&.to_s
     when :body
-      @body = value.nil? ? nil : value.to_s
+      @body = value&.to_s
     when :created_at
       @created_at_raw = value.to_s
     when :updated_at
@@ -166,8 +166,8 @@ class Comment < ApplicationRecord
 
   def update(attrs)
     self.article_id = attrs[:article_id].to_i if attrs.key?(:article_id)
-    self.commenter = attrs[:commenter].nil? ? nil : attrs[:commenter].to_s if attrs.key?(:commenter)
-    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s if attrs.key?(:body)
+    self.commenter = attrs[:commenter]&.to_s if attrs.key?(:commenter)
+    self.body = attrs[:body]&.to_s if attrs.key?(:body)
     self.created_at_raw = attrs[:created_at].to_s if attrs.key?(:created_at)
     self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].to_s.nil?
     self.updated_at_raw = attrs[:updated_at].to_s if attrs.key?(:updated_at)
@@ -177,8 +177,8 @@ class Comment < ApplicationRecord
 
   def update!(attrs)
     self.article_id = attrs[:article_id].to_i if attrs.key?(:article_id)
-    self.commenter = attrs[:commenter].nil? ? nil : attrs[:commenter].to_s if attrs.key?(:commenter)
-    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s if attrs.key?(:body)
+    self.commenter = attrs[:commenter]&.to_s if attrs.key?(:commenter)
+    self.body = attrs[:body]&.to_s if attrs.key?(:body)
     self.created_at_raw = attrs[:created_at].to_s if attrs.key?(:created_at)
     self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].to_s.nil?
     self.updated_at_raw = attrs[:updated_at].to_s if attrs.key?(:updated_at)

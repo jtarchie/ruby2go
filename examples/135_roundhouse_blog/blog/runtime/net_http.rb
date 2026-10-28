@@ -86,7 +86,7 @@ module Net
     # `.to_i` and compares, so nil has to survive the read.
     def content_length
       v = @headers["content-length"]
-      v.nil? ? nil : v.to_i
+      v&.to_i
     end
   end
 
@@ -136,7 +136,7 @@ module Net
         else
           build_response("1.1", HttpStub::STUB_STATUSES[i].to_s, "", HttpStub.headers_at(i), HttpStub::STUB_BODIES[i])
         end
-      blk.call(res) unless blk.nil?
+      blk&.call(res)
       res
     end
 

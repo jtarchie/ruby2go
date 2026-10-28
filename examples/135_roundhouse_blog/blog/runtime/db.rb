@@ -1098,7 +1098,7 @@ module Db
   # Funnel hook: record one SQL string into the active capture, if any.
   # No-op (single nil check) when no capture is installed.
   def self.record_query(sql)
-    @query_log.push(sql) unless @query_log.nil?
+    @query_log&.push(sql)
     warn "  SQL " + sql if @sql_trace
   end
 

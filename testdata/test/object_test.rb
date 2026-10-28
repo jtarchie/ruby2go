@@ -5088,7 +5088,7 @@ def secret = "s3cret"
     # the checks a narrowed ivar makes redundant still compile, and answer as MRI's
     def redundant
       @v ||= "x"
-      [@v || "", @v&.upcase, @v.nil?, @v ? 1 : 2, @v && @v.size]
+      [@v || "", @v&.upcase, @v.nil?, @v ? 1 : 2, @v&.size]
     end
 
     def nil_guard
