@@ -119,7 +119,7 @@ module ActionDispatch
       # The value of `<attr>="…"` inside a Content-Disposition header,
       # or "" when absent.
       def self.disposition_param(header, attr)
-        needle = attr + "=\""
+        needle = "#{attr}=\""
         at = header.index(needle)
         return "" if at.nil?
 
@@ -135,7 +135,7 @@ module ActionDispatch
         b = boundary(content_type)
         return form if b.length == 0
 
-        delimiter = "--" + b
+        delimiter = "--#{b}"
         n = body.bytesize
         pos = body.byteindex(delimiter)
         return form if pos.nil?
@@ -152,7 +152,7 @@ module ActionDispatch
 
           headers = body.byteslice(pos, header_end - pos).to_s
           content_start = header_end + 4
-          next_delim = body.byteindex("\r\n" + delimiter, content_start)
+          next_delim = body.byteindex("\r\n#{delimiter}", content_start)
           return form if next_delim.nil?
 
           content = body.byteslice(content_start, next_delim - content_start).to_s

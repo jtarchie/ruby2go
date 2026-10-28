@@ -51,7 +51,7 @@ clamp = lambda do |x|
 end #: ^(Integer) -> Integer
 puts [-5, 50, 500].map(&clamp).inspect
 
-shout = proc { |s| puts s.upcase + "!" } #: ^(String) -> void
+shout = proc { |s| puts "#{s.upcase}!" } #: ^(String) -> void
 %w[hey you].each(&shout)
 
 pipeline = [succ, triple, succ] #: Array[^(Integer) -> Integer]

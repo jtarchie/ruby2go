@@ -153,7 +153,7 @@ module ActionDispatch
       if @query_string == ""
         @path
       else
-        @path + "?" + @query_string
+        "#{@path}?#{@query_string}"
       end
     end
 
@@ -163,9 +163,9 @@ module ActionDispatch
     # http, which is what the CRuby tree's overlay Request reports too.
     def base_url
       if @env.fetch("HTTPS", "").to_s == "on"
-        "https://" + @host
+        "https://#{@host}"
       else
-        "http://" + @host
+        "http://#{@host}"
       end
     end
 

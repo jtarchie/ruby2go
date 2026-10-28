@@ -200,7 +200,7 @@ module Cable
       # row here — the whole reason a connect storm costs a database.
       channel.after_subscribe
     rescue StandardError => e
-      warn "[cable] " + name + "#subscribed raised: " + e.message
+      warn "[cable] #{name}#subscribed raised: #{e.message}"
       return Cable.reject(ws, identifier)
     end
     return Cable.reject(ws, identifier) if channel.subscription_rejected?
@@ -218,14 +218,12 @@ module Cable
     # object that outlives the frame that built it. A rejected or
     # crashed subscribe returns above and is never held.
     holder.remember(channel)
-    ws.text("{\"identifier\":" + JSON.generate(identifier) +
-            ",\"type\":\"confirm_subscription\"}")
+    ws.text("{\"identifier\":#{JSON.generate(identifier)},\"type\":\"confirm_subscription\"}")
     0
   end
 
   def self.reject(ws, identifier)
-    ws.text("{\"identifier\":" + JSON.generate(identifier) +
-            ",\"type\":\"reject_subscription\"}")
+    ws.text("{\"identifier\":#{JSON.generate(identifier)},\"type\":\"reject_subscription\"}")
     0
   end
 
@@ -371,7 +369,7 @@ module Cable
   end
 
   def self.ping_payload
-    "{\"type\":\"ping\",\"message\":" + Time.now.to_i.to_s + "}"
+    "{\"type\":\"ping\",\"message\":#{Time.now.to_i.to_s}}"
   end
 
   # The registry, copied out under its lock. The writes then happen
@@ -503,7 +501,7 @@ module Cable
         channel.unsubscribed
         channel.after_unsubscribe
     rescue StandardError => e
-      warn "[cable] unsubscribe raised: " + e.message
+      warn "[cable] unsubscribe raised: #{e.message}"
 
       end
       @channels = []
@@ -628,8 +626,7 @@ module Cable
     id = Cable.identifier_for(stream)
     return nil if id.length == 0
 
-    envelope = "{\"identifier\":" + JSON.generate(id) +
-               ",\"message\":" + message_json + "}"
+    envelope = "{\"identifier\":#{JSON.generate(id)},\"message\":#{message_json}}"
     Tep::Broadcast.publish(stream, envelope)
     nil
   end
@@ -645,8 +642,7 @@ module Cable
         return nil # no subscriber has named this stream yet
       end
 
-      envelope = "{\"identifier\":" + JSON.generate(id) +
-                 ",\"message\":" + JSON.generate(fragment) + "}"
+      envelope = "{\"identifier\":#{JSON.generate(id)},\"message\":#{JSON.generate(fragment)}}"
       Tep::Broadcast.publish(stream, envelope)
       nil
     end

@@ -57,7 +57,7 @@ module ActionView
       out = +""
       i = int.length
       while i > 3
-        out = "," + int[i - 3, 3].to_s + out
+        out = ",#{int[i - 3, 3].to_s}#{out}"
         i -= 3
       end
       out = int[0, i].to_s + out
@@ -149,7 +149,7 @@ module ActionView
         n /= 1000
         idx += 1
       end
-      num = neg ? "-" + n.to_s : n.to_s
+      num = neg ? "-#{n.to_s}" : n.to_s
       format.sub("%n", num).sub("%u", units[idx]).strip
     end
 
@@ -544,7 +544,7 @@ module ActionView
                   # dropped, which is the gem's answer as well.
                   while open_stack.length > 0
                     top = open_stack.pop.to_s
-                    out = out + "</" + top + ">"
+                    out = "#{out}</#{top}>"
                     break if top == name
                   end
                 end
@@ -606,7 +606,7 @@ module ActionView
       end
       # Close anything the input left open, innermost first — measured:
       # the gem answers "<b>unclosed</b>" for "<b>unclosed".
-      out = out + "</" + open_stack.pop.to_s + ">" while open_stack.length > 0
+      out = "#{out}</#{open_stack.pop.to_s}>" while open_stack.length > 0
       out
     end
 
@@ -670,7 +670,7 @@ module ActionView
     # `>` inside a value stay raw — measured against the gem, which
     # serializes `title="a<b>c"` exactly so.
     def self.sanitize_open_tag(name, raw, attrs)
-      out = "<" + name
+      out = "<#{name}"
       seen = [""]
       seen.pop
       i = 0
@@ -718,11 +718,11 @@ module ActionView
             keep = attrs.include?(aname)
             keep = sanitize_uri_allowed?(value) if keep && sanitize_uri_attributes.include?(aname)
             keep = false if keep && aname == "src" && sanitize_blank_value?(value)
-            out = out + " " + aname + "=\"" + sanitize_attr_value(value) + "\"" if keep
+            out = "#{out} #{aname}=\"#{sanitize_attr_value(value)}\"" if keep
           end
         end
       end
-      out + ">"
+      "#{out}>"
     end
 
     def self.sanitize_blank_value?(value)
@@ -1040,7 +1040,7 @@ module ActionView
           digits = "0123456789"
         end
       else
-        digits = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" + "0123456789"
+        digits = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         # A named reference must OPEN with a letter: `&1;` is not one.
         return 0 unless "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".include?(s[j, 1].to_s) && s[j, 1].to_s != ""
       end
@@ -1252,7 +1252,7 @@ module ActionView
 
       "|ed2k|ftp|http|https|irc|mailto|news|gopher|nntp|telnet|webcal|" \
       "xmpp|callto|feed|svn|urn|aim|rsync|tag|ssh|sftp|rtsp|afs|file|"
-        .include?("|" + name + "|")
+        .include?("|#{name}|")
     end
 
     # `[^\s< "]` — Ruby's `\s` is exactly `[ \t\r\n\f\v]` here.
@@ -1323,7 +1323,7 @@ module ActionView
       label = href
       # The gem's condition is `if scheme.nil?`, and scheme is nil for
       # exactly the `www.` branch — no listed scheme name is "www".
-      href = "http://" + href if href[0, 4].to_s.downcase == "www."
+      href = "http://#{href}" if href[0, 4].to_s.downcase == "www."
       # The gem runs `href` and the label through `sanitize` here, and
       # then hands `content_tag` an `escape` flag. NEITHER is reproduced,
       # and neither needs to be:
@@ -1383,14 +1383,14 @@ module ActionView
       placed = false
       html.each do |k, v|
         if k.to_s == "href"
-          attrs = attrs + " href=\"" + href + "\""
+          attrs = "#{attrs} href=\"#{href}\""
           placed = true
         else
-          attrs = attrs + " " + k.to_s + "=\"" + html_escape(v.to_s) + "\""
+          attrs = "#{attrs} #{k.to_s}=\"#{html_escape(v.to_s)}\""
         end
       end
-      attrs = attrs + " href=\"" + href + "\"" unless placed
-      "<a" + attrs + ">" + text + "</a>"
+      attrs = "#{attrs} href=\"#{href}\"" unless placed
+      "<a#{attrs}>#{text}</a>"
     end
 
     # Length of the e-mail match starting at `i`, or 0. The gem's

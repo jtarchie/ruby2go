@@ -679,16 +679,12 @@ module ActionView
       # with `\n` escapes and matches Rails exactly.
       if pins.nil? || pins.empty?
         json = "{\n  \"imports\": {\n    \"@hotwired/turbo\": \"/assets/turbo.min.js\"\n  }\n}"
-        return %(<script type="importmap" data-turbo-track="reload">) + json + %(</script>) +
-               "\n" +
-               %(<link rel="modulepreload" href="/assets/turbo.min.js">) +
-               "\n" +
-               %(<script type="module">import "@hotwired/turbo"</script>)
+        return "<script type=\"importmap\" data-turbo-track=\"reload\">#{json}</script>\n<link rel=\"modulepreload\" href=\"/assets/turbo.min.js\">\n<script type=\"module\">import \"@hotwired/turbo\"</script>"
       end
       import_lines = pins.map { |p| "    \"#{p[:name]}\": \"#{p[:path]}\"" }.join(",\n")
-      json = "{\n  \"imports\": {\n" + import_lines + "\n  }\n}"
+      json = "{\n  \"imports\": {\n#{import_lines}\n  }\n}"
       parts = []
-      parts << %(<script type="importmap" data-turbo-track="reload">) + json + %(</script>)
+      parts << "<script type=\"importmap\" data-turbo-track=\"reload\">#{json}</script>"
       pins.each do |p|
         parts << %(<link rel="modulepreload" href="#{p[:path]}">)
       end
@@ -826,10 +822,7 @@ module ActionView
       attrs.delete(:builder)
       url = opts.fetch(:url, nil)
       action = url.nil? ? "" : %( action="#{html_escape(url.to_s)}")
-      %(<form#{render_attrs(attrs)}#{action} accept-charset="UTF-8" method="post">) +
-        method_override_input(opts.fetch(:method, :post)) +
-        csrf_token_hidden_input +
-        "</form>"
+      "<form#{render_attrs(attrs)}#{action} accept-charset=\"UTF-8\" method=\"post\">#{method_override_input(opts.fetch(:method, :post))}#{csrf_token_hidden_input}</form>"
     end
 
     # Rails' `text_field` (and field helpers) omits the `value`

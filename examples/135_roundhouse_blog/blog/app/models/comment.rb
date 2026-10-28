@@ -201,7 +201,7 @@ class Comment < ApplicationRecord
   end
 
   def self._adapter_find_by_id(id)
-    stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = " + Db.escape_int(id) + " LIMIT 1")
+    stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = #{Db.escape_int(id)} LIMIT 1")
     result = nil
     result = Comment.from_stmt(stmt) if Db.step?(stmt)
     Db.finalize(stmt)
@@ -225,16 +225,16 @@ class Comment < ApplicationRecord
   end
 
   def _adapter_insert
-    Db.exec("INSERT INTO comments (article_id, commenter, body, created_at, updated_at) VALUES (" + Db.escape_int(@article_id) + ", " + Db.escape_string_opt(@commenter) + ", " + Db.escape_string_opt(@body) + ", " + Db.escape_string(@created_at_raw) + ", " + Db.escape_string(@updated_at_raw) + ")")
+    Db.exec("INSERT INTO comments (article_id, commenter, body, created_at, updated_at) VALUES (#{Db.escape_int(@article_id)}, #{Db.escape_string_opt(@commenter)}, #{Db.escape_string_opt(@body)}, #{Db.escape_string(@created_at_raw)}, #{Db.escape_string(@updated_at_raw)})")
     Db.last_insert_rowid
   end
 
   def _adapter_update
-    Db.exec("UPDATE comments SET article_id = " + Db.escape_int(@article_id) + ", commenter = " + Db.escape_string_opt(@commenter) + ", body = " + Db.escape_string_opt(@body) + ", created_at = " + Db.escape_string(@created_at_raw) + ", updated_at = " + Db.escape_string(@updated_at_raw) + " WHERE id = " + Db.escape_int(@id))
+    Db.exec("UPDATE comments SET article_id = #{Db.escape_int(@article_id)}, commenter = #{Db.escape_string_opt(@commenter)}, body = #{Db.escape_string_opt(@body)}, created_at = #{Db.escape_string(@created_at_raw)}, updated_at = #{Db.escape_string(@updated_at_raw)} WHERE id = #{Db.escape_int(@id)}")
   end
 
   def _adapter_delete
-    Db.exec("DELETE FROM comments WHERE id = " + Db.escape_int(@id))
+    Db.exec("DELETE FROM comments WHERE id = #{Db.escape_int(@id)}")
   end
 
   def self._adapter_count
@@ -246,7 +246,7 @@ class Comment < ApplicationRecord
   end
 
   def self._adapter_exists_by_id?(id)
-    stmt = Db.prepare("SELECT 1 FROM comments WHERE id = " + Db.escape_int(id) + " LIMIT 1")
+    stmt = Db.prepare("SELECT 1 FROM comments WHERE id = #{Db.escape_int(id)} LIMIT 1")
     result = Db.step?(stmt)
     Db.finalize(stmt)
     result
@@ -263,7 +263,7 @@ class Comment < ApplicationRecord
   end
 
   def _adapter_reload
-    stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = " + Db.escape_int(@id) + " LIMIT 1")
+    stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = #{Db.escape_int(@id)} LIMIT 1")
     if Db.step?(stmt)
       @id = Db.column_int(stmt, 0)
       @article_id = Db.column_int(stmt, 1)
@@ -337,7 +337,7 @@ class Comment < ApplicationRecord
     if @article_id == 0
       nil
     else
-      stmt = Db.prepare("SELECT id, title, body, created_at, updated_at FROM articles WHERE id = " + Db.escape_int(@article_id) + " LIMIT 1")
+      stmt = Db.prepare("SELECT id, title, body, created_at, updated_at FROM articles WHERE id = #{Db.escape_int(@article_id)} LIMIT 1")
       result = nil
       result = Article.from_stmt(stmt) if Db.step?(stmt)
       Db.finalize(stmt)

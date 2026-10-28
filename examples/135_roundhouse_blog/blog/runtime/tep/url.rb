@@ -45,7 +45,7 @@ module Tep
           b = c.bytes[0]
           hi = b / 16
           lo = b % 16
-          out << "%" + Url.hex_char(hi) + Url.hex_char(lo)
+          out << "%#{Url.hex_char(hi)}#{Url.hex_char(lo)}"
         end
         i += 1
       end

@@ -857,7 +857,7 @@ module ArrayTests
       assert_equal 2, Util.second([1, 2, 3])
       assert_nil Util.second(["a"])
       assert_equal [2, 3], Util.second([[1], [2, 3]])
-      assert_equal ["1!", "2!"], Util.my_map([1, 2]) { |n| n.to_s + "!" }
+      assert_equal ["1!", "2!"], Util.my_map([1, 2]) { |n| "#{n.to_s}!" }
       assert_equal [1], Util.my_map(["a"], &:size)
       assert_equal [2, 3], Util.without([1, 2, 1, 3], 1)
       assert_equal %w[a b], Util.without(%w[a b], "c")
@@ -2954,7 +2954,7 @@ module ArrayTests
       while (top = stack.pop)
         node, path, depth = top
         out << "#{path}/#{node.name}:#{depth}"
-        node.kids.each { |k| stack.push([k, path + "/" + node.name, depth + 1]) }
+        node.kids.each { |k| stack.push([k, "#{path}/#{node.name}", depth + 1]) }
       end
       assert_equal ["/a:0", "/a/c:1", "/a/b:1", "/a/b/d:2"], out
       t, s = [[stack_tree, "x"]].last

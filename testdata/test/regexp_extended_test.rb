@@ -138,7 +138,7 @@ module RegexpTests
   class RegexpLargeSubjectTest < Minitest::Test
     def test_large_subject_validity_is_not_stale
       big = "abc def " * 100
-      bad = big[0, big.size - 1] + "\xFF"
+      bad = "#{big[0, big.size - 1]}\xFF"
       raised = [] #: Array[bool]
       [big, bad, big, bad].each do |s|
 

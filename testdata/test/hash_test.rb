@@ -1844,9 +1844,9 @@ end
     def test_keys_built_at_run_time
       sk = { "ab" => 1, ab: 2 } #: Hash[untyped, Integer]
       x = "a"
-      assert_equal 1, sk[x + "b"]
       assert_equal 1, sk["#{x}b"]
-      assert_equal 2, sk[(x + "b").to_sym]
+      assert_equal 1, sk["#{x}b"]
+      assert_equal 2, sk[("#{x}b").to_sym]
       assert_nil sk[x]
     end
 
@@ -2693,7 +2693,7 @@ end
       assert_equal Float::INFINITY, f[:a]
       s = { a: "x" } #: Hash[Symbol, String]
       s[:a] += "y"
-      s[:b] = (s[:b] || "<") + "z"
+      s[:b] = "#{s[:b] || "<"}z"
       assert_equal({ a: "xy", b: "<z" }, s)
       m = { a: 17 } #: Hash[Symbol, Integer]
       m[:a] %= 5

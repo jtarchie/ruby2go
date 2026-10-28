@@ -122,7 +122,7 @@ module Sock
   # bytesize (not length) so multibyte payloads frame correctly; the body
   # write is binary-safe.
   def self.sphttp_write_chunk(fd, s)
-    Sock.sp_net_write_str(fd, s.bytesize.to_s(16) + "\r\n")
+    Sock.sp_net_write_str(fd, "#{s.bytesize.to_s(16)}\r\n")
     Sock.sp_net_write_bytes(fd, s, s.bytesize)
     Sock.sp_net_write_str(fd, "\r\n")
     0

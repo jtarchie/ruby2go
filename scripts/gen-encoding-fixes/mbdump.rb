@@ -11,7 +11,7 @@ def st(s, e)
 rescue Encoding::UndefinedConversionError
   "undef"
 rescue Encoding::InvalidByteSequenceError => e
-  (e.incomplete_input? ? "inc " : "inv ") + hex(e.error_bytes) + " " + hex(e.readagain_bytes || "")
+  "#{e.incomplete_input? ? "inc " : "inv "}#{hex(e.error_bytes)} #{hex(e.readagain_bytes || "")}"
 end
 out = $stdout
 256.times do |a|

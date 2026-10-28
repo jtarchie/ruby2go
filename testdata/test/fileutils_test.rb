@@ -457,11 +457,11 @@ module FileUtilsTests
           got << FileUtils.compare_file(a, b)
           next if n.zero?
 
-          File.write(b, "x" * (n - 1) + "y")
+          File.write(b, "#{"x" * (n - 1)}y")
           got << FileUtils.compare_file(a, b)
-          File.write(b, "y" + "x" * (n - 1))
+          File.write(b, "y#{"x" * (n - 1)}")
           got << FileUtils.compare_file(a, b)
-          File.write(b, "x" * (n / 2) + "y" + "x" * (n - (n / 2) - 1))
+          File.write(b, "#{"x" * (n / 2)}y#{"x" * (n - (n / 2) - 1)}")
           got << FileUtils.compare_file(a, b)
         end
         assert_equal [true, true, false] + ([true, true, false, false, false, false] * 5), got

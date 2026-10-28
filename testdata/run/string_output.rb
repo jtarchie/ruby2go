@@ -28,7 +28,7 @@ end
 
 class Sub < Base
   #: () -> String
-  def to_s = "sub:" + super
+  def to_s = "sub:#{super}"
 end
 
 module Greets

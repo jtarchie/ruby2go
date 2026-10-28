@@ -182,9 +182,9 @@ module ActionCable
     payload.each do |key, value|
       out += "," unless first
       first = false
-      out = out + JSON.generate(key.to_s) + ":" + value.to_s
+      out = "#{out}#{JSON.generate(key.to_s)}:#{value.to_s}"
     end
-    out + "}"
+    "#{out}}"
   end
 
   module Channel
@@ -371,7 +371,7 @@ module ActionCable
       # is given a `to_gid_param` (see `lower::broadcasts`), so there is
       # nothing to fall back FROM and no `respond_to?` here.
       def self.broadcasting_for(record)
-        channel_name + ":" + record.to_gid_param
+        "#{channel_name}:#{record.to_gid_param}"
       end
 
       # Class names only — `RoomsChannel` shapes, never a path or a word

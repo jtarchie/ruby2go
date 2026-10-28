@@ -74,7 +74,7 @@ module MethodTests
 
   class Shape
     #: (String, ?String) -> String
-    def label(s, suffix = "") = "shape " + s + suffix
+    def label(s, suffix = "") = "shape #{s}#{suffix}"
 
     #: (Integer, ?k: Integer) -> Integer
     def scale(n, k: 2) = n * k
@@ -82,7 +82,7 @@ module MethodTests
 
   class Square < Shape
     #: (String, ?String) -> String
-    def label(s, suffix = "") = "square " + s + suffix
+    def label(s, suffix = "") = "square #{s}#{suffix}"
   end
 
   class MethodTest < Minitest::Test

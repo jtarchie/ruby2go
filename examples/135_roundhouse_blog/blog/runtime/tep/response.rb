@@ -52,13 +52,13 @@ module Tep
     # (path, expires, max-age, domain, samesite, httponly, secure).
     # Empty `opts` is fine: just writes "name=value".
     def set_cookie(name, value, opts)
-      line = name + "=" + Url.escape(value)
+      line = "#{name}=#{Url.escape(value)}"
       if opts.length > 0
         opts.each do |k, v|
           line << if v.length == 0
-                    "; " + k # bare flag (HttpOnly, Secure)
+                    "; #{k}" # bare flag (HttpOnly, Secure)
                   else
-                    "; " + k + "=" + v
+                    "; #{k}=#{v}"
                   end
         end
       end

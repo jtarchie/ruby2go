@@ -157,7 +157,7 @@ module ActiveJob
         work.call
         ran += 1
       rescue StandardError => e
-        warn "[job] a queued job raised: " + e.message
+        warn "[job] a queued job raised: #{e.message}"
       end
     end
     ran

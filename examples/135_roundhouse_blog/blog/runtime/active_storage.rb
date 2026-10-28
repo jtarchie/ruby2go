@@ -253,7 +253,7 @@ module ActiveStorage
       return nil if b.nil?
 
       png = Previewer.poster(Blob.service.path_for(b.key))
-      poster = Blob.create_and_upload!(png, ActiveStorage.filename_base(b.filename.to_s) + ".png", "image/png")
+      poster = Blob.create_and_upload!(png, "#{ActiveStorage.filename_base(b.filename.to_s)}.png", "image/png")
       ActiveRecord.adapter.insert("active_storage_attachments", {
                                     "name" => "preview_image",
                                     "record_type" => "ActiveStorage::Blob",
@@ -281,7 +281,7 @@ module ActiveStorage
       return "" if b.nil?
 
       v = @variation
-      ActiveStorage.filename_base(b.filename.to_s) + "." + (v.nil? ? "png" : v.output_format("image/png"))
+      "#{ActiveStorage.filename_base(b.filename.to_s)}.#{v.nil? ? "png" : v.output_format("image/png")}"
     end
 
     def url
@@ -289,8 +289,7 @@ module ActiveStorage
       return "" if b.nil?
 
       v = @variation
-      "/rails/active_storage/representations/redirect/" + b.signed_id +
-        "/" + (v.nil? ? "original" : v.encode) + "/" + ActiveStorage.url_filename(filename)
+      "/rails/active_storage/representations/redirect/#{b.signed_id}/#{v.nil? ? "original" : v.encode}/#{ActiveStorage.url_filename(filename)}"
     end
   end
 
@@ -348,7 +347,7 @@ module ActiveStorage
     end
 
     def encode
-      "limit-" + @width.to_s + "x" + @height.to_s + "-" + (@format == "" ? "keep" : @format)
+      "limit-#{@width.to_s}x#{@height.to_s}-#{@format == "" ? "keep" : @format}"
     end
 
     def digest
@@ -406,8 +405,7 @@ module ActiveStorage
       if @width == 0 || @height == 0
         "{\"identified\":true,\"analyzed\":true}"
       else
-        "{\"identified\":true,\"width\":" + @width.to_s +
-          ",\"height\":" + @height.to_s + ",\"analyzed\":true}"
+        "{\"identified\":true,\"width\":#{@width.to_s},\"height\":#{@height.to_s},\"analyzed\":true}"
       end
     end
 
@@ -417,7 +415,7 @@ module ActiveStorage
     # are integers, and the shared runtime has no typed JSON reader
     # to hand a Hash back from.
     def self.int_field(json, name)
-      needle = "\"" + name + "\":"
+      needle = "\"#{name}\":"
       at = json.index(needle)
       return 0 if at.nil?
 
@@ -525,10 +523,7 @@ module ActiveStorage
     # The columns every blob read selects, so the proxy's own join, the
     # batch preloader and `find` cannot disagree about the row shape.
     def self.columns(alias_prefix)
-      alias_prefix + ".id AS blob_id, " + alias_prefix + ".key AS blob_key, " +
-        alias_prefix + ".filename AS filename, " + alias_prefix +
-        ".content_type AS content_type, " + alias_prefix +
-        ".byte_size AS byte_size, " + alias_prefix + ".metadata AS metadata"
+      "#{alias_prefix}.id AS blob_id, #{alias_prefix}.key AS blob_key, #{alias_prefix}.filename AS filename, #{alias_prefix}.content_type AS content_type, #{alias_prefix}.byte_size AS byte_size, #{alias_prefix}.metadata AS metadata"
     end
 
     def self.from_row(row)
@@ -544,16 +539,14 @@ module ActiveStorage
 
     def self.find(id)
       rows = ActiveRecord.adapter.select_rows(
-        "SELECT " + columns("b") + " FROM active_storage_blobs b WHERE b.id = " +
-        ActiveRecord.adapter.escape_value(id) + " LIMIT 1"
+        "SELECT #{columns("b")} FROM active_storage_blobs b WHERE b.id = #{ActiveRecord.adapter.escape_value(id)} LIMIT 1"
       )
       rows.length == 0 ? nil : from_row(rows[0])
     end
 
     def self.find_by_key(key)
       rows = ActiveRecord.adapter.select_rows(
-        "SELECT " + columns("b") + " FROM active_storage_blobs b WHERE b.key = " +
-        ActiveRecord.adapter.escape_value(key) + " LIMIT 1"
+        "SELECT #{columns("b")} FROM active_storage_blobs b WHERE b.key = #{ActiveRecord.adapter.escape_value(key)} LIMIT 1"
       )
       rows.length == 0 ? nil : from_row(rows[0])
     end
@@ -592,8 +585,8 @@ module ActiveStorage
     # size in the same millisecond.
     def self.generate_key(filename, byte_size)
       MessageDigest.hmac_sha256_hex(
-        "active_storage/blob/" + byte_size.to_s,
-        filename + "/" + ActiveSupport.db_now
+        "active_storage/blob/#{byte_size.to_s}",
+        "#{filename}/#{ActiveSupport.db_now}"
       )
     end
 
@@ -690,9 +683,8 @@ module ActiveStorage
     # The blob's own route: `rails_blob_path(blob)`. A `disposition` of
     # "attachment" rides as the query Rails puts it in.
     def url(disposition)
-      base = "/rails/active_storage/blobs/redirect/" + signed_id + "/" +
-             ActiveStorage.url_filename(@filename)
-      disposition == "" ? base : base + "?disposition=" + disposition
+      base = "/rails/active_storage/blobs/redirect/#{signed_id}/#{ActiveStorage.url_filename(@filename)}"
+      disposition == "" ? base : "#{base}?disposition=#{disposition}"
     end
   end
 
@@ -765,7 +757,7 @@ module ActiveStorage
     # Every variant of a blob, gone with it — see `Blob#purge`.
     def self.purge_records_of(blob_id)
       rows = ActiveRecord.adapter.select_rows(
-        record_select("vr.blob_id = " + ActiveRecord.adapter.escape_value(blob_id))
+        record_select("vr.blob_id = #{ActiveRecord.adapter.escape_value(blob_id)}")
       )
       rows.each do |row|
         ActiveRecord.adapter.delete("active_storage_attachments", row["attachment_id"].to_i)
@@ -785,8 +777,7 @@ module ActiveStorage
       digest = v.digest
       rows = ActiveRecord.adapter.select_rows(
         VariantWithRecord.record_select(
-          "vr.blob_id = " + ActiveRecord.adapter.escape_value(b.id) +
-          " AND vr.variation_digest = " + ActiveRecord.adapter.escape_value(digest) + " LIMIT 1"
+          "vr.blob_id = #{ActiveRecord.adapter.escape_value(b.id)} AND vr.variation_digest = #{ActiveRecord.adapter.escape_value(digest)} LIMIT 1"
         )
       )
       if rows.length > 0
@@ -797,7 +788,7 @@ module ActiveStorage
       data = Processor.transform(Blob.service.download(b.key), b.content_type, v)
       image = Blob.create_and_upload!(
         data,
-        ActiveStorage.filename_base(b.filename.to_s) + "." + v.output_format(b.content_type),
+        "#{ActiveStorage.filename_base(b.filename.to_s)}.#{v.output_format(b.content_type)}",
         v.output_content_type(b.content_type)
       )
       record_id = ActiveRecord.adapter.insert("active_storage_variant_records", {
@@ -844,7 +835,7 @@ module ActiveStorage
       return "" if b.nil?
 
       v = @variation
-      v.nil? ? b.filename.to_s : ActiveStorage.filename_base(b.filename.to_s) + "." + v.output_format(b.content_type)
+      v.nil? ? b.filename.to_s : "#{ActiveStorage.filename_base(b.filename.to_s)}.#{v.output_format(b.content_type)}"
     end
 
     # `url_for(variant)` / `polymorphic_url(variant)`: Rails'
@@ -856,8 +847,7 @@ module ActiveStorage
       return "" if b.nil?
 
       v = @variation
-      "/rails/active_storage/representations/redirect/" + b.signed_id +
-        "/" + (v.nil? ? "original" : v.encode) + "/" + ActiveStorage.url_filename(filename)
+      "/rails/active_storage/representations/redirect/#{b.signed_id}/#{v.nil? ? "original" : v.encode}/#{ActiveStorage.url_filename(filename)}"
     end
   end
 
@@ -1053,7 +1043,7 @@ module ActiveStorage
 
         i += 1
       end
-      raise ArgumentError, "Cannot find variant :" + name + " for " + @record_type + "#" + @name
+      raise ArgumentError, "Cannot find variant :#{name} for #{@record_type}##{@name}"
     end
 
     # Rails' `preview(transformations)`: the poster frame of a video,

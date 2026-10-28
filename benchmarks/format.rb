@@ -10,7 +10,7 @@ end
 s = out.string
 puts s.bytesize, s.lines[12_345]
 
-rows = Array.new(50_000) { |i| i.to_s(2).rjust(20, "0") + " " + (i * 1.5).to_s.ljust(10) + i.to_s.center(9, "*") }
+rows = Array.new(50_000) { |i| "#{i.to_s(2).rjust(20, "0")} #{(i * 1.5).to_s.ljust(10)}#{i.to_s.center(9, "*")}" }
 buf = rows.join("\n")
 puts buf.size, buf.lines.last
 

@@ -44,7 +44,7 @@ end
 puts "still #{db.get_first_value("select count(*) from books")} books"
 
 # A SQL function defined in Ruby.
-db.create_function("shout", 1) { |fn, s| fn.result = s.to_s.upcase + "!" }
+db.create_function("shout", 1) { |fn, s| fn.result = "#{s.to_s.upcase}!" }
 p db.execute("select shout(title) from books where id = 1")
 
 # Schema introspection, and a syntax error shows where it is.

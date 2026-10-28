@@ -28,6 +28,6 @@ module RouteHelpers
   end
 
   def self.article_json_path(id)
-    "/articles/#{id}" + ".json"
+    "/articles/#{id}.json"
   end
 end

@@ -1055,7 +1055,7 @@ def size_word(n)
          else
            "small"
          end
-  word + "!"
+  "#{word}!"
 end
 
 #: (Symbol) -> Integer
@@ -2107,7 +2107,7 @@ module ControlTests
       vals = [nil, false, 0, "s"] #: Array[untyped]
       rows = [] #: Array[String]
       vals.each do |v|
-        rows << (v || "right").inspect + " " + (v && "right").inspect
+        rows << "#{(v || "right").inspect} #{(v && "right").inspect}"
       end
       assert_equal ["\"right\" nil", "\"right\" false", "0 \"right\"", "\"s\" \"right\""], rows
       assert_equal true, (!none)
@@ -2533,7 +2533,7 @@ end)
                end
       assert_equal "gt2", nested
       assert_equal "arg if", (x > 1 ? "arg if" : "arg else")
-      s = "a" + (x.odd? ? "odd" : "even") + "z"
+      s = "a#{x.odd? ? "odd" : "even"}z"
       assert_equal "aoddz", s
       mods = [] #: Array[String]
       mods << "mod-if" if x == 3
@@ -5663,9 +5663,9 @@ end
       ok = true
       [1, -2, 3].each { |x| ok &&= x > 0 }
       s = "a" #: String?
-      s &&= s + "b"
+      s &&= "#{s}b"
       t = nil #: String?
-      t &&= t + "b"
+      t &&= "#{t}b"
       assert_equal [false, "ab", nil], [ok, s, t]
     end
   end

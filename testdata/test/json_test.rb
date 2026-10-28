@@ -6,7 +6,7 @@ require "json"
 # max_nesting (decision 25): the json gem's depth limit, 100 by default, on both sides. The gem's messages are checked in testdata/test/stdlib_test.rb.
 module JsonTests
   #: (Integer) -> String
-  def self.parse_text(n) = ("[" * n) + "1" + ("]" * n)
+  def self.parse_text(n) = "#{"[" * n}1#{"]" * n}"
 
   #: (Integer) -> untyped
   def self.nested(n)
@@ -41,7 +41,7 @@ module JsonTests
   # @rbs inherits Hash[untyped, V]
   class Tagged < Hash
     #: (*untyped) -> String
-    def to_json(*a) = "{\"tagged\":" + super + "}"
+    def to_json(*a) = "{\"tagged\":#{super}}"
   end
 
   class NestingTest < Minitest::Test
@@ -62,8 +62,8 @@ module JsonTests
     end
 
     def test_parse_objects_count
-      assert_equal(JSON::NestingError, JsonTests.raised { JSON.parse(('{"a":' * 101) + "1" + ("}" * 101)) })
-      assert_nil(JsonTests.raised { JSON.parse(('{"a":' * 100) + "1" + ("}" * 100)) })
+      assert_equal(JSON::NestingError, JsonTests.raised { JSON.parse("#{'{"a":' * 101}1#{"}" * 101}") })
+      assert_nil(JsonTests.raised { JSON.parse("#{'{"a":' * 100}1#{"}" * 100}") })
     end
 
     def test_parse_empty_containers_do_not_count

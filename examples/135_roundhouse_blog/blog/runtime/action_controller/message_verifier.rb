@@ -91,7 +91,7 @@ module ActionController
       # Keyed by a separator neither part contains: the salts are
       # framework constants ("signed cookie", "active_record/signed_id")
       # and the secret is hex.
-      cache_key = salt + "|" + secret
+      cache_key = "#{salt}|#{secret}"
       # `key?` then read, rather than binding the read and testing it
       # for nil — the same idiom the cookie jar uses, and it keeps a
       # nilable local off spinel's `const char *` path.
@@ -119,10 +119,9 @@ module ActionController
     # envelope's `exp` slot: "null", or a quoted `iso8601_ms` instant.
     def self.envelope(secret, salt, message_json, purpose, exp, sha1)
       message = Base64.strict_encode64(message_json)
-      env = "{\"_rails\":{\"message\":\"" + message +
-            "\",\"exp\":" + exp + ",\"pur\":\"" + purpose + "\"}}"
+      env = "{\"_rails\":{\"message\":\"#{message}\",\"exp\":#{exp},\"pur\":\"#{purpose}\"}}"
       payload = Base64.strict_encode64(env)
-      payload + "--" + digest_for(secret, salt, payload, sha1)
+      "#{payload}--#{digest_for(secret, salt, payload, sha1)}"
     end
 
     # ISO8601 in UTC with exactly three fractional digits — the shape
@@ -187,9 +186,9 @@ module ActionController
     # picked the wrong one would mint a token that verifies here and
     # nowhere else — which is exactly the bug this pair replaces.
     def self.data_envelope(secret, salt, data_json, purpose, exp, sha1)
-      env = "{\"_rails\":{\"data\":" + data_json
-      env = env + ",\"exp\":" + exp if exp != ""
-      env = env + ",\"pur\":\"" + purpose + "\"}}"
+      env = "{\"_rails\":{\"data\":#{data_json}"
+      env = "#{env},\"exp\":#{exp}" if exp != ""
+      env = "#{env},\"pur\":\"#{purpose}\"}}"
       # URL-SAFE AND UNPADDED, which is the other thing a signed id does
       # differently: `ActiveRecord::SignedId`'s verifier is `url_safe`,
       # because the token goes in a path segment (campfire's
@@ -197,7 +196,7 @@ module ActionController
       # not. Measured: Rails' avatar token ends `…YXIifX0` where strict
       # base64 of the same envelope ends `…YXIifX0=`.
       payload = Base64.urlsafe_encode64_nopad(env)
-      payload + "--" + digest_for(secret, salt, payload, sha1)
+      "#{payload}--#{digest_for(secret, salt, payload, sha1)}"
     end
 
     # The `data` a signed id carries, as JSON text, or "" for every
@@ -272,7 +271,7 @@ module ActionController
     # non-string message (Rails would allow one) is handed back verbatim
     # rather than guessed at.
     def self.json_string(value)
-      "\"" + value.to_s + "\""
+      "\"#{value.to_s}\""
     end
 
     def self.json_value(json)

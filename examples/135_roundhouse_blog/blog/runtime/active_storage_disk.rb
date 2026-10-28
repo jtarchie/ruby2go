@@ -23,7 +23,7 @@ module ActiveStorage
     end
 
     def path_for(key)
-      root + "/" + key[0, 2].to_s + "/" + key[2, 2].to_s + "/" + key
+      "#{root}/#{key[0, 2].to_s}/#{key[2, 2].to_s}/#{key}"
     end
 
     # `mkdir -p` for the two-level fan-out, one segment at a time:
@@ -34,14 +34,14 @@ module ActiveStorage
       path.split("/").each do |seg|
         next if seg.length == 0
 
-        built = built.length == 0 ? seg : built + "/" + seg
+        built = built.length == 0 ? seg : "#{built}/#{seg}"
         Dir.mkdir(built) unless Dir.exist?(built)
       end
       nil
     end
 
     def upload(key, data)
-      ensure_dir(root + "/" + key[0, 2].to_s + "/" + key[2, 2].to_s)
+      ensure_dir("#{root}/#{key[0, 2].to_s}/#{key[2, 2].to_s}")
       File.binwrite(path_for(key), data)
       nil
     end
@@ -217,10 +217,10 @@ module ActiveStorage
   # reader stops at the first comma or brace of a bare value.
   module DiskKey
     def self.encode(key, disposition)
-      exp = "\"" + ActionController::MessageVerifier.iso8601_ms(Time.now + 300) + "\""
+      exp = "\"#{ActionController::MessageVerifier.iso8601_ms(Time.now + 300)}\""
       ActionController::MessageVerifier.data_envelope(
         Rails.application.secret_key_base, "ActiveStorage",
-        ActionController::MessageVerifier.json_string(key + "|" + disposition),
+        ActionController::MessageVerifier.json_string("#{key}|#{disposition}"),
         "disk_key", exp, false
       )
     end
@@ -240,8 +240,7 @@ module ActiveStorage
     end
 
     def self.disk_url(blob, disposition)
-      "/rails/active_storage/disk/" + encode(blob.key, disposition) + "/" +
-        ActiveStorage.url_filename(blob.filename.to_s)
+      "/rails/active_storage/disk/#{encode(blob.key, disposition)}/#{ActiveStorage.url_filename(blob.filename.to_s)}"
     end
   end
 
@@ -322,8 +321,7 @@ module ActiveStorage
         head(:not_found)
         return nil
       end
-      @headers["Content-Disposition"] = disposition + "; filename=\"" +
-                                        ActiveStorage.url_filename(blob.filename.to_s) + "\""
+      @headers["Content-Disposition"] = "#{disposition}; filename=\"#{ActiveStorage.url_filename(blob.filename.to_s)}\""
       @headers["Cache-Control"] = "max-age=3600, public"
       send_data(service.download(key), type: blob.content_type, disposition: disposition)
       nil

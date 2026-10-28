@@ -136,7 +136,7 @@ module DemoObjDyn
   # refine is a reopening; using a no-op.
   module Refined
     refine String do
-      def shout = upcase + "!"
+      def shout = "#{upcase}!"
     end
   end
   using Refined

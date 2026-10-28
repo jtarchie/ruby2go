@@ -72,13 +72,13 @@ module Rails
     end
 
     def join(part)
-      AppPath.new(@base + "/" + part)
+      AppPath.new("#{@base}/#{part}")
     end
 
     # `Rails.root + "storage/x"` — Pathname#+ is a path join, not string
     # concatenation, so it is `join` under another name.
     def +(other)
-      AppPath.new(@base + "/" + other)
+      AppPath.new("#{@base}/#{other}")
     end
 
     def to_s
@@ -332,21 +332,21 @@ module Rails
   # optional block is its own hazard on the strict targets.
   class Logger
     def info(message)
-      Rails.log_line("[rails] INFO " + message.to_s)
+      Rails.log_line("[rails] INFO #{message.to_s}")
     end
 
     def error(message)
-      Rails.log_line("[rails] ERROR " + message.to_s)
+      Rails.log_line("[rails] ERROR #{message.to_s}")
     end
 
     def warn(message)
-      Rails.log_line("[rails] WARN " + message.to_s)
+      Rails.log_line("[rails] WARN #{message.to_s}")
     end
 
     def debug(message); end
 
     def fatal(message)
-      Rails.log_line("[rails] FATAL " + message.to_s)
+      Rails.log_line("[rails] FATAL #{message.to_s}")
     end
   end
 
@@ -500,6 +500,6 @@ module GlobalID
   # a wrong app name or a wrong model name is obvious here and opaque
   # once base64 has been applied.
   def self.uri(model_name, id)
-    "gid://" + Rails.application.global_id_app + "/" + model_name + "/" + id.to_s
+    "gid://#{Rails.application.global_id_app}/#{model_name}/#{id.to_s}"
   end
 end

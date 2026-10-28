@@ -34,7 +34,7 @@ SECTION = <<~MD.freeze
   [^1]: The footnote text.
 MD
 
-DOC = "# Benchmark {#top}\n\n" + (SECTION * 20)
+DOC = "# Benchmark {#top}\n\n#{SECTION * 20}"
 
 bytes = 0
 html = ""

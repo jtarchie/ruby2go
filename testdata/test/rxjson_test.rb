@@ -895,7 +895,7 @@ b/
       return unless pm
 
       assert_equal "#<MatchData \"/posts/42.json\" 1:\"posts\" 2:\"42\" 3:\".json\">", pm.inspect
-      assert_equal "posts#42", pm[1].to_s + "#" + pm[2].to_s
+      assert_equal "posts#42", "#{pm[1].to_s}##{pm[2].to_s}"
 
     end
 
@@ -1357,7 +1357,7 @@ b/
       assert_equal "\\\\\\", "aaa".gsub(/a/, "\\\\")
       assert_equal "a[a|c]c", "abc".sub(/b/, "[\\`|\\']")
       assert_equal "a<>c", "abc".gsub(/(b)|(z)/, "<\\2>")
-      assert_equal "camel_case_string", "camelCaseString".gsub(/([A-Z])/) { |m| "_" + m.downcase }
+      assert_equal "camel_case_string", "camelCaseString".gsub(/([A-Z])/) { |m| "_#{m.downcase}" }
     end
 
     # scan and split with regexps
@@ -1706,7 +1706,7 @@ b/
       assert_equal "[1,2]!", "#{j}!"
       assert_equal 5, j.size
       assert_equal "String", j.class.to_s
-      assert_equal "[1,2]x", (j + "x")
+      assert_equal "[1,2]x", ("#{j}x")
       assert_equal "\"1\"", 1.to_json.to_json
       assert_equal "\"\\\"x\\\"\"", "x".to_json.to_json
       assert_equal "String", :a.to_json.class.to_s

@@ -108,7 +108,7 @@ module ActionText
       ActionController::MessageVerifier.envelope(
         Rails.application.secret_key_base,
         SALT,
-        ActionController::MessageVerifier.json_string(model_name + "/" + id.to_s),
+        ActionController::MessageVerifier.json_string("#{model_name}/#{id.to_s}"),
         PURPOSE,
         "null",
         false
@@ -876,14 +876,14 @@ module ActionText
     # off them, for `<li>` its own list is still on top.
     def self.close_scoped(name, segment, list_names, list_counts)
       inner = chomp_newlines(segment)
-      return inner + "\n\n" if %w[p h1].include?(name)
-      return inner + "\n" if name == "div"
-      return "[" + inner + "]" if name == "figcaption"
-      return quote_wrap(inner + "\n\n") if name == "blockquote"
+      return "#{inner}\n\n" if %w[p h1].include?(name)
+      return "#{inner}\n" if name == "div"
+      return "[#{inner}]" if name == "figcaption"
+      return quote_wrap("#{inner}\n\n") if name == "blockquote"
       if %w[ul ol].include?(name)
         # `break_if_nested_list` — a list inside another list starts on
         # its own line.
-        return list_names.length > 0 ? "\n" + inner + "\n\n" : inner + "\n\n"
+        return list_names.length > 0 ? "\n#{inner}\n\n" : "#{inner}\n\n"
       end
 
       # `<li>`: indent by nesting depth, then the bullet its list type
@@ -891,8 +891,8 @@ module ActionText
       # top-level item and gets no indent.
       bullet = "•"
       depth = list_names.length
-      bullet = list_counts[depth - 1].to_s + "." if depth > 0 && list_names[depth - 1] == "ol"
-      indent(depth) + bullet + " " + inner + "\n"
+      bullet = "#{list_counts[depth - 1].to_s}." if depth > 0 && list_names[depth - 1] == "ol"
+      "#{indent(depth)}#{bullet} #{inner}\n"
     end
 
     # Rails' `plain_text_for_blockquote_node`: the block's text is
@@ -903,8 +903,7 @@ module ActionText
       return "“”" if first < 0
 
       last = last_non_space_index(text)
-      text[0, first].to_s + "“" + text[first, last - first + 1].to_s + "”" +
-        text[last + 1, text.length - last - 1].to_s
+      "#{text[0, first].to_s}“#{text[first, last - first + 1].to_s}”#{text[last + 1, text.length - last - 1].to_s}"
     end
 
     def self.first_non_space_index(text)

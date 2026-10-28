@@ -133,15 +133,15 @@ module SchematizedJson
         e = s[i + 1, 1].to_s
         out = case e
               when "n"
-                out + "\n"
+                "#{out}\n"
               when "r"
-                out + "\r"
+                "#{out}\r"
               when "t"
-                out + "\t"
+                "#{out}\t"
               when "b"
-                out + "\b"
+                "#{out}\b"
               when "f"
-                out + "\f"
+                "#{out}\f"
               else
                 out + e
               end
@@ -200,7 +200,7 @@ module SchematizedJson
   end
 
   def self.write_string(serialized, key, value)
-    write_raw(serialized, key, "\"" + JsonBuilder.encode_string(value) + "\"")
+    write_raw(serialized, key, "\"#{JsonBuilder.encode_string(value)}\"")
   end
 
   # Rails' `<col>=` on a has_json column — `account.update!(settings: { … })`,
@@ -233,7 +233,7 @@ module SchematizedJson
       when "string"
         out = write_string(out, key, v.to_s)
       else
-        raise NoMethodError, "undefined method '" + key + "=' for the json column's schema"
+        raise NoMethodError, "undefined method '#{key}=' for the json column's schema"
       end
     end
     out
@@ -255,10 +255,9 @@ module SchematizedJson
     i = 0
     while i < names.length
       out += "," if i > 0
-      out = out + "\"" + JsonBuilder.encode_string(names[i].to_s) + "\":" +
-            read_raw(data, names[i].to_s)
+      out = "#{out}\"#{JsonBuilder.encode_string(names[i].to_s)}\":#{read_raw(data, names[i].to_s)}"
       i += 1
     end
-    out + "}"
+    "#{out}}"
   end
 end

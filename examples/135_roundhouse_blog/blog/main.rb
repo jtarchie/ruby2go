@@ -180,7 +180,7 @@ module Main
   # working directory is the app root — where `make assets` writes
   # static/ and `./build/blog` is launched from.
   def self.serve_static(path, res)
-    disk = "static" + path
+    disk = "static#{path}"
     if Sock.sphttp_filesize(disk) < 0
       res.status = 404
       res.body = "<h1>404 Not Found</h1>"
@@ -274,7 +274,7 @@ module Main
     Broadcasts.reset_log!
     # Under RH_SQL_TRACE the request line brackets its queries, so a
     # tally script can attribute each SQL line to the request that ran it.
-    warn "-- " + req.verb + " " + req.path if Db.sql_trace?
+    warn "-- #{req.verb} #{req.path}" if Db.sql_trace?
 
     # Action Cable: upgrade /cable to a WebSocket and hand off to the
     # Cable glue. Tep::Server::Scheduled's write path runs the recv
@@ -602,7 +602,7 @@ i = 0
 while i < ARGV.length
   arg = ARGV[i]
   if ["--help", "-h"].include?(arg)
-    puts "usage: " + $PROGRAM_NAME + " [options]"
+    puts "usage: #{$PROGRAM_NAME} [options]"
     puts ""
     puts "  -p, --port N     listen port (default 3000; PORT env)"
     puts "  -w, --workers N  prefork N processes (default 1; WORKERS env)"
@@ -620,12 +620,12 @@ while i < ARGV.length
     workers = ARGV[i + 1].to_i
     i += 2
   else
-    warn "unknown option: " + arg + " (try --help)"
+    warn "unknown option: #{arg} (try --help)"
     exit(1)
   end
 end
 if port <= 0 || port > 65_535
-  warn "invalid port: " + port.to_s
+  warn "invalid port: #{port.to_s}"
   exit(1)
 end
 Main.configure_default_adapter!

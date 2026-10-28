@@ -73,8 +73,8 @@ module Tep
               "Upgrade: websocket\r\n" \
               "Connection: Upgrade\r\n" \
               "Sec-WebSocket-Accept: " + accept_key + "\r\n"
-        out << "Sec-WebSocket-Protocol: " + protocol + "\r\n" if protocol.length > 0
-        out + "\r\n"
+        out << "Sec-WebSocket-Protocol: #{protocol}\r\n" if protocol.length > 0
+        "#{out}\r\n"
       end
 
       # Case-insensitive substring contains. Hand-rolled because

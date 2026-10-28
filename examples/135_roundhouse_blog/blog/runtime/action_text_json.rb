@@ -17,7 +17,7 @@
 module ActionText
   class Content
   def to_json
-    "\"" + JsonBuilder.encode_string(as_json) + "\""
+    "\"#{JsonBuilder.encode_string(as_json)}\""
   end
   end
 end

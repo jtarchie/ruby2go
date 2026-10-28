@@ -539,7 +539,7 @@ module Db
   # binding. Inlining stays safe regardless since the lowerer controls
   # every string that flows here.
   def self.escape_string(s)
-    "'" + s.to_s.gsub("'", "''") + "'"
+    "'#{s.to_s.gsub("'", "''")}'"
   end
 
   def self.escape_int(n)

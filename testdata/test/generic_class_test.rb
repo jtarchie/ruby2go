@@ -211,7 +211,7 @@ module GenericClassTests
       a = Box.new(1)
       s = Box.new("a")
       assert_equal 3, a.get + 2
-      assert_equal "ab", s.get + "b"
+      assert_equal "ab", "#{s.get}b"
       a.set(5)
       assert_equal [5, 5], a.twice
     end

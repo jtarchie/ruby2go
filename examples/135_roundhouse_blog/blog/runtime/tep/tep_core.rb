@@ -17,14 +17,14 @@ module Tep
     if w.length == 0
       "one per core (SPINEL_WORKERS=N to cap)"
     else
-      w + " (SPINEL_WORKERS)"
+      "#{w} (SPINEL_WORKERS)"
     end
   end
 
   # `--workers N` preforks N processes; the banner names the flag only
   # when it is in effect.
   def self.processes_desc(workers)
-    workers > 1 ? workers.to_s + " (--workers)" : "1"
+    workers > 1 ? "#{workers.to_s} (--workers)" : "1"
   end
 
   def self.str_hash
@@ -68,10 +68,7 @@ module Tep
     v = ENV["TEP_GC_STAT"] || ""
     if v != "" && v != "0"
       g = GC.stat
-      puts "tep: GC.stat cycle=" + g["cycle"].to_s +
-           " full_runs=" + g["full_runs"].to_s +
-           " remembered=" + g["remembered"].to_s +
-           " remembered_peak=" + g["remembered_peak"].to_s
+      puts "tep: GC.stat cycle=#{g["cycle"].to_s} full_runs=#{g["full_runs"].to_s} remembered=#{g["remembered"].to_s} remembered_peak=#{g["remembered_peak"].to_s}"
       $stdout.flush
     end
     0

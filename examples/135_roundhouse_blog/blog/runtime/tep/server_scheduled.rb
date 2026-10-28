@@ -60,8 +60,7 @@ module Tep
           # is another process already bound to the port, and silently
           # returning here (the caller discards the code) made the
           # binary look like it started and immediately vanished.
-          warn Tep.display_name + ": cannot bind to port " +
-               port.to_s + " (already in use?)"
+          warn "#{Tep.display_name}: cannot bind to port #{port.to_s} (already in use?)"
           exit(1)
         end
         Sock.sphttp_set_nonblock(sfd)
@@ -71,9 +70,7 @@ module Tep
           # distinguishable at a glance. Explicit flush: when stdout is
           # redirected (not a TTY) C stdio block-buffers, and a banner
           # that only shows up at exit is no banner at all.
-          puts Tep.display_name + " (" + RUBY_ENGINE +
-               ") listening on http://0.0.0.0:" + port.to_s +
-               ", pid " + Sock.sphttp_getpid.to_s
+          puts "#{Tep.display_name} (#{RUBY_ENGINE}) listening on http://0.0.0.0:#{port.to_s}, pid #{Sock.sphttp_getpid.to_s}"
           puts "  one fiber per connection (TEP_SERVER=fiber); OS workers: " \
                "1, the main thread; processes: " + Tep.processes_desc(workers)
           $stdout.flush
@@ -275,12 +272,12 @@ module Tep
           res.headers["Transfer-Encoding"] = "chunked"
           res.headers["Content-Type"] = "text/event-stream" unless res.headers.key?("Content-Type")
           reason = Tep.reason(res.status)
-          head = req.http_version + " " + res.status.to_s + " " + reason + "\r\n"
+          head = "#{req.http_version} #{res.status.to_s} #{reason}\r\n"
           res.headers.each do |k, v|
-            head << k + ": " + v + "\r\n"
+            head << "#{k}: #{v}\r\n"
           end
           res.set_cookies.each do |line|
-            head << "Set-Cookie: " + line + "\r\n"
+            head << "Set-Cookie: #{line}\r\n"
           end
           head << "Connection: close\r\n\r\n"
           Sock.sphttp_write_str(client, head)
@@ -296,12 +293,12 @@ module Tep
         # response as HTML.
         res.headers["Content-Type"] = "text/html; charset=utf-8" if res.file_path.length == 0 && res.body.length > 0 && !res.headers.key?("Content-Type")
         reason = Tep.reason(res.status)
-        head = req.http_version + " " + res.status.to_s + " " + reason + "\r\n"
+        head = "#{req.http_version} #{res.status.to_s} #{reason}\r\n"
         res.headers.each do |k, v|
-          head << k + ": " + v + "\r\n"
+          head << "#{k}: #{v}\r\n"
         end
         res.set_cookies.each do |line|
-          head << "Set-Cookie: " + line + "\r\n"
+          head << "Set-Cookie: #{line}\r\n"
         end
         head << if keep_alive
                   "Connection: keep-alive\r\n"
@@ -310,7 +307,7 @@ module Tep
                 end
         if res.file_path.length > 0
           fs = Sock.sphttp_filesize(res.file_path)
-          head << "Content-Length: " + fs.to_s + "\r\n\r\n"
+          head << "Content-Length: #{fs.to_s}\r\n\r\n"
           Sock.sphttp_write_str(client, head)
           Sock.sphttp_sendfile(client, res.file_path)
         else
@@ -323,7 +320,7 @@ module Tep
           # browser waits out the difference: campfire's sign-in page
           # hung ~30s on /account/logo until the keep-alive timeout
           # closed the connection under it (ERR_CONTENT_LENGTH_MISMATCH).
-          head << "Content-Length: " + res.body.bytesize.to_s + "\r\n\r\n"
+          head << "Content-Length: #{res.body.bytesize.to_s}\r\n\r\n"
           Sock.sphttp_write_str(client, head)
           Sock.sphttp_write_bytes(client, res.body, res.body.bytesize) if res.body.bytesize > 0
         end

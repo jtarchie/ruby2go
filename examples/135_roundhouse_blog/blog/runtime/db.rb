@@ -395,7 +395,7 @@ class DbConn
       rc = SQL.sqlite3_prepare_v2(@dbh, sql, -1, SQL.stmt_out, nil)
       st = rc == SQL::OK ? SQL.read_ptr(SQL.stmt_out) : 0
     end
-    raise "Db.prepare failed (" + rc.to_s + "): " + SQL.sqlite3_errmsg(@dbh) + " — sql: " + sql if rc != SQL::OK
+    raise "Db.prepare failed (#{rc.to_s}): #{SQL.sqlite3_errmsg(@dbh)} — sql: #{sql}" if rc != SQL::OK
 
     @entries.push(Stmt.new(sql, st))
     st
@@ -737,7 +737,7 @@ class DbPool
         # Best-effort error surface — sqlite3_errmsg requires a valid db
         # handle, which we don't have on open failure. The numeric rc +
         # path are the only signals we can raise pre-handle.
-        raise "Db.configure: sqlite3_open(" + path + ") failed (" + rc.to_s + ")"
+        raise "Db.configure: sqlite3_open(#{path}) failed (#{rc.to_s})"
       end
 
       dbh = SQL.read_ptr(SQL.db_out)
@@ -919,7 +919,7 @@ module Db
   def self.seed_from_file(src_path)
     dest = current_conn.dbh
     rc = SQL.sqlite3_open_v2(src_path, SQL.seed_out, SQL::OPEN_URI_RWC, nil)
-    raise "Db.seed_from_file: cannot open " + src_path + " (" + rc.to_s + ")" if rc != SQL::OK
+    raise "Db.seed_from_file: cannot open #{src_path} (#{rc.to_s})" if rc != SQL::OK
 
     src = SQL.read_ptr(SQL.seed_out)
     bk = SQL.sqlite3_backup_init(dest, "main", src, "main")
@@ -927,14 +927,14 @@ module Db
       # errmsg lives on the DESTINATION handle for a failed backup_init.
       msg = SQL.sqlite3_errmsg(dest)
       SQL.sqlite3_close(src)
-      raise "Db.seed_from_file: backup_init failed: " + msg
+      raise "Db.seed_from_file: backup_init failed: #{msg}"
     end
     step_rc = SQL.sqlite3_backup_step(bk, -1)
     SQL.sqlite3_backup_finish(bk)
     SQL.sqlite3_close(src)
     # DONE, not OK, is success for a completed step(-1); OK means pages remain,
     # which for -1 would mean it did not finish.
-    raise "Db.seed_from_file: backup_step(" + src_path + ") -> " + step_rc.to_s if step_rc != SQL::DONE
+    raise "Db.seed_from_file: backup_step(#{src_path}) -> #{step_rc.to_s}" if step_rc != SQL::DONE
 
     # The fixture ships without sqlite_stat1, and an unplanned database
     # misplans the hottest-stories SELECT into a full-table walk plus a
@@ -1038,7 +1038,7 @@ module Db
     msg = SQL.sqlite3_errmsg(h)
     raise ActiveRecord::RecordNotUnique, msg if Db.unique_violation?(msg)
 
-    raise "Db.exec failed (" + rc.to_s + "): " + msg + " — sql: " + sql
+    raise "Db.exec failed (#{rc.to_s}): #{msg} — sql: #{sql}"
 
   end
 
@@ -1071,7 +1071,7 @@ module Db
     if handle != 0
       # A replay is not a round trip: the capture log (Rails' SQLCounter
       # ignores CACHE events too) and the trace both say so.
-      warn "  CACHE " + sql if @sql_trace
+      warn "  CACHE #{sql}" if @sql_trace
       return handle
     end
     record_query(sql)
@@ -1100,7 +1100,7 @@ module Db
   # No-op (single nil check) when no capture is installed.
   def self.record_query(sql)
     @query_log&.push(sql)
-    warn "  SQL " + sql if @sql_trace
+    warn "  SQL #{sql}" if @sql_trace
   end
 
   def self.sql_trace?
@@ -1365,7 +1365,7 @@ module Db
   # quote doubling matches sqlite's literal-string syntax; non-string
   # input goes through `to_s` first (Ruby semantics).
   def self.escape_string(s)
-    "'" + s.to_s.gsub("'", "''") + "'"
+    "'#{s.to_s.gsub("'", "''")}'"
   end
 
   def self.escape_int(n)

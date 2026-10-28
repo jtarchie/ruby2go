@@ -373,13 +373,13 @@ module MarshalTests
     end
 
     def test_deep_nesting_is_rejected_not_a_stack_overflow
-      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error(("o\x0aArray[any]\x01" * 1_000_000) + "0"))
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("#{"o\x0aArray[any]\x01" * 1_000_000}0"))
     end
 
     def test_random_state_index_is_checked
       state = "\x00" * 624
-      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\x01" + state))
-      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\xe2\x0a" + state))
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\x01#{state}"))
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\xe2\x0a#{state}"))
     end
 
     def test_bigdecimal_state_is_checked
@@ -402,7 +402,7 @@ module MarshalTests
     # A loaded exponent past what BigDecimal arithmetic keeps would reach 10**n on the first comparison (#109).
     def test_bigdecimal_exponent_is_checked
       [2**61 + 1, -(2**61) - 1].each do |exp|
-        assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x011" + HostileInputTest.zigzag(exp) + "F\x00"))
+        assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x011#{HostileInputTest.zigzag(exp)}F\x00"))
       end
     end
   end

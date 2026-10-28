@@ -231,7 +231,7 @@ module ActiveJob
         work.call
         ran += 1
       rescue StandardError => e
-        warn "[job] a queued job raised: " + e.message
+        warn "[job] a queued job raised: #{e.message}"
       end
     end
     ran
@@ -293,7 +293,7 @@ module TypedStore
     Thread.current[:typed_store_key] = nil
     out = "---\n"
     h.each do |k, v|
-      out += k.to_s + ": " + (v.nil? ? "" : v.to_s) + "\n"
+      out += "#{k.to_s}: #{v.nil? ? "" : v.to_s}\n"
     end
     out
   end

@@ -35,7 +35,7 @@ class Dog < Animal
   #: () -> Integer
   def trick_count = @tricks.size
 
-  def speak = super + "!"
+  def speak = "#{super}!"
 end
 
 class Bird < Animal
