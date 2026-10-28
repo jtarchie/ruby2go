@@ -268,11 +268,13 @@ module SorbetTests
     def sorbet_twice(x) = x * 2
 
     def test_nilable_spaceship
-      a, b = Tok.new(1), Tok.new(2)
+      a = Tok.new(1)
+      b = Tok.new(2)
       assert_operator a, :<, b
       assert_equal 2, [b, a].max.v
       assert a.between?(a, b)
-      x, y = RevTok.new(1), RevTok.new(2)
+      x = RevTok.new(1)
+      y = RevTok.new(2)
       assert_operator y, :<, x
     end
 

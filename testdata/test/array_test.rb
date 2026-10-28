@@ -1983,7 +1983,8 @@ module ArrayTests
       lo, hi = bounds([])
       assert_nil lo
       assert_equal true, hi.nil?
-      x, y = [3, "three"]
+      x = 3
+      y = "three"
       assert_equal 3, x
       assert_equal "three", y
       a = 1

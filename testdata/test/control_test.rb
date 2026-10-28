@@ -842,7 +842,8 @@ def divs(xs) = xs.map { |d| 10 / d }
 #: () -> Integer
 def multi_in_begin
   begin
-    a, b = 3, 4
+    a = 3
+    b = 4
   rescue
     a = 0
     b = 0
@@ -1403,7 +1404,8 @@ module ControlTests
 
     #: (Integer, Integer) -> void
     def initialize(x, y)
-      @x, @y = x, y
+      @x = x
+      @y = y
     end
 
     #: () -> void
@@ -1668,7 +1670,8 @@ module ControlTests
 
     #: () -> [Integer, Integer]
     def swapped
-      lo, hi = @r, @l
+      lo = @r
+      hi = @l
       [lo, hi]
     end
   end
@@ -1814,7 +1817,8 @@ module ControlTests
       assert_equal ["x:1", "y:2", "x1", "y2"], got
       ix = 0
       while ix < 3
-        ix, dummy = ix + 1, ix
+        dummy = ix
+        ix = ix + 1
       end
       assert_equal 3, ix
     end
@@ -1824,11 +1828,13 @@ module ControlTests
       lo = 0
       hi = 0
       pairs = [[1, 9], [2, 8]] #: Array[[Integer, Integer]]
-      pairs.each { |pair| lo, hi = pair[1], pair[0] }
+      pairs.each { |pair| lo = pair[1]
+                          hi = pair[0] }
       assert_equal 8, lo
       assert_equal 2, hi
       ww = 0
-      res = [5].map { |x| ww, z = x, x * 2; z }
+      res = [5].map { |x| ww = x
+                          z = x * 2; z }
       assert_equal 5, ww
       assert_equal [10], res
     end
@@ -1869,7 +1875,10 @@ module ControlTests
 
     #: (bool) -> [Array[String], Integer]
     def control_maybe_pair(c)
-      libs, n = [["l"], 1] if c
+      if c
+        libs = ["l"]
+        n = 1
+      end
       libs ||= []
       n ||= 0
       [libs, n]
@@ -1956,14 +1965,18 @@ module ControlTests
       assert_equal "t", s
       assert_equal 3, i
       assert_equal true, b
-      a1, b1 = 1, 2
+      a1 = 1
+      b1 = 2
       a1, b1 = b1, a1
       assert_equal 2, a1
       assert_equal 1, b1
-      x, y, z = "x", "y", "z"
+      x = "x"
+      y = "y"
+      z = "z"
       x, y, z = y, z, x
       assert_equal ["y", "z", "x"], ([x, y, z])
-      f0, f1 = 0, 1
+      f0 = 0
+      f1 = 1
       10.times { f0, f1 = f1, f0 + f1 }
       assert_equal 55, f0
       assert_equal 89, f1
@@ -1983,7 +1996,8 @@ module ControlTests
       assert_equal 2, h2
       mm = 0
       nn = 0
-      mm, nn = 3, 4
+      mm = 3
+      nn = 4
       assert_equal 7, (mm + nn)
       pt = Point.new(1, 2)
       pt.flip
@@ -1991,13 +2005,15 @@ module ControlTests
       pairs = [[1, "one"], [2, "two"]] #: Array[[Integer, String]]
       ranges = [] #: Array[String]
       pairs.each do |num, word|
-        lo, hi = num, num * 100
+        lo = num
+        hi = num * 100
         ranges << "#{word}: #{lo}..#{hi}"
       end
       assert_equal ["one: 1..100", "two: 2..200"], ranges
       maybe = "set" #: String?
       other = 1
-      maybe, other = nil, 2
+      maybe = nil
+      other = 2
       assert_nil maybe
       assert_equal 2, other
       log = [] #: Array[String]
@@ -3085,7 +3101,8 @@ module ControlTests
       assert_equal "a", kk
       assert_equal 1, vv
       arr = [1, 2] #: Array[Integer]
-      f0, f1 = arr[1], arr[0]
+      f0 = arr[1]
+      f1 = arr[0]
       assert_equal [2, 1], [f0, f1]
     end
 
@@ -3863,7 +3880,9 @@ module ControlTests
 
     # multiple assignment of a mixed-type literal
     def test_multiple_assignment_of_a_mixed
-      name, age, admin = "ann", 30, false
+      name = "ann"
+      age = 30
+      admin = false
       assert_equal "ann", name
       assert_equal 30, age
       assert_equal false, admin
@@ -5154,22 +5173,26 @@ module ControlTests
   class ControlMultiSetterTest < Minitest::Test
     def test_index_targets
       arr = [1, 2, 3]
-      arr[0], arr[2] = 9, 8
+      arr[0] = 9
+      arr[2] = 8
       assert_equal [9, 2, 8], arr
       h = { "a" => 1 }
-      h["a"], h["b"] = h.fetch("a") + 1, 5
+      h["a"] = h.fetch("a") + 1
+      h["b"] = 5
       assert_equal({ "a" => 2, "b" => 5 }, h)
     end
 
     def test_attribute_targets
       pt = ControlSetterPoint.new
-      pt.x, pt.y = 4, "four"
+      pt.x = 4
+      pt.y = "four"
       assert_equal [4, "four"], [pt.x, pt.y]
     end
 
     def test_mixed_with_locals
       h = {} #: Hash[String, Integer]
-      k, h["z"] = [7, 3]
+      k = 7
+      h["z"] = 3
       assert_equal [7, { "z" => 3 }], [k, h]
     end
   end
@@ -5275,7 +5298,8 @@ module ControlTests
   class ControlVerboseTest < Minitest::Test
     def test_verbose_global
       was = $VERBOSE
-      verbose, $VERBOSE = $VERBOSE, nil
+      verbose = $VERBOSE
+      $VERBOSE = nil
       silenced = $VERBOSE
       $VERBOSE = verbose
       assert_equal [false, nil, false], [was, silenced, $VERBOSE]

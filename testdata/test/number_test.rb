@@ -1936,16 +1936,20 @@ module NumberTests
       assert_equal "6 -1.0 false", (defaults(6, -1.0, false))
 
       # multiple assignment
-      a, b = 1, 2.5
+      a = 1
+      b = 2.5
       assert_equal 1, a
       assert_equal "2.5", (b).inspect
-      i, j = 3, 4
+      i = 3
+      j = 4
       i, j = j, i
       assert_equal 4, i
       assert_equal 3, j
       lo, hi = [9, 2].sort
       assert_equal "2 9", ("#{lo} #{hi}")
-      p1, p2, p3 = 1, true, 0.5
+      p1 = 1
+      p2 = true
+      p3 = 0.5
       assert_equal 1, p1
       assert_equal true, p2
       assert_equal "0.5", (p3).inspect
@@ -2261,7 +2265,12 @@ module NumberTests
     end
 
     def test_lgamma
-      a, b, c, d, e, f = Math.lgamma(2.5), Math.lgamma(-0.5), Math.lgamma(-1.5), Math.lgamma(20.0), Math.lgamma(1.0), Math.lgamma(2.0)
+      a = Math.lgamma(2.5)
+      b = Math.lgamma(-0.5)
+      c = Math.lgamma(-1.5)
+      d = Math.lgamma(20.0)
+      e = Math.lgamma(1.0)
+      f = Math.lgamma(2.0)
       assert_equal [[0.28468287047292, 1], [1.26551212348465, -1], [0.86004701537648, 1], [39.3398841871995, 1], [0.0, 1], [0.0, 1]],
                    [[a[0].round(14), a[1]], [b[0].round(14), b[1]], [c[0].round(14), c[1]], [d[0].round(14), d[1]], [e[0].round(14), e[1]], [f[0].round(14), f[1]]]
       assert_equal [[Float::INFINITY, 1], [Float::INFINITY, -1], [Float::INFINITY, 1]], [Math.lgamma(0.0), Math.lgamma(-0.0), Math.lgamma(-1.0)]

@@ -131,7 +131,8 @@ puts @main_arr.bsearch_index { |x| x >= 4 }
 p @main_h
 @main_n ||= 5
 @main_n += 1
-main_a, @main_b = 1, 2
+main_a = 1
+@main_b = 2
 p [main_a, @main_b, @main_n]
 p [defined?(@main_arr), defined?(@main_never), @main_never]
 

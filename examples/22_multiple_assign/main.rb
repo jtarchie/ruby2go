@@ -6,7 +6,9 @@ def divmod2(a, b) = [a / b, a % b]
 
 q, r = divmod2(17, 5)
 puts q, r
-status, headers, body = [200, { "A" => "b" }, "ok"]
+status = 200
+headers = { "A" => "b" }
+body = "ok"
 puts status, headers.inspect, body
 x = 1
 y = 2

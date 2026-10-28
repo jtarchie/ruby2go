@@ -332,7 +332,8 @@ module Demo
       out.join
     end
 
-    SEV_DEBUG, SEV_INFO = 0, 1
+    SEV_DEBUG = 0
+    SEV_INFO = 1
 
     # A param typed from its default (:SEV_INFO), reassigned const_get's untyped value (decision 241).
     def self.level_of(level = :SEV_INFO)

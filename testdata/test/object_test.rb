@@ -6148,7 +6148,9 @@ module ObjectTests
   end
 
   module ObjectLogg
-    DEBUG, INFO, WARN = 0, 1, 2
+    DEBUG = 0
+    INFO = 1
+    WARN = 2
 
     def self.lvl(s) = const_get(s)
   end

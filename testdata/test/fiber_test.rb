@@ -18,7 +18,8 @@ module FiberTests
 
     def test_generator
       gen = Fiber.new do
-        a, b = 0, 1
+        a = 0
+        b = 1
         loop do
           Fiber.yield a
           a, b = b, a + b

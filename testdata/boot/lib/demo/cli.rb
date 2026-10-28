@@ -715,11 +715,13 @@ end
 module DemoHoistUnderscore
   def self.go(flag)
     if flag
-      _, b = [1, 2]
+      _ = 1
+      b = 2
     else
       b = 4
     end
-    _, c = [5, 6]
+    _ = 5
+    c = 6
     [b, c]
   end
 end

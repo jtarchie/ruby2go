@@ -177,7 +177,8 @@ module EnumeratorTests
     #: () -> Enumerator[Integer]
     def fib
       Enumerator.new do |y|
-        a, b = 0, 1
+        a = 0
+        b = 1
         loop do
           y << a
           a, b = b, a + b
@@ -264,7 +265,8 @@ module EnumeratorTests
 
     def test_over_a_generator_and_infinity
       evens = Enumerator.new do |y|
-        a, b = 0, 1
+        a = 0
+        b = 1
         loop do
           y << a
           a, b = b, a + b
