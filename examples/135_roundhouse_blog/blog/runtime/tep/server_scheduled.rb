@@ -74,7 +74,7 @@ module Tep
           puts Tep.display_name + " (" + RUBY_ENGINE +
                ") listening on http://0.0.0.0:" + port.to_s +
                ", pid " + Sock.sphttp_getpid.to_s
-          puts "  one fiber per connection (TEP_SERVER=fiber); OS workers: " +
+          puts "  one fiber per connection (TEP_SERVER=fiber); OS workers: " \
                "1, the main thread; processes: " + Tep.processes_desc(workers)
           $stdout.flush
         end
@@ -332,8 +332,8 @@ module Tep
 
       def self.send_simple(client, status, msg)
         reason = Tep.reason(status)
-        head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" +
-               "Content-Length: " + msg.length.to_s + "\r\n" +
+        head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" \
+               "Content-Length: " + msg.length.to_s + "\r\n" \
                "Connection: close\r\n\r\n" + msg
         Sock.sphttp_write_str(client, head)
         0

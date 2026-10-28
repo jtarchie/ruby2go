@@ -67,7 +67,7 @@ module Tep
         puts Tep.display_name + " (" + RUBY_ENGINE +
              ") listening on http://0.0.0.0:" + port.to_s +
              ", pid " + Sock.sphttp_getpid.to_s
-        puts "  blocking accept loop, one request at a time per process; " +
+        puts "  blocking accept loop, one request at a time per process; " \
              "processes: " + Tep.processes_desc(workers)
       end
 
@@ -253,9 +253,9 @@ module Tep
     def send_simple(client, status, msg)
       reason = Tep.reason(status)
       body = "<h1>" + status.to_s + " " + reason + "</h1><p>" + msg + "</p>\n"
-      head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" +
-             "Content-Type: text/html; charset=utf-8\r\n" +
-             "Content-Length: " + body.length.to_s + "\r\n" +
+      head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" \
+             "Content-Type: text/html; charset=utf-8\r\n" \
+             "Content-Length: " + body.length.to_s + "\r\n" \
              "Connection: close\r\n\r\n"
       Sock.sphttp_write_str(client, head + body)
     end

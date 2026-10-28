@@ -69,9 +69,9 @@ module Tep
       # RFC 6455 §4.2.2; better than echoing a protocol the server
       # doesn't actually implement).
       def self.build_response(accept_key, protocol)
-        out = "HTTP/1.1 101 Switching Protocols\r\n" +
-              "Upgrade: websocket\r\n" +
-              "Connection: Upgrade\r\n" +
+        out = "HTTP/1.1 101 Switching Protocols\r\n" \
+              "Upgrade: websocket\r\n" \
+              "Connection: Upgrade\r\n" \
               "Sec-WebSocket-Accept: " + accept_key + "\r\n"
         out << "Sec-WebSocket-Protocol: " + protocol + "\r\n" if protocol.length > 0
         out + "\r\n"

@@ -756,9 +756,9 @@ module ActiveStorage
     # lookup here and the purge cascade cannot disagree about the shape.
     def self.record_select(where)
       "SELECT vr.id AS variant_record_id, a.id AS attachment_id, " + Blob.columns("b") +
-        " FROM active_storage_variant_records vr" +
-        " JOIN active_storage_attachments a ON a.record_type = 'ActiveStorage::VariantRecord'" +
-        " AND a.name = 'image' AND a.record_id = vr.id" +
+        " FROM active_storage_variant_records vr" \
+        " JOIN active_storage_attachments a ON a.record_type = 'ActiveStorage::VariantRecord'" \
+        " AND a.name = 'image' AND a.record_id = vr.id" \
         " JOIN active_storage_blobs b ON b.id = a.blob_id WHERE " + where
     end
 
@@ -904,7 +904,7 @@ module ActiveStorage
 
       @row_loaded = true
       sql = "SELECT a.id AS attachment_id, " + Blob.columns("b") +
-            " FROM active_storage_attachments a " +
+            " FROM active_storage_attachments a " \
             "JOIN active_storage_blobs b ON b.id = a.blob_id WHERE a.record_type = " +
             ActiveRecord.adapter.escape_value(@record_type) +
             " AND a.record_id = " + ActiveRecord.adapter.escape_value(@record_id) +
@@ -1106,7 +1106,7 @@ module ActiveStorage
     # bytes — see `attach_blob` on why the blob goes too.
     def purge
       sql = "SELECT a.id AS attachment_id, " + Blob.columns("b") +
-            " FROM active_storage_attachments a " +
+            " FROM active_storage_attachments a " \
             "JOIN active_storage_blobs b ON b.id = a.blob_id WHERE a.record_type = " +
             ActiveRecord.adapter.escape_value(@record_type) +
             " AND a.record_id = " + ActiveRecord.adapter.escape_value(@record_id) +

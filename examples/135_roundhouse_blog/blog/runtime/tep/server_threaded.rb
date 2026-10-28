@@ -292,8 +292,8 @@ module Tep
 
       def self.send_simple(client, status, msg)
         reason = Tep.reason(status)
-        head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" +
-               "Content-Length: " + msg.length.to_s + "\r\n" +
+        head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" \
+               "Content-Length: " + msg.length.to_s + "\r\n" \
                "Connection: close\r\n\r\n" + msg
         Sock.sphttp_write_str(client, head)
         0
