@@ -10,12 +10,12 @@ missing_value = begin
                   values.fetch(5)
                 rescue StandardError
                   -1
-                end
+end
 present_value = begin
                   values.fetch(1)
                 rescue StandardError
                   -1
-                end
+end
 puts missing_value, present_value
 
 #: () -> String

@@ -1251,7 +1251,7 @@ module HashTests
             u.fetch("zz")
           rescue StandardError
             -1
-          end
+      end
       assert_equal(-1, x)
       # formerly the uncaught KeyError that ended the file
       e = assert_raises(KeyError) { ints.fetch(42) }

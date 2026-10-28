@@ -2644,7 +2644,7 @@ module ArrayTests
  :none
  rescue FrozenError => e
  e.class
- end
+      end
       assert_equal [FrozenError, nil, []], [got, a.delete(5), [].insert(10)]
     end
 
@@ -2854,14 +2854,14 @@ module ArrayTests
  ""
  rescue FrozenError => e
  e.message
- end
+      end
       assert_equal "can't modify frozen Array: [1, 2]", err
       low = begin
  a[-99] = 1
  ""
  rescue IndexError => e
  e.message
- end
+      end
       assert_equal "index -99 too small for array; minimum: -6", low
     end
 

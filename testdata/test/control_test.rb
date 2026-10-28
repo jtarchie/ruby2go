@@ -2783,7 +2783,7 @@ module ControlTests
             collide_risky(-1)
           rescue StandardError
             p
-          end
+      end
       assert_equal 7, v
       assert_equal "v2", doubled(1)
       assert_equal "rescued", doubled(-1)
@@ -2890,20 +2890,20 @@ module ControlTests
             edges_risky(-1)
           rescue StandardError
             edges_risky(-2)
-          end
+            end
           rescue StandardError
             3
-          end
+      end
       assert_equal 3, v
       v2 = begin
              begin
              edges_risky(-1)
            rescue StandardError
              edges_risky(4)
-           end
+             end
            rescue StandardError
              3
-           end
+      end
       assert_equal 4, v2
     end
 
@@ -3194,17 +3194,17 @@ module ControlTests
                             edges_risky(1)
                           rescue StandardError
                             nil
-                          end
+      end
       out << "cond never" if begin
                                edges_risky(-1)
                              rescue StandardError
                                nil
-                             end
+      end
       out << (if begin
                 edges_risky(-1)
               rescue StandardError
                 false
-              end
+      end
   "t"
               else
   "f"
@@ -3214,12 +3214,12 @@ module ControlTests
              edges_risky(2)
            rescue StandardError
              nil
-           end || 9
+      end || 9
       ry = begin
              edges_risky(-2)
            rescue StandardError
              nil
-           end || 9
+      end || 9
       assert_equal 2, rx
       assert_equal 9, ry
     end
@@ -3438,7 +3438,7 @@ module ControlTests
                 flow_risky(-1)
               rescue StandardError
                 5
-              end
+      end
       assert_equal 5, opt
     end
 
@@ -3731,48 +3731,48 @@ module ControlTests
             risky_int(2)
           rescue StandardError
             0
-          end
+      end
       b = begin
             risky_int(-1)
           rescue StandardError
             0
-          end
+      end
       assert_equal 4, a
       assert_equal 0, b
       c = begin
             risky_int(-5)
           rescue StandardError
             nil
-          end
+      end
       assert_nil c
       d = begin
             risky_int(-1)
           rescue StandardError
             "failed"
-          end
+      end
       assert_equal "failed", d
       e2 = begin
              risky_int(3)
            rescue StandardError
              "failed"
-           end
+      end
       assert_equal 6, e2
       assert_equal(-10, begin
                           tern(false)
                         rescue StandardError
                           -10
-                        end)
+      end)
       hits = [] #: Array[String]
       f = begin
             risky_int(1)
           rescue StandardError
             hits.push("f").size
-          end
+      end
       f2 = begin
              risky_int(-1)
            rescue StandardError
              hits.push("f2").size
-           end
+      end
       assert_equal 2, f
       assert_equal 1, f2
       assert_equal ["f2"], hits
@@ -3781,7 +3781,7 @@ module ControlTests
               risky_int(99)
             rescue StandardError
               -1
-            end
+        end
         flunk "got #{g}"
       end
       assert_equal "nie", ex.message
@@ -3790,7 +3790,7 @@ module ControlTests
                                                  risky_int(v - 2)
                                                rescue StandardError
                                                  100
-                                               end })
+      end })
       assert_equal 1, control_safe_fetch("a")
       assert_equal(-1, control_safe_fetch("b"))
     end
@@ -4431,7 +4431,7 @@ module ControlTests
                    mid_risky(-1)
                  rescue StandardError
                    raise(KeyError, "wrapped")
-                 end
+        end
         flunk "got #{v_wrap}"
       end
       assert_equal "wrapped", e.message
@@ -4439,7 +4439,7 @@ module ControlTests
                   mid_risky(2)
                 rescue StandardError
                   raise("no")
-                end
+      end
       assert_equal 2, w_risky
     end
 

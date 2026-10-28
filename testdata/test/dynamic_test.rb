@@ -3331,7 +3331,7 @@ module DynamicTests
              [x.dyngen_both, x.dyngen_priv].map { "no" }
            rescue StandardError
              :nomethod
-           end
+      end
       assert_equal :nomethod, ok
     end
   end

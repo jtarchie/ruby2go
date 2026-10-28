@@ -110,7 +110,7 @@ module RugarooBoot
               owner.instance_method(name)
             rescue StandardError
               nil
-            end
+        end
         from = m && m.original_name != name ? m.owner : nil
         @define_methods << {
           "owner" => safe_name(named), "singleton" => singleton, "name" => name.to_s, "file" => path, "line" => line,
@@ -134,7 +134,7 @@ module RugarooBoot
               owner.instance_method(tp.return_value)
             rescue StandardError
               next
-            end
+        end
         singleton = owner.singleton_class?
         @aliases << { "owner" => safe_name(singleton ? owner.attached_object : owner), "singleton" => singleton,
                       "name" => tp.return_value.to_s, "old" => m.original_name.to_s, "file" => tp.path, "line" => tp.lineno }
@@ -181,7 +181,7 @@ module RugarooBoot
                   b.eval("Module.nesting")
                 rescue StandardError
                   []
-                end
+      end
       b.local_variables.each_with_object({}) do |v, out|
         value = b.local_variable_get(v)
         lit = literal(value) || held_by_constant(value, nesting)
@@ -201,7 +201,7 @@ module RugarooBoot
                   mod.const_get(c, false)
                 rescue StandardError
                   next
-                end
+          end
           return "#{name}::#{c}" if obj.equal?(value)
 
           case obj
@@ -229,7 +229,7 @@ module RugarooBoot
                                                         Object.const_get(n)
                                                       rescue StandardError
                                                         nil
-                                                      end.equal?(x)
+      end.equal?(x)
   "::#{n}"
                        else
   nil
@@ -410,7 +410,7 @@ module RugarooBoot
                 MOD_CONST_GET.bind_call(owner, c, false)
               rescue StandardError
                 next
-              end
+          end
           next unless v.is_a?(Module) # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
 
           vn = MOD_NAME.bind_call(v)
@@ -434,7 +434,7 @@ module RugarooBoot
                   k.props
                 rescue StandardError
                   next
-                end
+        end
         out[MOD_NAME.bind_call(k)] = props.map do |name, rules|
           h = { "name" => name.to_s, "type" => rules[:type_object].to_s }
           if rules.key?(:default)

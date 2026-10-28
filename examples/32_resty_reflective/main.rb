@@ -116,7 +116,7 @@ module Resty
              request.path.dup.match(%r{^/\w+/([\w-]+)/?})[1]
            rescue StandardError
              nil
-           end
+      end
       id = nil if %w[edit new].include?(id) # rugaroo: was ["edit", "new"].include?(id)
       new(id)
     end
