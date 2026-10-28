@@ -4955,7 +4955,7 @@ module ObjectTests
     end
 
     def test_proc_new
-      f = Proc.new { 5 }
+      f = proc { 5 }
       assert_equal 5, f.call
     end
   end
