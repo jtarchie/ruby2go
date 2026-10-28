@@ -444,7 +444,7 @@ module NetTests
           "none"
         rescue Net::ReadTimeout
           "Net::ReadTimeout"
-        rescue => e
+        rescue StandardError => e
           e.class.name.to_s
         ensure
           release << 1

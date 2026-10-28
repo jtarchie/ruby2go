@@ -24,7 +24,7 @@ module SocketTests
     def socket_raised
       yield
       ["none", ""]
-    rescue => e
+    rescue StandardError => e
       [e.class.name.to_s, e.message]
     end
 

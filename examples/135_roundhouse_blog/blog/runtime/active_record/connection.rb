@@ -142,7 +142,7 @@ module ActiveRecord
         result = yield
         Db.exec("COMMIT")
         result
-      rescue => e
+      rescue StandardError => e
         Db.exec("ROLLBACK")
         raise e
       end

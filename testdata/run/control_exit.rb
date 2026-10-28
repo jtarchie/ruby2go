@@ -12,7 +12,7 @@ begin
     puts "loop #{i}"
     finish(3) if i == 2
   end
-rescue => e
+rescue StandardError => e
   puts "never #{e.class}"
 end
 puts "unreachable"

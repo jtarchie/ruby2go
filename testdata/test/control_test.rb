@@ -62,7 +62,7 @@ def nested(out, n)
       when 6
         begin
           break
-        rescue
+        rescue StandardError
           out << "no"
         end
       end
@@ -71,7 +71,7 @@ def nested(out, n)
       ensure
         out << "ens #{i}"
       end
-    rescue => e
+    rescue StandardError => e
       out << e.message
     end
   end
@@ -107,7 +107,7 @@ def tail_ret(out, n)
     return 5 if n == 1
     raise "x" if n == 2
     n * 10
-  rescue
+  rescue StandardError
     -1
   ensure
     out << "ens #{n}"
@@ -449,7 +449,7 @@ def doubled(n)
   ret_ = n * 2
   raise "x" if n < 0
   "v#{ret_}"
-rescue
+rescue StandardError
   "rescued"
 end
 
@@ -795,7 +795,7 @@ def first_ok(out, xs)
     begin
       raise "bad #{x}" if x < 0
       return x * 10
-    rescue => e
+    rescue StandardError => e
       out << "skip #{e.message}"
     end
   end
@@ -844,7 +844,7 @@ def multi_in_begin
   begin
     a = 3
     b = 4
-  rescue
+  rescue StandardError
     a = 0
     b = 0
   end
@@ -887,7 +887,7 @@ def outer
   begin
     begin
       raise ControlTests::Fatal, "deep"
-    rescue => e
+    rescue StandardError => e
       "inner caught #{e.class}"
     end
   rescue Exception => e
@@ -900,7 +900,7 @@ def ordered(out, fail)
   out << "body"
   raise "f" if fail
   1
-rescue
+rescue StandardError
   out << "rescue"
   2
 ensure
@@ -1023,7 +1023,7 @@ end
 def control_safe_fetch(k)
   begin
     { "a" => 1 }.fetch(k)
-  rescue
+  rescue StandardError
     -1
   end
 end
@@ -1224,7 +1224,7 @@ end
 #: (Array[String]) { (Integer) -> void } -> void
 def loops_guarded(out)
   [1, 2, 3].each { |g| yield g }
-rescue => e
+rescue StandardError => e
   out << "guarded caught #{e.message}"
 end
 
@@ -1269,7 +1269,7 @@ def control_greet(a) = "hi #{a.name}"
 #: (Array[String]) { (Integer) -> void } -> void
 def mid_guarded(out)
   [1, 2, 3].each { |g| yield g }
-rescue => e
+rescue StandardError => e
   out << "guarded caught #{e.message}"
 end
 
@@ -2753,7 +2753,7 @@ end
       seen = 0
       begin
         raise "boom"
-      rescue
+      rescue StandardError
         seen = r
       end
       assert_equal 10, seen
@@ -2762,7 +2762,7 @@ end
       p = 7
       v = begin
             collide_risky(-1)
-          rescue
+          rescue StandardError
             p
           end
       assert_equal 7, v
@@ -2873,20 +2873,20 @@ end
       v = begin
             begin
             edges_risky(-1)
-          rescue
+          rescue StandardError
             edges_risky(-2)
           end
-          rescue
+          rescue StandardError
             3
           end
       assert_equal 3, v
       v2 = begin
              begin
              edges_risky(-1)
-           rescue
+           rescue StandardError
              edges_risky(4)
            end
-           rescue
+           rescue StandardError
              3
            end
       assert_equal 4, v2
@@ -2910,7 +2910,7 @@ end
       [KeyError.new("k"), ArgumentError.new("a"), IOError.new("io")].each do |ex|
         begin
           raise ex
-        rescue => e
+        rescue StandardError => e
           kind = case e
                  when KeyError then "key"
                  when ArgumentError then "arg"
@@ -3000,7 +3000,7 @@ end
           break if n == 3
         end
         out << n.to_s
-      rescue => e
+      rescue StandardError => e
         out << e.message
       end
       begin
@@ -3016,7 +3016,7 @@ end
       # break inside an iterator in a rescue clause
       begin
         raise "x"
-      rescue => e
+      rescue StandardError => e
         [1, 2, 3].each do |q|
           break if q == 2
           out << "#{e.message}#{q}"
@@ -3035,7 +3035,7 @@ end
           attempts += 1
           raise "flaky" if attempts < 3
           done = true
-        rescue
+        rescue StandardError
           out << "retrying #{attempts}"
         end
       end
@@ -3178,28 +3178,28 @@ end
       out = [] #: Array[String]
       out << "cond ok" if begin
                             edges_risky(1)
-                          rescue
+                          rescue StandardError
                             nil
                           end
       out << "cond never" if begin
                                edges_risky(-1)
-                             rescue
+                             rescue StandardError
                                nil
                              end
       out << (begin
                 edges_risky(-1)
-              rescue
+              rescue StandardError
                 false
               end ? "t" : "f")
       assert_equal ["cond ok", "f"], out
       rx = begin
              edges_risky(2)
-           rescue
+           rescue StandardError
              nil
            end || 9
       ry = begin
              edges_risky(-2)
-           rescue
+           rescue StandardError
              nil
            end || 9
       assert_equal 2, rx
@@ -3272,7 +3272,7 @@ end
       got = "" #: String
       begin
         raise "x"
-      rescue => e
+      rescue StandardError => e
         begin
           raise ArgumentError, "inner #{e.message}"
         rescue ArgumentError => e2
@@ -3418,7 +3418,7 @@ end
       opt = nil #: Integer?
       opt ||= begin
                 flow_risky(-1)
-              rescue
+              rescue StandardError
                 5
               end
       assert_equal 5, opt
@@ -3430,7 +3430,7 @@ end
       [1, 2].each do |i|
         begin
           raise "odd" if i.odd?
-        rescue
+        rescue StandardError
           out << "rescued #{i}"
         ensure
           out << "ensure #{i}"
@@ -3495,7 +3495,7 @@ end
       11.times do |k|
         begin
           boom(out, k)
-        rescue => e
+        rescue StandardError => e
           rows << "#{e.class}: #{e.message.inspect} #{e.to_s.inspect}"
         end
       end
@@ -3619,7 +3619,7 @@ end
       ae = assert_raises(AppError) do
         begin
           raise "first"
-        rescue => e1
+        rescue StandardError => e1
           raise AppError, "second from #{e1.message}"
         ensure
           out << "inner ensure"
@@ -3684,7 +3684,7 @@ end
       caught = "" #: String
       begin
         arr[-10] = 5
-      rescue => e2
+      rescue StandardError => e2
         caught = "catch-all sees #{e2.class} #{e2.is_a?(StandardError)}"
       end
       assert_equal "catch-all sees IndexError true", caught
@@ -3711,48 +3711,48 @@ end
     def test_rescue_modifiers
       a = begin
             risky_int(2)
-          rescue
+          rescue StandardError
             0
           end
       b = begin
             risky_int(-1)
-          rescue
+          rescue StandardError
             0
           end
       assert_equal 4, a
       assert_equal 0, b
       c = begin
             risky_int(-5)
-          rescue
+          rescue StandardError
             nil
           end
       assert_nil c
       d = begin
             risky_int(-1)
-          rescue
+          rescue StandardError
             "failed"
           end
       assert_equal "failed", d
       e2 = begin
              risky_int(3)
-           rescue
+           rescue StandardError
              "failed"
            end
       assert_equal 6, e2
       assert_equal(-10, begin
                           tern(false)
-                        rescue
+                        rescue StandardError
                           -10
                         end)
       hits = [] #: Array[String]
       f = begin
             risky_int(1)
-          rescue
+          rescue StandardError
             hits.push("f").size
           end
       f2 = begin
              risky_int(-1)
-           rescue
+           rescue StandardError
              hits.push("f2").size
            end
       assert_equal 2, f
@@ -3761,7 +3761,7 @@ end
       ex = assert_raises(NotImplementedError) do
         g = begin
               risky_int(99)
-            rescue
+            rescue StandardError
               -1
             end
         flunk "got #{g}"
@@ -3770,7 +3770,7 @@ end
       list = [1, 2, 3] #: Array[Integer]
       assert_equal [100, 0, 2], list.map { |v| begin
                                                  risky_int(v - 2)
-                                               rescue
+                                               rescue StandardError
                                                  100
                                                end }
       assert_equal 1, control_safe_fetch("a")
@@ -4041,7 +4041,7 @@ end
       msg = "" #: String
       begin
         raise "x"
-      rescue => error
+      rescue StandardError => error
         msg = error.message
       end
       assert_equal "x", msg
@@ -4326,7 +4326,7 @@ end
           break if i_jump == 5
           raise "odd" if i_jump.odd?
           seen_jump << i_jump
-        rescue
+        rescue StandardError
           seen_jump << -i_jump
         end
       end
@@ -4337,7 +4337,7 @@ end
         begin
           raise "two" if x == 2
           out_jump << x
-        rescue
+        rescue StandardError
           next
         ensure
           out_jump << 0
@@ -4362,7 +4362,7 @@ end
       mid_guarded(out) do |g|
         begin
           raise "odd" if g.odd?
-        rescue
+        rescue StandardError
           next
         end
         out << "even #{g}"
@@ -4404,7 +4404,7 @@ end
       e = assert_raises(KeyError) do
         v_wrap = begin
                    mid_risky(-1)
-                 rescue
+                 rescue StandardError
                    raise(KeyError, "wrapped")
                  end
         flunk "got #{v_wrap}"
@@ -4412,7 +4412,7 @@ end
       assert_equal "wrapped", e.message
       w_risky = begin
                   mid_risky(2)
-                rescue
+                rescue StandardError
                   raise("no")
                 end
       assert_equal 2, w_risky
@@ -4776,7 +4776,7 @@ end
           tries += 1
           raise "again" if k == 3 && tries < 5
           next if k == 1
-        rescue
+        rescue StandardError
           retry
         end
         break if k == 4
@@ -4802,7 +4802,7 @@ end
         log << "body"
         raise "boom" if n == 1
         return "early" if n == 2
-      rescue
+      rescue StandardError
         log << "rescue"
       else
         log << "else"
@@ -4818,7 +4818,7 @@ end
       e = assert_raises(ArgumentError) do
         begin
           1
-        rescue
+        rescue StandardError
           2
         else
           raise ArgumentError, "from else"
@@ -4827,7 +4827,7 @@ end
       assert_equal "from else", e.message
       v = begin
         10
-      rescue
+      rescue StandardError
         0
           else
             20
@@ -4858,7 +4858,7 @@ end
         tries += 1
         raise "x" if tries < 4
         tries * 10
-      rescue
+      rescue StandardError
         retry if tries < 5
         -1
       end
@@ -5051,7 +5051,7 @@ end
       e = assert_raises(IOError) do
         begin
           raise "inner"
-        rescue => inner
+        rescue StandardError => inner
           inner.set_backtrace(["i.rb:1:in 'x'"])
           raise IOError, "outer"
         end
@@ -5664,7 +5664,7 @@ end
     #: () { (Integer) -> void } -> void
     def control_guarded
       [1, 2].each { |i| yield i }
-    rescue => e
+    rescue StandardError => e
       raise e
     end
 
@@ -5811,7 +5811,7 @@ end
       assert_equal [[:NONE, nil], :NONE], [ControlOpt::NoArgument, ControlOpt::NO_ARGUMENT]
       msg = begin
         raise ArgumentError, "boom"
-      rescue
+      rescue StandardError
         $!.message
       end
       assert_equal "boom", msg

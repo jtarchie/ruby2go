@@ -106,7 +106,7 @@ module RugarooBoot
         named = singleton ? owner.attached_object : owner
         m = begin
               owner.instance_method(name)
-            rescue
+            rescue StandardError
               nil
             end
         from = m && m.original_name != name ? m.owner : nil
@@ -130,7 +130,7 @@ module RugarooBoot
         owner = tp.self
         m = begin
               owner.instance_method(tp.return_value)
-            rescue
+            rescue StandardError
               next
             end
         singleton = owner.singleton_class?
@@ -177,7 +177,7 @@ module RugarooBoot
 
       nesting = begin
                   b.eval("Module.nesting")
-                rescue
+                rescue StandardError
                   []
                 end
       b.local_variables.each_with_object({}) do |v, out|
@@ -197,7 +197,7 @@ module RugarooBoot
 
           obj = begin
                   mod.const_get(c, false)
-                rescue
+                rescue StandardError
                   next
                 end
           return "#{name}::#{c}" if obj.equal?(value)
@@ -225,7 +225,7 @@ module RugarooBoot
       when nil, true, false, Integer, Symbol then x.inspect
       when Module then (n = MOD_NAME.bind_call(x)) && begin
                                                         Object.const_get(n)
-                                                      rescue
+                                                      rescue StandardError
                                                         nil
                                                       end.equal?(x) ? "::#{n}" : nil
       when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
@@ -400,7 +400,7 @@ module RugarooBoot
 
           v = begin
                 MOD_CONST_GET.bind_call(owner, c, false)
-              rescue
+              rescue StandardError
                 next
               end
           next unless Module === v # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
@@ -424,7 +424,7 @@ module RugarooBoot
 
         props = begin
                   k.props
-                rescue
+                rescue StandardError
                   next
                 end
         out[MOD_NAME.bind_call(k)] = props.map do |name, rules|

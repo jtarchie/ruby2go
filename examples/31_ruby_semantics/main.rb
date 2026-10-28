@@ -7,12 +7,12 @@
 values = [1, 2]
 missing_value = begin
                   values.fetch(5)
-                rescue
+                rescue StandardError
                   -1
                 end
 present_value = begin
                   values.fetch(1)
-                rescue
+                rescue StandardError
                   -1
                 end
 puts missing_value, present_value

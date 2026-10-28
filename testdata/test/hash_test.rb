@@ -1249,7 +1249,7 @@ module HashTests
       assert_equal "KeyError: key not found: :zz", "#{ie.class}: #{ie.message}"
       x = begin
             u.fetch("zz")
-          rescue
+          rescue StandardError
             -1
           end
       assert_equal -1, x
@@ -1436,7 +1436,7 @@ module HashTests
         begin
           raise "x#{k}" if v.odd?
           out << "ok #{k}"
-        rescue => re
+        rescue StandardError => re
           out << re.message
         end
       end

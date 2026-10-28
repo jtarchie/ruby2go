@@ -112,7 +112,7 @@ module Demo
       end
       begin
         x.freeze.send(:map!) { |v| v }
-      rescue => e
+      rescue StandardError => e
         out << e.class
       end
       out

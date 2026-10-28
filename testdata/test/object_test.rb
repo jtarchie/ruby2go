@@ -3340,7 +3340,7 @@ module ObjectTests
       begin
         begin
           Figure.new.area
-        rescue => e
+        rescue StandardError => e
           caught = "bare rescue caught #{e.class}"
         end
       rescue NotImplementedError

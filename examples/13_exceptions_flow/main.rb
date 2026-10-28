@@ -61,7 +61,7 @@ begin
   rescue RuntimeError => e
     raise ArgumentError, "outer from #{e.message}"
   end
-rescue => e
+rescue StandardError => e
   puts e.message, e.inspect
 end
 

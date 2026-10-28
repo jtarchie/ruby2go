@@ -42,18 +42,18 @@ end
 
 begin
   risky(-1)
-rescue
+rescue StandardError
   puts("statement fallback")
 end
 begin
   risky(1)
-rescue
+rescue StandardError
   puts("not printed")
 end
 log_void = [] #: Array[String]
 begin
   risky(-2)
-rescue
+rescue StandardError
   log_void.clear
 end
 puts "done"
@@ -62,7 +62,7 @@ puts "done"
 class AppError < StandardError; end
 begin
   raise AppError, "boom"
-rescue => e
+rescue StandardError => e
   puts e
   print e, "\n"
 end
@@ -114,7 +114,7 @@ puts [type, range, default, len, string, error.message, new, copy, max, min, fun
       main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64].inspect
 begin
   raise "x"
-rescue => error
+rescue StandardError => error
   puts error.message
 end
 [1].each { |type| puts type }

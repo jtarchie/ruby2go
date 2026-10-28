@@ -6,7 +6,7 @@ class Fatal < Exception; end
   puts "item #{i}"
   begin
     raise Fatal, "not a StandardError" if i == 2
-  rescue => e
+  rescue StandardError => e
     puts "never #{e.message}"
   end
 end
