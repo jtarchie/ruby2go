@@ -8,7 +8,7 @@
 report = ->(label, *nums) { "#{label}: #{nums.sum} over #{nums.size}" }
 puts report.call("none")
 puts report.call("one", 4)
-puts report.("three", 1, 2, 3)
+puts report.call("three", 1, 2, 3)
 
 # Mixed argument types join to a union (decision 150): Integer | Float | String.
 fmt = ->(f, *args) { f % args }

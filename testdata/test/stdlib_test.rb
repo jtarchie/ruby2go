@@ -2335,8 +2335,8 @@ module StdlibTests
     # Gem::Version, as Homebrew's gem setup checks RubyGems' own
     def test_gem_version
       v = ->(s) { Gem::Version.new(s) }
-      assert_equal [0, true, true, "1.2"], [v.("1.2.0") <=> v.("1.2"), v.("1.2.a") < v.("1.2"), v.("1.10") > v.("1.9"), v.(" 1.2 ").to_s]
-      assert_equal [[1, 2, "b", 3], [1, 2], false], [v.("1.2.b3").segments, v.("1.2.0").canonical_segments, v.(Gem::VERSION) < v.("2.2.0")]
+      assert_equal [0, true, true, "1.2"], [v.call("1.2.0") <=> v.call("1.2"), v.call("1.2.a") < v.call("1.2"), v.call("1.10") > v.call("1.9"), v.call(" 1.2 ").to_s]
+      assert_equal [[1, 2, "b", 3], [1, 2], false], [v.call("1.2.b3").segments, v.call("1.2.0").canonical_segments, v.call(Gem::VERSION) < v.call("2.2.0")]
       assert_equal [true, true], [Gem.paths.home.is_a?(String), Gem.paths.path.is_a?(Array)]
     end
 

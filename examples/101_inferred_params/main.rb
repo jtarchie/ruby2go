@@ -36,4 +36,4 @@ puts clock(65, " ")
 # A lambda's parameter types come from its calls.
 fmt = ->(label, value) { "#{label.ljust(8)}#{value}" }
 puts fmt.call("tracks", 4)
-puts fmt.("longest", 310)
+puts fmt.call("longest", 310)

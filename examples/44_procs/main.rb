@@ -35,7 +35,7 @@ def multiplier(n) = ->(x) { x * n }
 
 triple = multiplier(3)
 succ = ->(x) { x + 1 } #: ^(Integer) -> Integer
-puts triple.call(5), triple.(6), triple[7], (triple >> succ).call(2), (triple << succ).call(2)
+puts triple.call(5), triple.call(6), triple[7], (triple >> succ).call(2), (triple << succ).call(2)
 puts [1, 2, 3].map(&triple).inspect
 
 count = 0

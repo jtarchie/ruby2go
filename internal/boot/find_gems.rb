@@ -4,7 +4,7 @@ add = lambda do |s|
   next if specs[s.name]
 
   specs[s.name] = s
-  s.runtime_dependencies.each { |d| add.(Gem.loaded_specs[d.name] || d.to_spec) }
+  s.runtime_dependencies.each { |d| add.call(Gem.loaded_specs[d.name] || d.to_spec) }
 end
 ARGV.each do |name|
   s = Gem::Specification.find_by_path(name) ||
@@ -14,6 +14,6 @@ ARGV.each do |name|
 
     abort "cannot load such file -- #{name}: no prelude library, -I file or installed gem has it"
   end
-  add.(s) unless s.default_gem?
+  add.call(s) unless s.default_gem?
 end
 puts specs.values.flat_map(&:full_require_paths)

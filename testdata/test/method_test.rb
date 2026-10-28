@@ -113,7 +113,7 @@ module MethodTests
     def test_call_forms
       m = method(:method_twice)
       assert_equal 10, m.call(5)
-      assert_equal 8, m.(4)
+      assert_equal 8, m.call(4)
       assert_equal 6, m[3]
       assert_equal 4, m === 2
       assert_equal 7, method(:method_seven).call
@@ -187,7 +187,7 @@ module MethodTests
       assert_equal 5, pr.call(2, 3)
       assert pr.lambda?
       assert_equal 2, pr.arity
-      assert_equal 6, method(:method_twice).to_proc.(3)
+      assert_equal 6, method(:method_twice).to_proc.call(3)
       assert_equal 3, method(:method_add).curry[1][2]
       assert_equal 6, method(:method_twice).curry[3]
       inc = method(:method_add).curry(2)[1]
@@ -280,7 +280,7 @@ module MethodTests
       c = Counter.new
       m = c.adder
       m.call(4)
-      m.(5)
+      m.call(5)
       assert_equal 9, c.total
       assert m.receiver.equal?(c)
       assert_equal Counter, m.owner
