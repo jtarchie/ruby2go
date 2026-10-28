@@ -45,9 +45,7 @@ Dir.mktmpdir do |dir|
   end
   print File.read(report)
 
-  first = File.open(report) do |f|
-    f.gets
-  end
+  first = File.open(report, &:gets)
   p first
 
   File.open(report) do |f|

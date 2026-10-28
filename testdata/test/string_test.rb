@@ -668,7 +668,7 @@ continued"
       assert_equal %w[B A C], ss.map(&:to_s).map(&:upcase)
       assert_equal :a, ss.min_by(&:to_s)
       assert_equal true, ss.include?(:a)
-      assert_equal(%i[a b c], ss.sort_by { |x| x.to_s })
+      assert_equal(%i[a b c], ss.sort_by(&:to_s))
       assert_equal "{1 => [:b, :a, :c]}", ss.group_by(&:size).inspect
     end
   end
@@ -1035,7 +1035,7 @@ continued"
       assert_equal "ab|\"ab\"|true|false", desc("a" + "b")
       assert_equal "1|1|false|false", desc(1)
       objs = ["s", :t, 2.5] #: Array[Object]
-      assert_equal(["s", "t", "2.5"], objs.map { |o| o.to_s })
+      assert_equal(["s", "t", "2.5"], objs.map(&:to_s))
       assert_equal ["s", :t, 2.5], objs
     end
 

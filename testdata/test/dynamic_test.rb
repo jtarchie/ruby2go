@@ -155,9 +155,9 @@ end
 def shape_of(v)
   case v
   when Array
-    v.reject { |e| e.nil? }.map { |e| e.to_s }.join(",")
+    v.reject(&:nil?).map(&:to_s).join(",")
   when Hash
-    v.keys.map { |k| k.to_s }.sort.join("/")
+    v.keys.map(&:to_s).sort.join("/")
   else
     "leaf"
   end
@@ -194,7 +194,7 @@ end
 def dynamic_walk(v)
   case v
   when Array
-    v.map { |e| e.to_s }.join("+")
+    v.map(&:to_s).join("+")
   when Hash
     out = [] #: Array[String]
     v.each { |k, x| out << "#{k}=#{x}" }
@@ -272,7 +272,7 @@ def ident_opt(v) = v
 #: (untyped) -> String
 def nils(v)
   if v.is_a?(Array)
-    v.map { |e| e.nil? }.inspect
+    v.map(&:nil?).inspect
   else
     "?"
   end
@@ -281,7 +281,7 @@ end
 #: (untyped) -> String
 def nils_case(v)
   case v
-  when Array then v.select { |e| e.nil? }.size.to_s
+  when Array then v.select(&:nil?).size.to_s
   else "?"
   end
 end
@@ -1097,7 +1097,7 @@ module DynamicTests
 
     #: (Symbol, *untyped) -> Integer
     def method_missing(name, *args)
-      @calls << "#{name}(#{args.map { |a| a.inspect }.join(", ")})"
+      @calls << "#{name}(#{args.map(&:inspect).join(", ")})"
       @calls.size
     end
   end
@@ -2056,10 +2056,10 @@ module DynamicTests
       assert_nil(nums.detect { |x| x == 9 })
       maybes = [dynamic_maybe(1), dynamic_maybe(-1), dynamic_maybe(2)] #: Array[Integer?]
       assert_equal 3, maybes.size
-      assert_equal 1, maybes.select { |m| m.nil? }.size
-      assert_equal([false, true, false], maybes.map { |m| m.nil? })
-      assert_equal(%w[1 nil 2], maybes.map { |m| m.inspect })
-      assert_equal(["1", "", "2"], maybes.map { |m| m.to_s })
+      assert_equal 1, maybes.select(&:nil?).size
+      assert_equal([false, true, false], maybes.map(&:nil?))
+      assert_equal(%w[1 nil 2], maybes.map(&:inspect))
+      assert_equal(["1", "", "2"], maybes.map(&:to_s))
       assert_equal([10, 0, 20], maybes.map { |m| (m || 0) * 10 })
     end
 
@@ -2083,7 +2083,7 @@ module DynamicTests
       lists = { "a" => [1, 2, 3] } #: Hash[String, Array[Integer]]
       assert_equal([2, 4, 6], lists["a"]&.map { |x| x * 2 })
       assert_nil(lists["b"]&.map { |x| x * 2 })
-      assert_equal 2, lists["a"]&.select { |x| x.odd? }&.size
+      assert_equal 2, lists["a"]&.select(&:odd?)&.size
       got = [] #: Array[String]
       w2 = nil #: Integer?
       [1, nil, 3].each do |x|
@@ -2222,7 +2222,7 @@ module DynamicTests
 
   class Ghost
     #: (Symbol, *untyped) -> untyped
-    def method_missing(name, *args) = "ghost #{name}(#{args.map { |a| a.inspect }.join(", ")})"
+    def method_missing(name, *args) = "ghost #{name}(#{args.map(&:inspect).join(", ")})"
 
     #: (Symbol, ?bool) -> bool
     def respond_to_missing?(name, _include_private = false) = name.to_s.start_with?("g")
@@ -2396,7 +2396,7 @@ module DynamicTests
       assert_equal "hey, bob", klass.new("bob").greet("hey")
       assert_equal "DynamicTests::Greeter", klass.name
       assert_equal "DynamicTests::Greeter", klass.inspect
-      assert_equal(["DynamicTests::Greeter", "DynamicTests::Robot"], [Greeter, Robot].map { |k| k.name })
+      assert_equal(["DynamicTests::Greeter", "DynamicTests::Robot"], [Greeter, Robot].map(&:name))
     end
 
     def test_arity_errors_use_mri_messages
@@ -2840,7 +2840,7 @@ module DynamicTests
       assert_equal 5, arr.size
       assert_equal "[1, \"two\"]", arr.first(2).inspect
       assert_equal "nil", arr.last.inspect
-      assert_equal(["1", "two", "three", "4.0", ""], arr.map { |e| e.to_s })
+      assert_equal(["1", "two", "three", "4.0", ""], arr.map(&:to_s))
       assert_equal 4, arr.compact.size
       arr << [5]
       assert_equal "[1, \"two\", :three, 4.0, nil, [5]]", arr.inspect

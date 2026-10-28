@@ -342,7 +342,7 @@ module EncodingTests
   f.write("a")
 end
         assert_equal [254, 255, 0, 233, 0, 97], File.binread(path).bytes
-        e = assert_raises(ArgumentError) { File.open(path, "r:UTF-16LE") { |f| f.gets } }
+        e = assert_raises(ArgumentError) { File.open(path, "r:UTF-16LE", &:gets) }
         assert_equal "ASCII incompatible encoding needs binmode", e.message
         File.binwrite(path, "\xEF\xBB\xBFhi\n")
         File.open(path, "r:BOM|UTF-8") { |f| assert_equal %W[hi\n UTF-8], [f.gets, f.external_encoding&.name] }
@@ -462,7 +462,7 @@ end
       path = "encoding_test_sb.txt"
       File.write(path, "Grüße\n".encode("Windows-1252"))
       read = File.read(path, encoding: "Windows-1252:UTF-8")
-      line = File.open(path, "r:CP1252:UTF-8") { |f| f.gets }
+      line = File.open(path, "r:CP1252:UTF-8", &:gets)
       File.delete(path)
       assert_equal "Grüße\n", read
       assert_equal "Grüße\n", line
@@ -534,7 +534,7 @@ end
       path = "encoding_test_mb.txt"
       File.write(path, "日本\n".encode("Shift_JIS"))
       read = File.read(path, encoding: "Shift_JIS:UTF-8")
-      line = File.open(path, "r:Shift_JIS:UTF-8") { |f| f.gets }
+      line = File.open(path, "r:Shift_JIS:UTF-8", &:gets)
       File.delete(path)
       assert_equal "日本\n", read
       assert_equal "日本\n", line

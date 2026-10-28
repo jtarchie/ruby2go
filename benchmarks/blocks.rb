@@ -33,7 +33,7 @@ puts counter
 nums = (1..300_000).to_a
 puts nums.inject(0) { |acc, n| acc + (n % 7) }
 puts nums.each_with_object(Hash.new(0)) { |n, h| h[n % 13] += 1 }.values.max
-puts(nums.each_slice(4).sum { |s| s.first })
+puts(nums.each_slice(4).sum(&:first))
 puts(nums.each_cons(3).count { |w| w.sum % 5 == 0 })
 puts nums.each_with_index.sum { |n, i| n * (i % 3) } % 1_000_003
 puts nums.lazy.map { |n| n * 3 }.select(&:even?).first(5).inspect

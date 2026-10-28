@@ -286,7 +286,7 @@ module StringFrozenTests
       assert_equal(["fig"], words.select { |w| w.start_with?("f") })
       assert_equal %w[fig pear kiwi Apple banana], words.sort_by(&:size)
       assert_equal "banana", words.max_by(&:length)
-      assert_equal("Apple", words.min_by { |w| w.downcase })
+      assert_equal("Apple", words.min_by(&:downcase))
       assert_equal({ 4 => %w[pear kiwi], 5 => ["Apple"], 3 => ["fig"], 6 => ["banana"] }, words.group_by(&:size))
       assert_equal %w[Apple banana fig kiwi pear], words.sort
       assert_equal %w[Apple banana fig kiwi pear], words.sort_by(&:downcase)

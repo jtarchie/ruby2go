@@ -412,7 +412,7 @@ module ActiveRecord
       # return value is the destroyed records themselves (a lazy
       # Relation would re-query the now-empty table on a later read).
       records = _adapter_all
-      records.each { |r| r.destroy }
+      records.each(&:destroy)
       records
     end
 

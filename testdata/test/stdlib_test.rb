@@ -527,7 +527,7 @@ module StdlibTests
       assert_equal([["a", 1], ["b", 2]], from_hash.sort_by { |pair| pair[0] })
       doubled = Set.new([1, 2, 3]) { |x| x * 2 } #: Set[Integer]
       assert_equal [2, 4, 6], doubled.sort
-      strs = Set.new(1..3) { |x| x.to_s } #: Set[String]
+      strs = Set.new(1..3, &:to_s) #: Set[String]
       assert_equal %w[1 2 3], strs.sort
     end
 
@@ -536,11 +536,11 @@ module StdlibTests
       m.map! { |x| x * 10 }
       assert_equal [10, 20, 30], m.sort
       sel = Set.new([1, 2, 3, 4, 5, 6])
-      assert_equal [2, 4, 6], sel.select! { |x| x.even? }.sort
-      assert_nil(sel.select! { |x| x.even? })
+      assert_equal [2, 4, 6], sel.select!(&:even?).sort
+      assert_nil(sel.select!(&:even?))
       rej = Set.new([1, 2, 3, 4, 5, 6])
-      assert_equal [1, 3, 5], rej.reject! { |x| x.even? }.sort
-      assert_nil(rej.reject! { |x| x.even? })
+      assert_equal [1, 3, 5], rej.reject!(&:even?).sort
+      assert_nil(rej.reject!(&:even?))
     end
 
     def test_classify_and_divide
@@ -1869,11 +1869,11 @@ end
     end
 
     def test_popen
-      assert_equal "hi\n", IO.popen(%w[echo hi]) { |io| io.read }
+      assert_equal "hi\n", IO.popen(%w[echo hi], &:read)
       assert_equal true, $CHILD_STATUS&.success?
-      assert_equal "a\n", IO.popen("echo a; exit 3") { |io| io.gets }
+      assert_equal "a\n", IO.popen("echo a; exit 3", &:gets)
       assert_equal 3, $CHILD_STATUS&.exitstatus
-      assert_equal %W[1\n 2\n], IO.popen("printf '1\\n2\\n'") { |io| io.readlines }
+      assert_equal %W[1\n 2\n], IO.popen("printf '1\\n2\\n'", &:readlines)
     end
   end
 
@@ -2278,7 +2278,7 @@ end
       d = Pathname(Dir.mktmpdir("stdlibt"))
       assert File.basename(d.to_s).start_with?("stdlibt")
       n = (d + "a.txt").open("w") { |f| f.write("hi\n", "there") }
-      got = [n, (d + "a.txt").open("r") { |f| f.gets }, (d + "a.txt").open { |f| f.read.size }]
+      got = [n, (d + "a.txt").open("r", &:gets), (d + "a.txt").open { |f| f.read.size }]
       assert_equal [8, "hi\n", 8], got
       assert_equal "hi\nthere", (d + "a.txt").read(encoding: Encoding::UTF_8)
       inner = Dir.mktmpdir(%w[a .z], d.to_s) { |x| [File.dirname(x) == d.to_s, x.end_with?(".z")] }
@@ -2330,9 +2330,9 @@ end
       t = Process.detach(pid)
       assert_equal [true, true, 2], [t.pid == pid, t.is_a?(Thread), t.value.exitstatus]
       opts = { err: File::NULL, chdir: "/" } #: Hash[Symbol, untyped]
-      got = IO.popen([{ "POPEN_T" => "v" }, "sh", "-c", "echo $POPEN_T; pwd; echo e >&2"], "r", opts) { |io| io.read }
+      got = IO.popen([{ "POPEN_T" => "v" }, "sh", "-c", "echo $POPEN_T; pwd; echo e >&2"], "r", opts, &:read)
       assert_equal "v\n/\n", got
-      assert_equal "/\n", IO.popen(["pwd", { chdir: "/" }]) { |io| io.read }
+      assert_equal "/\n", IO.popen(["pwd", { chdir: "/" }], &:read)
     end
 
     def test_env_fetch_nil_default

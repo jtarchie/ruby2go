@@ -17,7 +17,7 @@ puts ages.select { |_n, a| a > 30 }.inspect
 puts ages.map { |n, a| [n.upcase, a + 1] }.inspect
 puts ages.count, ages.empty?, {}.empty? #: Hash[String, Integer]
 words = "b a c a b a".split
-by_len = words.group_by { |w| w.size }
+by_len = words.group_by(&:size)
 puts by_len.inspect
 puts words.tally.inspect
 puts words.uniq.sort.inspect, words.tally.sort_by { |w, n| [-n, w] }.inspect

@@ -892,7 +892,7 @@ module ActiveRecord
     # Rails' return value too.
     def destroy_all
       records = to_a
-      records.each { |r| r.destroy }
+      records.each(&:destroy)
       records
     end
 

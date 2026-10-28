@@ -55,4 +55,4 @@ puts rex.trick_count
 rex.legs = 3
 puts rex
 puts rex == rex, rex == Dog.new("Rex"), rex.equal?(rex)
-puts zoo.map { |a| a.legs }.inspect
+puts zoo.map(&:legs).inspect

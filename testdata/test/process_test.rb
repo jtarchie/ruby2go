@@ -20,7 +20,7 @@ module ProcessTests
       cmds = [Array.new, [{ "A" => "b" }]] #: Array[Array[untyped]]
       cmds.each do |cmd|
 
-        IO.popen(cmd) { |io| io.read }
+        IO.popen(cmd, &:read)
         msgs << "no error"
     rescue ArgumentError => e
       msgs << e.message
@@ -59,7 +59,7 @@ module ProcessTests
     def test_popen_redirect_closes_descriptors
       before = ProcessTests.open_fds
       100.times do
-        IO.popen(["true"], "r", { err: File::NULL }) { |io| io.read }
+        IO.popen(["true"], "r", { err: File::NULL }, &:read)
       end
       assert_operator ProcessTests.open_fds - before, :<, 10
     end
@@ -84,7 +84,7 @@ module ProcessTests
     end
 
     def test_popen_signalled_status
-      IO.popen(["sh", "-c", "kill -9 $$"]) { |io| io.read }
+      IO.popen(["sh", "-c", "kill -9 $$"], &:read)
       st = $CHILD_STATUS
       assert_equal [true, 9, nil], [st&.signaled?, st&.termsig, st&.exitstatus]
     end

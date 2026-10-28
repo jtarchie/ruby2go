@@ -62,7 +62,7 @@ p ss.inspect
 ss.terminate
 p ss.inspect
 p StringScanner.new("a\nb").tap { |s| s.scan(/a\n/) }.beginning_of_line?
-p StringScanner.new("abc").scan(/^b/), StringScanner.new("abc").tap { |s| s.getch }.scan(/^b/)
+p StringScanner.new("abc").scan(/^b/), StringScanner.new("abc").tap(&:getch).scan(/^b/)
 
 puts "== shellwords"
 p Shellwords.split(%q(cp "my file.txt" 'other dir/' plain\ word x"y z"w))

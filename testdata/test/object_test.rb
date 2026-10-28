@@ -2890,7 +2890,7 @@ module ObjectTests
       klasses = [CmShape, CmSquare, Tri] #: Array[singleton(CmShape)]
       assert_equal(["shape:ObjectTests::CmShape(7) sides=0", "square:ObjectTests::CmSquare(7) sides=4", "shape:ObjectTests::Tri(7) sides=3"], klasses.map { |k| k.new(7).describe })
       assert_equal %w[shape square shape], klasses.map(&:kind)
-      assert_equal([0, 4, 3], klasses.map { |k| k.sides })
+      assert_equal([0, 4, 3], klasses.map(&:sides))
       assert_equal ["ObjectTests::CmShape", "ObjectTests::CmSquare", "ObjectTests::Tri"], klasses.map(&:name)
       assert_equal ["ObjectTests::CmShape", "ObjectTests::CmSquare", "ObjectTests::Tri"], klasses.map(&:to_s)
       assert_equal "[ObjectTests::CmShape, ObjectTests::CmSquare, ObjectTests::Tri]", klasses.inspect
@@ -3179,7 +3179,7 @@ module ObjectTests
       assert_equal "I am ObjectTests::EbGadget", EbGadget.describe
       assert_equal "I am ObjectTests::Tools", Tools.describe
       assert_equal "widget", EbGadget.kind
-      assert_equal(%w[RED GREEN BLUE], EbColors.map { |c| c.upcase })
+      assert_equal(%w[RED GREEN BLUE], EbColors.map(&:upcase))
       assert_equal 3, EbColors.count
       assert_equal %w[red green blue], EbColors.to_a
       assert_equal(%w[red green blue], EbColors.select { |c| c.include?("e") })
@@ -3187,11 +3187,11 @@ module ObjectTests
       assert_equal true, EbColors.include?("green")
       assert_equal false, EbColors.include?("pink")
       assert_equal ["red"], EbColors.first(1)
-      assert_equal(%w[red blue green], EbColors.sort_by { |c| c.size })
+      assert_equal(%w[red blue green], EbColors.sort_by(&:size))
       assert_equal "blue", EbColors.min
       assert_equal "red", EbColors.max
       assert_equal "ObjectTests::Handlers::Users", Handlers.detect { |h| h.matches?("/users/1") }.inspect
-      assert_equal(["ObjectTests::Handlers::Base", "ObjectTests::Handlers::Posts", "ObjectTests::Handlers::Users"], Handlers.map { |h| h.name })
+      assert_equal(["ObjectTests::Handlers::Base", "ObjectTests::Handlers::Posts", "ObjectTests::Handlers::Users"], Handlers.map(&:name))
       assert_equal 3, Handlers.count
       assert_equal "[ObjectTests::Handlers::Posts]", Handlers.select { |h| h.matches?("/posts/9") }.inspect
       assert_nil(Handlers.find { |h| h.matches?("/x") })
@@ -3200,7 +3200,7 @@ module ObjectTests
       bag.each { |n| items << n }
       assert_equal [3, 1, 2], items
       assert_equal([9, 1, 4], bag.transform { |n| n * n })
-      assert_equal([3, 1], bag.keep { |n| n.odd? })
+      assert_equal([3, 1], bag.keep(&:odd?))
       assert_equal("first=3", bag.first_as { |n| "first=#{n}" })
       total = 0
       bag.each_twice { |n| total += n }
@@ -3218,7 +3218,7 @@ module ObjectTests
       assert_equal "base", Lever.kind
       knobs = [Knob, BigKnob] #: Array[singleton(Knob)]
       assert_equal ["ObjectTests::Knob:knob", "ObjectTests::BigKnob:big"], knobs.map(&:label)
-      assert_equal(%w[knob big], knobs.map { |k| k.kind })
+      assert_equal(%w[knob big], knobs.map(&:kind))
     end
   end
 
@@ -3257,7 +3257,7 @@ module ObjectTests
       assert_equal 7, Root.new.n
       all = [b, m, l, e, f] #: Array[InBase]
       assert_equal %w[InBase Middle InLeaf3 InBase InBase], all.map(&:name)
-      assert_equal([1, 10, 13, 1, 1], all.map { |x| x.weight })
+      assert_equal([1, 10, 13, 1, 1], all.map(&:weight))
       assert_equal %w[b m l e fixed], all.map(&:tag)
       assert_equal 28, all.reduce(0) { |acc, x| acc + x.scale(1) }
       assert_equal true, l.is_a?(InBase)
@@ -3447,7 +3447,7 @@ module ObjectTests
       assert_equal "ObjectTests::Bar", Bar.new.kind
       assert_equal "ObjectTests::Bar!", Bar.new.label
       items = [MtDoc.new, MtMemo.new] #: Array[Printable]
-      assert_equal(%w[doc memo], items.map { |i| i.title })
+      assert_equal(%w[doc memo], items.map(&:title))
       assert_equal ["P(doc)", "P(memo)"], items.map(&:to_s)
       a = NeVec.new(1)
       assert_equal true, (a == NeVec.new(1))
@@ -3530,7 +3530,7 @@ module ObjectTests
       assert_equal "base", MoC.new.base_only
       assert_equal "[Q]", MoQ.new("q").shout
       assert_equal "[q]", MoQ.new("q").label
-      assert_equal(%w[ALPHA BETA GAMMA], MoRegistry.map { |s| s.upcase })
+      assert_equal(%w[ALPHA BETA GAMMA], MoRegistry.map(&:upcase))
       assert_equal 3, MoRegistry.select { |s| s.include?("a") }.size
       assert_equal("beta", MoRegistry.find { |s| s.start_with?("b") })
       assert_equal %w[alpha beta gamma], MoRegistry.to_a
@@ -3670,7 +3670,7 @@ module ObjectTests
       assert_equal "(10, -7)", a.to_s
       assert_equal "#<OpVec 10,-7>", a.inspect
       list = [a, b] #: Array[OpVec]
-      assert_equal "[#<OpVec -10,7>, #<OpVec -3,4>]", list.map { |v| -v }.inspect
+      assert_equal "[#<OpVec -10,7>, #<OpVec -3,4>]", list.map(&:-@).inspect
       assert_equal "(23, -18)", list.reduce(list.fetch(0)) { |acc, v| acc + v }.to_s
       bag = OpBag.new
       bag << 1 << 2 << 3

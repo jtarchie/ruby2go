@@ -191,7 +191,7 @@ module ActiveRecord
 
       cols = rows[0].keys
       target = unique_by.nil? ? primary_key : unique_by
-      target_names = target.is_a?(Array) ? target.map { |c| c.to_s } : [target.to_s]
+      target_names = target.is_a?(Array) ? target.map(&:to_s) : [target.to_s]
 
       tuples = rows.map do |row|
         "(" + cols.map { |c| ActiveRecord.adapter.escape_value(row[c]) }.join(", ") + ")"

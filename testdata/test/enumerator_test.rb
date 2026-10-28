@@ -412,7 +412,7 @@ end.select(&:odd?).first(2)
       assert_equal [20, 30], t.grep(2..3) { |x| x * 10 }
       assert_equal [10, 40], t.grep_v(2..3) { |x| x * 10 }
       assert_equal [20, 30], [1, 2, 3, 4].grep(2..3) { |x| x * 10 }
-      assert_equal %w[AB], %w[ab cd].grep(/a/) { |s| s.upcase }
+      assert_equal %w[AB], %w[ab cd].grep(/a/, &:upcase)
     end
 
     def test_minmax_ties
@@ -706,8 +706,8 @@ module EnumeratorTests
       src = (1..10).to_a
       assert_equal(1, src.each_cons(3).count { |w| w.sum % 5 == 0 })
       assert_equal(15, src.each_slice(4).sum { |s| s.first.to_i })
-      assert_equal([3, 5, 7, 9, 11, 13, 15, 17, 19], src.each_cons(2).map { |w| w.sum })
-      assert_equal([10, 26, 19], src.each_slice(4).map { |s| s.sum })
+      assert_equal([3, 5, 7, 9, 11, 13, 15, 17, 19], src.each_cons(2).map(&:sum))
+      assert_equal([10, 26, 19], src.each_slice(4).map(&:sum))
       assert(src.each_cons(4).all? { |w| w.last.to_i - w.first.to_i == 3 })
       total = 0
       src.each_cons(3) { |w| total += w.max.to_i * w.size }
@@ -747,7 +747,7 @@ module EnumeratorTests
       assert_equal [1, 2, 3, 4], firsts
       kept = src.each_slice(2).map { |s| s }
       assert_equal [[1, 2], [3, 4], [5]], kept
-      heads = src.each_cons(3).map { |w| w.first }
+      heads = src.each_cons(3).map(&:first)
       assert_equal [1, 2, 3], heads
       procs = [] #: Array[^() -> Integer]
       src.each_cons(2) { |w| procs << -> { w.sum } }

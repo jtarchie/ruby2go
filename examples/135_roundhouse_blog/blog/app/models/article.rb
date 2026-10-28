@@ -343,11 +343,11 @@ class Article < ApplicationRecord
   end
 
   def comment_ids
-    comments.map { |rh_id_record| rh_id_record.id }
+    comments.map(&:id)
   end
 
   def before_destroy
-    comments.each { |c| c.destroy }
+    comments.each(&:destroy)
   end
 
   def dom_prefix

@@ -452,7 +452,7 @@ module RxjsonTests
       res = [/a/, /b/i, /c/m] #: Array[Regexp]
       assert_equal "[/a/, /b/i, /c/m]", res.inspect
       assert_equal "[/a/, /b/i, /c/m]", res.to_s
-      assert_equal(%w[a b c], res.map { |r| r.source })
+      assert_equal(%w[a b c], res.map(&:source))
       assert_equal([false, true, false], res.map { |r| r.match?("ABC") })
       assert_equal 2, res.select { |r| r.match?("bab") }.size
       assert_equal "if-match", ("cat" =~ /a/ ? "if-match" : "")
@@ -646,8 +646,8 @@ module RxjsonTests
       m3 = "k=".match(/(\w)=(\w)?/)
       assert m3
       if m3
-        assert_equal(["k", ""], m3.captures.map { |c| c.to_s })
-        assert_equal(["\"k\"", "nil"], m3.captures.map { |c| c.inspect })
+        assert_equal(["k", ""], m3.captures.map(&:to_s))
+        assert_equal(["\"k\"", "nil"], m3.captures.map(&:inspect))
       end
       p1 = /(\d+)/
       assert_equal(["1", "22", ""], %w[a1 b22 c].map { |s| (mm = p1.match(s)) ? mm[1].to_s : "" })
@@ -956,7 +956,7 @@ b/
       assert_nil num("ab")
       ms = %w[a1 b c3].map { |s| s.match(/(\w)(\d)/) }
       assert_equal ["#<MatchData \"a1\" 1:\"a\" 2:\"1\">", "nil", "#<MatchData \"c3\" 1:\"c\" 2:\"3\">"], ms.map(&:inspect)
-      assert_equal 2, ms.reject { |mm| mm.nil? }.size
+      assert_equal 2, ms.reject(&:nil?).size
       assert_equal(["a", "-", "c"], ms.map { |mm| mm ? mm[1] : "-" })
       store = {} #: Hash[String, MatchData]
       xm = "xy".match(/x(y)/)
@@ -1348,7 +1348,7 @@ b/
       assert_equal "a<1>b2", "a1b2".sub(/\d/, "<\\0>")
       assert_equal "Smith, John", "John Smith".sub(/(\w+) (\w+)/, "\\2, \\1")
       assert_equal "a2b4", "a1b2".gsub(/\d/) { |d| (d.to_i * 2).to_s }
-      assert_equal "hellO wOrld", "hello world".gsub(/o/) { |m| m.upcase }
+      assert_equal "hellO wOrld", "hello world".gsub(/o/, &:upcase)
       assert_equal "x+y", "x-y".gsub("-") { "+" }
       assert_equal "05/03/2024", "2024-03-05".sub(/(?<y>\d+)-(?<m>\d+)-(?<d>\d+)/, "\\k<d>/\\k<m>/\\k<y>")
       assert_equal "a!b", "a.b".gsub(".", "!")
@@ -1589,7 +1589,7 @@ b/
       assert_equal "5", JSON.generate(y)
       assert_equal "[2,4,6]", [1, 2, 3].map { |i| i * 2 }.to_json
       assert_equal "[\"a\",\"b\"]", %w[b a].sort.to_json
-      assert_equal "{\"k\":[\"1\",\"2\"]}", { "k" => [1, 2].map { |i| i.to_s } }.to_json
+      assert_equal "{\"k\":[\"1\",\"2\"]}", { "k" => [1, 2].map(&:to_s) }.to_json
       assert_equal "[1]", [1].to_json(nil)
       assert_equal "\"s\"", "s".to_json(1, 2)
     end

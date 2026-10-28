@@ -59,5 +59,5 @@ puts "loop stopped at #{total}"
 puts [0b1100 & 0b1010, 0b1100 | 1, 1 << 5, 1234.round(-2), 7.ceildiv(2)].inspect
 puts %i[ready set go].map(&:upcase).inspect
 puts [1, 2, 4, 5, 7].slice_when { |a, b| b != a + 1 }.to_a.inspect
-puts [3, 1, 2].minmax_by { |x| -x }.inspect
+puts [3, 1, 2].minmax_by(&:-@).inspect
 puts "seen at line #{__LINE__} in #{__method__.inspect}"

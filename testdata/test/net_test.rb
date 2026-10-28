@@ -129,7 +129,7 @@ module NetTests
       sizes = [] #: Array[Integer]
       URI.open("#{base}/hello",
                content_length_proc: ->(n) { lengths << n },
-               progress_proc: ->(n) { sizes << n }) { |f| f.read }
+               progress_proc: ->(n) { sizes << n }, &:read)
       assert_equal [12], lengths
       assert_equal [12], sizes
       server.shutdown

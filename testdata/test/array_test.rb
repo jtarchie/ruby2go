@@ -133,7 +133,7 @@ def total_mixed(*ns) = ns.reduce(0) { |acc, n| acc + n }
 def min_max(nums) = nums.minmax
 
 #: (Array[untyped]) -> String
-def show_list(xs) = xs.map { |x| x.inspect }.join(" ")
+def show_list(xs) = xs.map(&:inspect).join(" ")
 
 #: [T] (Array[T]) -> T?
 def second_of(arr) = arr[1]
@@ -175,7 +175,7 @@ def array_label(name, *ns) = "#{name}:#{ns.inspect}:#{ns.size}:#{ns.empty?}"
 def collect(*parts) = parts
 
 #: (*untyped) -> String
-def kinds(*xs) = xs.map { |x| x.inspect }.join(",")
+def kinds(*xs) = xs.map(&:inspect).join(",")
 
 #: (?String, *Integer) -> String
 def opt_then_rest(prefix = "p", *ns) = prefix + ns.map(&:to_s).join
@@ -809,7 +809,7 @@ module ArrayTests
       nums.each { ints << it - 1 if it < 5 }
       assert_equal [4200, 3], ints
       assert_equal([5, 9, 16, 17, 24, 43], nums.map { _1 + 1 })
-      assert_equal([15, 23], nums.select { it.odd? })
+      assert_equal([15, 23], nums.select(&:odd?))
       out = []
       nums.each_with_index { out << "#{_2}:#{_1}" if _2.zero? }
       assert_equal ["0:4"], out
@@ -858,7 +858,7 @@ module ArrayTests
       assert_nil Util.second(["a"])
       assert_equal [2, 3], Util.second([[1], [2, 3]])
       assert_equal ["1!", "2!"], Util.my_map([1, 2]) { |n| n.to_s + "!" }
-      assert_equal [1], Util.my_map(["a"]) { |s| s.size }
+      assert_equal [1], Util.my_map(["a"], &:size)
       assert_equal [2, 3], Util.without([1, 2, 1, 3], 1)
       assert_equal %w[a b], Util.without(%w[a b], "c")
     end
@@ -906,8 +906,8 @@ module ArrayTests
       assert_equal 1, grid.select(&:empty?).size
       assert_equal [2, 2, 0], grid.map(&:size)
       assert_equal [0, 2, 2], grid.sort_by(&:size).map(&:size)
-      assert_equal(3, [1, 2, 3].then { |a| a.size })
-      assert_equal([1, 3], [3, 1].then { |a| a.sort })
+      assert_equal(3, [1, 2, 3].then(&:size))
+      assert_equal([1, 3], [3, 1].then(&:sort))
       fns = [] #: Array[Integer]
       [1, 2, 3].each do |n|
         captured = n * 10
@@ -1255,7 +1255,7 @@ module ArrayTests
       assert_equal "{false => [4, 2], true => [3, 1]}", cd.group_by(&:odd?).inspect
       assert_equal([4, -4, 3, -3, 2, -2, 1, -1], cd.flat_map { |n| [n, -n] })
       assert_equal(2, cd.min_by { |n| (n - 2).abs })
-      assert_equal(1, cd.max_by { |n| -n })
+      assert_equal(1, cd.max_by(&:-@))
       assert_equal(true, cd.any? { |n| n > 3 })
       assert_equal true, cd.all?(&:positive?)
       assert_equal(false, cd.none? { |n| n > 3 })
@@ -1296,7 +1296,7 @@ module ArrayTests
       assert_equal true, Digits.include?(2)
       assert_equal [3, 1, 2], Digits.to_a
       assert_equal 6, Digits.reduce(0) { |a, d| a + d }
-      assert_equal([3, 2, 1], Digits.sort_by { |d| -d })
+      assert_equal([3, 2, 1], Digits.sort_by(&:-@))
       assert_equal 3, Digits.count
       vs = [Version.new(2, 0), Version.new(1, 9), Version.new(1, 10)] #: Array[Version]
       assert_equal "[#<V v1.9>, #<V v1.10>, #<V v2.0>]", vs.sort.inspect
@@ -1384,7 +1384,7 @@ module ArrayTests
       floats = [2.5, -1.0, 10.0, 0.1] #: Array[Float]
       assert_equal([10, -6, 0, 24, -6, 14], nums.map { |n| n * 2 })
       assert_equal([], none.map { |n| n * 2 })
-      assert_equal([4, 3, 5, 3, 4, 5, 6], words.map { |w| w.size })
+      assert_equal([4, 3, 5, 3, 4, 5, 6], words.map(&:size))
       assert_equal %w[PEAR FIG APPLE FIG KIWI ÄPFEL BANANA], words.map(&:upcase)
       assert_equal ["5", "-3", "0", "12", "-3", "7"], nums.map(&:to_s)
       assert_equal([true, false, false, true, false, true], nums.map { |n| n > 0 })
@@ -1447,9 +1447,9 @@ module ArrayTests
       assert_equal ["", "B", "Z", "a", "aa", "b", "é"], ["b", "B", "a", "é", "Z", "aa", ""].sort
       assert_equal %i[a b c], %i[b a c].sort
       assert_equal(%w[fig fig kiwi pear apple Äpfel banana], words.sort_by { |w| [w.size, w] })
-      assert_equal([12, 7, 5, 0, -3, -3], nums.sort_by { |n| -n })
+      assert_equal([12, 7, 5, 0, -3, -3], nums.sort_by(&:-@))
       assert_equal [], none.sort
-      assert_equal "[10.0, 2.5, 0.1, -1.0]", floats.sort_by { |f| -f }.inspect
+      assert_equal "[10.0, 2.5, 0.1, -1.0]", floats.sort_by(&:-@).inspect
       assert_equal %w[apple banana fig fig kiwi pear Äpfel], words.sort_by(&:downcase)
       assert_equal(-3, nums.min)
       assert_equal 12, nums.max
@@ -1459,13 +1459,13 @@ module ArrayTests
       assert_equal "Äpfel", words.max
       assert_equal "-1.0", floats.min.inspect
       assert_equal "10.0", floats.max.inspect
-      assert_equal("fig", words.min_by { |w| w.size })
-      assert_equal("banana", words.max_by { |w| w.size })
+      assert_equal("fig", words.min_by(&:size))
+      assert_equal("banana", words.max_by(&:size))
       assert_nil(none.min_by { |n| n })
       assert_nil(none.max_by { |n| n })
-      assert_equal(0, nums.min_by { |n| n.abs })
+      assert_equal(0, nums.min_by(&:abs))
       assert_equal 12, nums.max_by(&:abs)
-      assert_equal "{4 => [\"pear\", \"kiwi\"], 3 => [\"fig\", \"fig\"], 5 => [\"apple\", \"Äpfel\"], 6 => [\"banana\"]}", words.group_by { |w| w.size }.inspect
+      assert_equal "{4 => [\"pear\", \"kiwi\"], 3 => [\"fig\", \"fig\"], 5 => [\"apple\", \"Äpfel\"], 6 => [\"banana\"]}", words.group_by(&:size).inspect
       assert_equal "{1 => [5, 12, 7], -1 => [-3, -3], 0 => [0]}", nums.group_by { |n| n <=> 0 }.inspect
       assert_equal "{}", none.group_by(&:even?).inspect
       assert_equal(%w[pear PEAR fig FIG apple APPLE fig FIG kiwi KIWI Äpfel ÄPFEL banana BANANA], words.flat_map { |w| [w, w.upcase] })
@@ -1508,7 +1508,7 @@ module ArrayTests
       assert_equal(-1, none[0] || -1)
       assert_equal 4, odd.first(1)[0]
       assert_equal 9, odd.max
-      assert_equal "4", odd.map { |n| n.to_s }.max_by(&:size)
+      assert_equal "4", odd.map(&:to_s).max_by(&:size)
       assert_equal([2, 0], grid.map { |r| r.max || 0 })
       assert_equal [2, 1], grid.flat_map { |r| r }.sort.reverse.first(2)
       assert_equal([[9, "9"]], odd.reject(&:even?).map { |n| [n, n.to_s] })
@@ -1527,7 +1527,7 @@ module ArrayTests
       assert_equal 2, bools.count
       assert_equal([true], bools.select { |b| b })
       assert_equal 1, bools.reject { |b| b }.size
-      assert_equal([false, true], bools.map { |b| !b })
+      assert_equal([false, true], bools.map(&:!))
       assert_equal(false, bools.all? { |b| b })
     end
 
@@ -1615,7 +1615,7 @@ module ArrayTests
       fl = [3.5, 1.25, 2.0] #: Array[Float]
       assert_equal "[1.25, 2.0, 3.5]", fl.sort.inspect
       assert_equal "3.5", fl.max.inspect
-      assert_equal "3.5", fl.min_by { |f| -f }.inspect
+      assert_equal "3.5", fl.min_by(&:-@).inspect
       assert_equal "[3.5, 2.0, 1.25]", fl.sort.reverse.inspect
       assert_equal true, fl.include?(2.0)
     end
@@ -2038,7 +2038,7 @@ module ArrayTests
       assert_equal([[3, "c"], [1, "a"]], pairs.select { |num, _s| num.odd? })
       assert_equal([[2, "b"]], pairs.reject { |num, _s| num.odd? })
       assert_equal([[3, "c"], [2, "b"], [1, "a"]], pairs.sort_by { |num, s| [-num, s] })
-      assert_equal(%w[c a b], pairs.map { |pr| pr.last })
+      assert_equal(%w[c a b], pairs.map(&:last))
       assert_equal [3, 1, 2], pairs.map(&:first)
       assert_equal([["c", 3], ["a", 1], ["b", 2]], pairs.map { |num, s| [s, num] })
       assert_equal true, pairs.include?([1, "a"])
@@ -2111,7 +2111,7 @@ module ArrayTests
       pairs.each { out << it.inspect }
       assert_equal ["[3, \"c\"]", "[1, \"a\"]", "[2, \"b\"]", "[0, \"z\"]", "[9, \"i\"]"], out
       assert_equal(["ccc", "a", "bb", "", "iiiiiiiii"], pairs.map { _2 * _1 })
-      assert_equal(%w[c a b z i], pairs.map { it.last })
+      assert_equal(%w[c a b z i], pairs.map(&:last))
       assert_equal([[3, "c"], [2, "b"], [9, "i"]], pairs.select { _1.first > 1 })
     end
   end
@@ -2138,10 +2138,10 @@ module ArrayTests
       assert_equal "[3, \"x\", :sym, 2.5, [1, \"y\"]]", bag.compact.inspect
       assert_equal 5, bag.compact.size
       assert_equal true, bag.include?(nil)
-      assert_equal(["3", "\"x\"", "nil", ":sym", "2.5", "[1, \"y\"]"], bag.map { |e| e.inspect })
-      assert_equal "3|x||sym|2.5|[1, \"y\"]", bag.map { |e| e.to_s }.join("|")
-      assert_equal 1, bag.select { |e| e.nil? }.size
-      assert_equal 5, bag.reject { |e| e.nil? }.size
+      assert_equal(["3", "\"x\"", "nil", ":sym", "2.5", "[1, \"y\"]"], bag.map(&:inspect))
+      assert_equal "3|x||sym|2.5|[1, \"y\"]", bag.map(&:to_s).join("|")
+      assert_equal 1, bag.select(&:nil?).size
+      assert_equal 5, bag.reject(&:nil?).size
       assert_equal 6, bag.count
       assert_equal "[[1, \"y\"], 2.5, :sym, nil, \"x\", 3]", bag.reverse.inspect
       assert_equal [3, "x"], bag.first(2)
@@ -2222,15 +2222,15 @@ module ArrayTests
       mix << "x"
       mix << nil
       mix << 2.5
-      assert_nil(mix.find { |e| e.nil? })
-      assert_equal(true, mix.any? { |e| e.nil? })
-      assert_equal(false, mix.all? { |e| e.nil? })
-      assert_equal(false, mix.none? { |e| e.nil? })
-      assert_equal "{false => [3, \"x\", 2.5], true => [nil]}", mix.group_by { |e| e.nil? }.inspect
-      assert_nil(mix.min_by { |e| e.to_s })
+      assert_nil(mix.find(&:nil?))
+      assert_equal(true, mix.any?(&:nil?))
+      assert_equal(false, mix.all?(&:nil?))
+      assert_equal(false, mix.none?(&:nil?))
+      assert_equal "{false => [3, \"x\", 2.5], true => [nil]}", mix.group_by(&:nil?).inspect
+      assert_nil(mix.min_by(&:to_s))
       assert_equal "2.5", mix.max_by { |e| e.to_s.size }.inspect
       assert_equal 8, mix.flat_map { |e| [e, e] }.size
-      assert_equal "[3, \"x\", 2.5]", mix.reject { |e| e.nil? }.inspect
+      assert_equal "[3, \"x\", 2.5]", mix.reject(&:nil?).inspect
       assert_equal 3, mix.reduce(0) { |a, e| e.nil? ? a : a + 1 }
       out = [] #: Array[String]
       mix.each_with_index { |e, i| out << "#{i}=#{e.inspect}" }
@@ -2239,7 +2239,7 @@ module ArrayTests
       assert_equal ["3", "x", "", "2.5"], mix.map(&:to_s)
       assert_equal "3,\"x\",nil,2.5", mix.map(&:inspect).join(",")
       assert_equal 4, mix.tally.size
-      assert_equal "[nil, 2.5, 3, \"x\"]", mix.sort_by { |e| e.to_s }.inspect
+      assert_equal "[nil, 2.5, 3, \"x\"]", mix.sort_by(&:to_s).inspect
     end
   end
 
@@ -2522,7 +2522,7 @@ module ArrayTests
                    [[1, 2, 3].fill(0, -2), [1, 2, 3].fill(0, -9), [1, 2, 3].fill(0, 1, 1), [1, 2, 3].fill(0, 2, 4),
                     [1, 2, 3].fill(0, nil, 2), [1, 2, 3].fill(0, 0...2), [1, 2, 3].fill(0, 2..0)]
       assert_equal [[0, 1, 4], [1, 10, 20], [-0, -1, 3], [1, 101, 3]],
-                   [[1, 2, 3].fill { |i| i * i }, [1, 2, 3].fill(1) { |i| i * 10 }, [1, 2, 3].fill(0, 2) { |i| -i },
+                   [[1, 2, 3].fill { |i| i * i }, [1, 2, 3].fill(1) { |i| i * 10 }, [1, 2, 3].fill(0, 2, &:-@),
                     [1, 2, 3].fill(1..1) { |i| i + 100 }]
       e = assert_raises(RangeError) { [1, 2, 3].fill(0, -5..1) }
       assert_equal "-5..1 out of range", e.message
@@ -2827,7 +2827,7 @@ module ArrayTests
     def test_max_by_and_min_by_with_a_count
       words = %w[aaaa b ccc dd]
       assert_equal %w[aaaa ccc], words.max_by(2, &:size)
-      assert_equal %w[b dd], words.min_by(2) { it.size }
+      assert_equal %w[b dd], words.min_by(2, &:size)
       assert_equal [5, 4, 3], (1..5).max_by(3) { it }
       assert_equal [3, 1], [3, 1].max_by(5) { it }
       assert_equal [], [1, 2].min_by(0) { it }
@@ -3199,7 +3199,7 @@ module ArrayTests
     def test_count
       none = [] #: Array[Integer]
       assert_equal(0, none.count { |x| x > 0 })
-      assert_equal(2, [1, 2, 3, 4].count { |x| x.even? })
+      assert_equal(2, [1, 2, 3, 4].count(&:even?))
       odd = [1, 2, 3, 4].count do |x|
         next true if x.even?
         next if x == 3

@@ -27,7 +27,7 @@ class ArticlesController < ApplicationController
     results = []
     results << Article.from_stmt(stmt) while Db.step?(stmt)
     Db.finalize(stmt)
-    __comments_ids = results.map { |a| a.id }
+    __comments_ids = results.map(&:id)
     __comments_stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE article_id IN (" + Db.escape_int_list(__comments_ids) + ")")
     __comments_loaded = []
     __comments_loaded << Comment.from_stmt(__comments_stmt) while Db.step?(__comments_stmt)

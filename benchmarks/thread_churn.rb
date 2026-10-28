@@ -7,6 +7,6 @@ PER = 100
 total = 0
 BATCHES.times do |b|
   ts = (0...PER).map { |i| Thread.new(b * PER + i) { |x| x * 2 } }
-  total += ts.sum { |t| t.value }
+  total += ts.sum(&:value)
 end
 puts total

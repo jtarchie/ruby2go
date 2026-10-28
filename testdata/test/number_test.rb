@@ -568,7 +568,7 @@ module NumberTests
       assert_equal true, t.frozen?
       assert_equal true, t.equal?(true)
       assert_equal false, f.equal?(true)
-      assert_equal(false, t.then { |b| !b })
+      assert_equal(false, t.then(&:!))
 
       # & | ^ always evaluate the right side; && || short-circuit
       log = [] #: Array[String]
@@ -627,7 +627,7 @@ module NumberTests
       assert_equal "{true => 2, false => 1}", flags.tally.inspect
       assert_equal [false, true, false], flags.map(&:!)
       assert_equal(false, flags.all? { |x| x })
-      assert_equal(true, flags.any? { |x| !x })
+      assert_equal(true, flags.any?(&:!))
       assert_equal([false], flags.reject { |x| x })
       bh = { "on" => true, "off" => false } #: Hash[String, bool]
       assert_equal true, bh["on"]
@@ -1068,7 +1068,7 @@ module NumberTests
       assert_equal "3.25", floats.reduce(0.0) { |s, v| s + v }.inspect
       assert_equal 120, ints.inject(1) { |s, v| s * v }
       assert_equal "[2.5, 1.5, 4.0, 0.5]", ints.map { |v| v.to_f / 2.0 }.inspect
-      assert_equal([2, -2, 4], floats.map { |v| v.round })
+      assert_equal([2, -2, 4], floats.map(&:round))
       assert_equal [1, -3, 4], floats.map(&:floor)
       assert_equal [2, -2, 4], floats.map(&:ceil)
       assert_equal [8], ints.select(&:even?)
@@ -1088,7 +1088,7 @@ module NumberTests
       assert_equal true, floats.none?(&:nan?)
       assert_equal "{true => [5, 3, 1], false => [8]}", ints.group_by(&:odd?).inspect
       assert_equal 1, ints.min_by(&:abs)
-      assert_equal "[4.0, 1.5, -2.25]", floats.sort_by { |f| -f }.inspect
+      assert_equal "[4.0, 1.5, -2.25]", floats.sort_by(&:-@).inspect
       assert_equal "Hi", [72, 105].map(&:chr).join
       assert_equal "5+3+8+1", ints.map(&:to_s).join("+")
       assert_equal [1, 3], ints.sort.first(2)
@@ -1139,9 +1139,9 @@ module NumberTests
       assert_equal "-3.25", floats.min.inspect
       assert_equal [10, 3, 3, 0, -1, -20], ints.sort.reverse
       assert_equal "[1.0e+20, 2.5, 1.0, 0.0, -0.5, -3.25]", floats.sort.reverse.inspect
-      assert_equal([10, 3, 3, 0, -1, -20], ints.sort_by { |i| -i })
-      assert_equal(0, ints.min_by { |i| i.abs })
-      assert_equal "1.0e+20", floats.max_by { |f| f.abs }.inspect
+      assert_equal([10, 3, 3, 0, -1, -20], ints.sort_by(&:-@))
+      assert_equal(0, ints.min_by(&:abs))
+      assert_equal "1.0e+20", floats.max_by(&:abs).inspect
       assert_equal "[1.0, 2.0]", [2.0, 1.0].sort.inspect
       assert_equal([0, -1, -1, 1, -1, 0], ints.map { |i| i <=> 3 })
       assert_equal([1, -1, 0, -1, 1, -1], floats.map { |f| f <=> 1.0 })
@@ -1908,7 +1908,7 @@ module NumberTests
       assert_equal 1, 0.factorial
       assert_equal 120, 5.factorial
       assert_equal 2_432_902_008_176_640_000, 20.factorial
-      assert_equal(%w[1st 2nd 3rd 4th 11th 12th 13th 21st 22nd 101st 111th 0th], [1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111, 0].map { |i| i.ordinal })
+      assert_equal(%w[1st 2nd 3rd 4th 11th 12th 13th 21st 22nd 101st 111th 0th], [1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111, 0].map(&:ordinal))
       assert_equal true, 4.5.above_zero?
       assert_equal false, -0.5.above_zero?
       assert_equal "1.5", 3.0.half.inspect

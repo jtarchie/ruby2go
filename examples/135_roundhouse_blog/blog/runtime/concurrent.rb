@@ -136,7 +136,7 @@ module Concurrent
       end
       @queue.close
       @queue.clear
-      ws.each { |w| w.kill }
+      ws.each(&:kill)
       @lock.synchronize { @live = 0 }
       nil
     end

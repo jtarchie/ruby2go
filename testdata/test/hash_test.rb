@@ -618,7 +618,7 @@ module HashTests
       assert_equal 3, uni["😀"]
       assert_equal 4, uni[""]
       assert_nil uni["hello"]
-      assert_equal([5, 2, 1, 0], uni.keys.map { |k| k.size })
+      assert_equal([5, 2, 1, 0], uni.keys.map(&:size))
     end
 
     # A String key and a Symbol key with the same text are different keys.
@@ -1048,7 +1048,7 @@ end
       counts = words.tally
       assert_equal "{\"the\" => 3, \"cat\" => 1, \"and\" => 2, \"hat\" => 1, \"bat\" => 1}", counts.inspect
       assert_equal [["the", 3], ["and", 2], ["bat", 1]], counts.sort_by { |w, n| [-n, w] }.first(3)
-      assert_equal "{3 => [\"the\", \"cat\", \"and\", \"the\", \"hat\", \"and\", \"the\", \"bat\"]}", words.group_by { |w| w.size }.inspect
+      assert_equal "{3 => [\"the\", \"cat\", \"and\", \"the\", \"hat\", \"and\", \"the\", \"bat\"]}", words.group_by(&:size).inspect
       assert_equal "{\"é\" => 2, \"e\" => 1}", %w[é e é].tally.inspect
       assert_equal "{}", [].tally.inspect
     end
@@ -1088,7 +1088,7 @@ end
       assert_equal ["ccc", 3], h.max_by(&:first)
       assert_equal "{1 => [[\"a\", 1]], 2 => [[\"bb\", 2]], 3 => [[\"ccc\", 3]]}", h.group_by(&:last).inspect
       assert_equal ["[\"a\", 1]", "[\"bb\", 2]", "[\"ccc\", 3]"], h.map(&:inspect)
-      assert_equal(3, h.then { |x| x.size })
+      assert_equal(3, h.then(&:size))
       assert_equal "Hash", h.class.to_s
       assert_equal "Hash", h.class.inspect
       assert_equal true, h.is_a?(Hash)
@@ -1125,7 +1125,7 @@ end
       first_at = {} #: Hash[String, Integer]
       fruit.each_with_index { |w, i| first_at[w] = i unless first_at.key?(w) }
       assert_equal "{\"pear\" => 0, \"apple\" => 1, \"fig\" => 2}", first_at.inspect
-      by_size = fruit.group_by { |w| w.size }
+      by_size = fruit.group_by(&:size)
       assert_equal(["4:pear", "5:apple", "3:fig"], by_size.map { |n, ws| "#{n}:#{ws.uniq.join("/")}" })
       assert_equal [3, 4, 5], by_size.keys.sort
       assert_equal 3, by_size.fetch(4).size

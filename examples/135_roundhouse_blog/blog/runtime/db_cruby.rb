@@ -205,7 +205,7 @@ module Db
       # Finalize cached statements before closing the connection (older
       # sqlite3-gem builds refuse to close with unfinalized statements).
       cache = conn.instance_variable_get(:@rh_stmt_cache)
-      cache&.each_value { |st| st.close }
+      cache&.each_value(&:close)
       conn.close
       i += 1
     end
