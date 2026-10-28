@@ -5647,7 +5647,7 @@ module ObjectTests
 
   class ObjHost
     #: () -> String
-    def ObjHost.hi = "hi"
+    def self.hi = "hi"
   end
 
   class ObjStack < Array
