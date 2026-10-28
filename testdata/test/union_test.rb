@@ -367,7 +367,11 @@ module UnionTests
     end
 
     #: (Integer) -> (Integer | String | nil)
-    def maybe(i) = i > 1 ? i : (i.zero? ? nil : "s")
+    def maybe(i) = if i > 1
+i
+else
+(i.zero? ? nil : "s")
+end
 
     def test_or_and_on_unions
       y = maybe(0)

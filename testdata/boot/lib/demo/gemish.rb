@@ -171,7 +171,11 @@ module Demo
 
     # A sig narrower than the value (a parent class, nil, another union): Ruby checks none of it (decision 225).
     #: (String) -> Demo::GemTab
-    def tab_for(n) = n.empty? ? nil : (n == "x" ? GemTab.empty : GemAbstractTab.empty)
+    def tab_for(n) = if n.empty?
+nil
+else
+(n == "x" ? GemTab.empty : GemAbstractTab.empty)
+end
 
     # A yield inside a block, its value the method's (decision 226).
     def synced = synchronize { @state }

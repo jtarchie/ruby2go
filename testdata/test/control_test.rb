@@ -2474,7 +2474,11 @@ module ControlTests
       assert_equal 6, v
       v2 = x < 100 ? nil : x * 2
       assert_nil v2
-      nested = x > 1 ? (x > 2 ? "gt2" : "eq2") : "le1"
+      nested = if x > 1
+x > 2 ? "gt2" : "eq2"
+else
+"le1"
+end
       assert_equal "gt2", nested
       assert_equal "arg if", (x > 1 ? "arg if" : "arg else")
       s = "a" + (x.odd? ? "odd" : "even") + "z"
@@ -2596,8 +2600,16 @@ module ControlTests
     # nested ternaries without parentheses associate to the right
     def test_nested_ternaries_associate_right
       x = 4
-      assert_equal "b", (x > 5 ? "a" : x > 3 ? "b" : "c")
-      assert_equal "c", (x > 5 ? "a" : x > 4 ? "b" : "c")
+      assert_equal "b", (if x > 5
+"a"
+else
+x > 3 ? "b" : "c"
+end)
+      assert_equal "c", (if x > 5
+"a"
+else
+x > 4 ? "b" : "c"
+end)
       assert_equal "even big", (x.even? && x > 2 ? "even big" : "other")
     end
 

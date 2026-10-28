@@ -241,7 +241,11 @@ class UserAgent
       end
     when "gecko"
       named = gecko_browser
-      named.empty? ? (app.nil? ? "" : app.product) : named
+      if named.empty?
+app.nil? ? "" : app.product
+else
+named
+end
     else
       app.nil? ? "" : app.product
     end
@@ -273,7 +277,11 @@ class UserAgent
       named = gecko_browser
       t = named.empty? ? nil : UserAgent.find_product(@tokens, named)
       v = t.nil? ? "" : t.version
-      v.empty? ? (app.nil? ? "" : app.version) : v
+      if v.empty?
+app.nil? ? "" : app.version
+else
+v
+end
     else
       app.nil? ? "" : app.version
     end

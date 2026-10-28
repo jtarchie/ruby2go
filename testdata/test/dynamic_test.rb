@@ -473,7 +473,11 @@ def area_of(s) = s.area.inspect
 def sent_area(s) = s.send(:area).inspect
 
 #: (Integer) -> DynamicTests::Shape?
-def dynamic_pick(n) = n.zero? ? nil : (n.positive? ? DynamicTests::Sq.new("p") : DynamicTests::Blob.new("q"))
+def dynamic_pick(n) = if n.zero?
+nil
+else
+(n.positive? ? DynamicTests::Sq.new("p") : DynamicTests::Blob.new("q"))
+end
 
 #: (untyped) -> String
 def truth(v)
