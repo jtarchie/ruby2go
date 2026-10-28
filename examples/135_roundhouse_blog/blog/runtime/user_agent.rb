@@ -561,12 +561,12 @@ class PlatformAgent
 
   private
 
-    def match?(pattern)
-      s = @user_agent_string
-      s.nil? ? false : s.match?(pattern)
-    end
+  def match?(pattern)
+    s = @user_agent_string
+    s.nil? ? false : s.match?(pattern)
+  end
 
-    def user_agent
-      @user_agent
-    end
+  def user_agent
+    @user_agent
+  end
 end

@@ -359,17 +359,17 @@ class IPAddr
   private
 
     # The IPv4 rules, applied at `at` so the mapped form reuses them.
-    def v4_loopback?(at)
-      @octets[at] == 127
-    end
+  def v4_loopback?(at)
+    @octets[at] == 127
+  end
 
-    def v4_private?(at)
-      return true if @octets[at] == 10
-      return true if @octets[at] == 172 && (@octets[at + 1] & 0xf0) == 16
-      @octets[at] == 192 && @octets[at + 1] == 168
-    end
+  def v4_private?(at)
+    return true if @octets[at] == 10
+    return true if @octets[at] == 172 && (@octets[at + 1] & 0xf0) == 16
+    @octets[at] == 192 && @octets[at + 1] == 168
+  end
 
-    def v4_link_local?(at)
-      @octets[at] == 169 && @octets[at + 1] == 254
-    end
+  def v4_link_local?(at)
+    @octets[at] == 169 && @octets[at + 1] == 254
+  end
 end
