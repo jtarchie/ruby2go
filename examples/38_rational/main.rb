@@ -38,7 +38,7 @@ puts total, total.inspect, total.to_f
 puts (0.1r + 0.2r) == 0.3r, (0.1 + 0.2) == 0.3
 puts 1.quo(3) + 1.quo(6), 2 - Rational(1, 3), Rational(5, 2) * 2
 puts Rational(7, 2).round, Rational(-7, 2).round, Rational(-7, 2).floor, Rational(-7, 2).ceil
-puts (Rational(2, 3) ** -2).inspect, 0.75.to_r, Rational(6, 4) == Rational(3, 2)
+puts (Rational(2, 3)**-2).inspect, 0.75.to_r, Rational(6, 4) == Rational(3, 2)
 puts [3/4r, 1/2r, 5/8r].sort.inspect, (1/3r).to_f.round(3)
 puts Rational(1, 3) < 1, Rational(1, 3) + 0.5
 

@@ -17,7 +17,7 @@ module Demo
         return if num_params > max_params
 
         # Found end of parameter name, ensure forward progress in loop
-        param = header.slice!(0, i+1)
+        param = header.slice!(0, i + 1)
 
         # Remove ending equals and preceding whitespace from parameter name
         param.chomp!('=')

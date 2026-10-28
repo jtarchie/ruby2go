@@ -157,19 +157,19 @@ module BigDecimalTests
       assert_equal "0.1e1", (BigDecimal("7").remainder(BigDecimal("-3"))).inspect
       assert_equal "3", (BigDecimal("7").div(2)).inspect
       assert_equal "-4", (BigDecimal("-7").div(2)).inspect
-      assert_equal "0.121e1", (BigDecimal("1.1") ** 2).inspect
-      assert_equal "0.25e0", (BigDecimal("2") ** -2).inspect
-      assert_equal "0.1024e4", (BigDecimal("2") ** 10).inspect
-      assert_equal "-0.8e1", (BigDecimal("-2") ** 3).inspect
-      assert_equal "0.1e21", (BigDecimal("10") ** 20).inspect
-      assert_equal "0.14142135623730950488016887242097e1", (BigDecimal("2") ** 0.5).inspect
+      assert_equal "0.121e1", (BigDecimal("1.1")**2).inspect
+      assert_equal "0.25e0", (BigDecimal("2")**-2).inspect
+      assert_equal "0.1024e4", (BigDecimal("2")**10).inspect
+      assert_equal "-0.8e1", (BigDecimal("-2")**3).inspect
+      assert_equal "0.1e21", (BigDecimal("10")**20).inspect
+      assert_equal "0.14142135623730950488016887242097e1", (BigDecimal("2")**0.5).inspect
       assert_equal "0.8e1", (BigDecimal("2").power(3)).inspect
       assert_equal "0.1414213562e1", (BigDecimal("2").sqrt(10)).inspect
       assert_equal "0.141e1", (BigDecimal("2").sqrt(3)).inspect
       assert_equal "0.31623e2", (BigDecimal("1000").sqrt(5)).inspect
       assert_equal "0.2e-1", (BigDecimal("0.0004").sqrt(4)).inspect
       assert_equal "0.4e1", (BigDecimal("16").sqrt(0)).inspect
-      assert_equal "0.1e1", (BigDecimal("1.5") ** 0).inspect
+      assert_equal "0.1e1", (BigDecimal("1.5")**0).inspect
     end
 
     def test_comparisons

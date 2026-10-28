@@ -17,7 +17,7 @@ b = 1
 puts "fib(100) = #{a}"
 
 # Powers and literals past 64 bits.
-big = 2 ** 100
+big = 2**100
 puts "2**100 = #{big}"
 puts "2**100 - 1 in hex: #{(big - 1).to_s(16)}"
 puts "u128 max: #{340282366920938463463374607431768211455}"
@@ -25,7 +25,7 @@ puts "2**100 / 3 = #{big / 3}, remainder #{big % 3}"
 puts "a Float: #{big.to_f}"
 
 # Small values stay plain machine integers; comparisons mix freely.
-puts "fib(100) > 2**64: #{a > 2 ** 64}"
+puts "fib(100) > 2**64: #{a > 2**64}"
 puts "class: #{f.class}, even? #{f.even?}"
 
 # Spigot digits of pi (Gibbons), all exact integer arithmetic.

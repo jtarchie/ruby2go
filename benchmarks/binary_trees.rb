@@ -39,7 +39,7 @@ long_lived_tree = make_tree(max_depth)
 
 depth = min_depth
 while depth <= max_depth
-  iterations = 2 ** (max_depth - depth + min_depth)
+  iterations = 2**(max_depth - depth + min_depth)
   check = 0
   i = 1
   while i <= iterations

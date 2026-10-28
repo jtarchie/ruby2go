@@ -18,11 +18,11 @@ puts roots(1.0, 2.0, 5.0).inspect
 z = 3 + 4i
 w = Complex(1, -2)
 puts z, w.inspect, z.abs, z.abs2, z.conjugate
-puts z + w, z - w, z * w, (z / w).inspect, (z ** 2).inspect, (w ** -1).inspect
+puts z + w, z - w, z * w, (z / w).inspect, (z**2).inspect, (w**-1).inspect
 puts (z * 2).inspect, (2.5 * w).inspect, (z / 2).inspect, (z + Rational(1, 2)).inspect
 puts z.real, z.imaginary, z.rectangular.inspect, z == Complex(3, 4), Complex(5, 0) == 5
 puts Complex.polar(2, Math::PI).inspect, Complex(0, 1).arg == Math::PI / 2
-puts (1i ** 2).inspect, Complex(1.5, 0).to_f
+puts (1i**2).inspect, Complex(1.5, 0).to_f
 
 begin
   z.to_i

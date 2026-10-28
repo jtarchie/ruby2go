@@ -365,7 +365,7 @@ module NumberTests
     #: (Num) -> Num
     def %(other) = Num.new(v % other.v)
     #: (Integer) -> Num
-    def **(other) = Num.new(v ** other)
+    def **(other) = Num.new(v**other)
     #: () -> Num
     def -@ = Num.new(-v)
     #: () -> Num
@@ -373,9 +373,9 @@ module NumberTests
     #: () -> Num
     def ~ = Num.new(-v - 1)
     #: (Integer) -> Num
-    def <<(k) = Num.new(v * (2 ** k))
+    def <<(k) = Num.new(v * (2**k))
     #: (Integer) -> Num
-    def >>(other) = Num.new(v / (2 ** other))
+    def >>(other) = Num.new(v / (2**other))
     #: (Num) -> Num
     def &(other) = Num.new(v < other.v ? v : other.v)
     #: (Num) -> Num
@@ -706,10 +706,10 @@ module NumberTests
   class NumberBugIntegerPowZeroNegativeTest < Minitest::Test
     def test_zero_to_negative_power_raises
       z = 0 #: Integer
-      e = assert_raises(ZeroDivisionError) { z ** -1 }
+      e = assert_raises(ZeroDivisionError) { z**-1 }
       assert_equal "divided by 0", e.message
       # was an uncaught error ending the old file
-      e = assert_raises(ZeroDivisionError) { 0 ** -2 }
+      e = assert_raises(ZeroDivisionError) { 0**-2 }
       assert_equal "divided by 0", e.message
     end
   end
@@ -725,7 +725,7 @@ module NumberTests
       assert_equal -2, m.neg
       assert_equal 10, (m / 10)
       assert_equal 100, m.div(10)
-      assert_equal 9, (m ** 3)
+      assert_equal 9, (m**3)
       assert_equal 27, m.pow(3)
       assert_equal true, m.empty?
       assert_equal false, m.empty_q
@@ -782,23 +782,23 @@ module NumberTests
     # Float#** rounds like C pow
     def test_float_rounds_like_c_pow
       third = 1.0 / 3.0 #: Float
-      assert_equal "2.0", ((8.0 ** third)).inspect
-      assert_equal "3.0", ((27.0 ** third)).inspect
-      assert_equal "9.999999999999998", ((1000.0 ** third)).inspect
-      assert_equal "0.00010000000000000002", ((0.1 ** 4.0)).inspect
-      assert_equal "1.0303010000000001", ((1.01 ** 3.0)).inspect
-      assert_equal "9605.960100000002", ((9.9 ** 4.0)).inspect
-      assert_equal "5.656854249492381", ((2.0 ** 2.5)).inspect
-      assert_equal "316.22776601683796", ((10.0 ** 2.5)).inspect
+      assert_equal "2.0", ((8.0**third)).inspect
+      assert_equal "3.0", ((27.0**third)).inspect
+      assert_equal "9.999999999999998", ((1000.0**third)).inspect
+      assert_equal "0.00010000000000000002", ((0.1**4.0)).inspect
+      assert_equal "1.0303010000000001", ((1.01**3.0)).inspect
+      assert_equal "9605.960100000002", ((9.9**4.0)).inspect
+      assert_equal "5.656854249492381", ((2.0**2.5)).inspect
+      assert_equal "316.22776601683796", ((10.0**2.5)).inspect
       pow_x = 1.1 #: Float
-      assert_equal "2.5937424601000023", ((pow_x ** 10)).inspect
+      assert_equal "2.5937424601000023", ((pow_x**10)).inspect
       neg = -1.1 #: Float
-      assert_equal "-1.3310000000000004", ((neg ** 3)).inspect
-      assert_equal "-0.064", (((neg - 1.4) ** -3.0)).inspect
-      assert_equal "9.849155306759329", ((0.5 ** -3.3)).inspect
-      assert_equal "1.0e+305", ((1e10 ** 30.5)).inspect
-      assert_equal "2.7182816941320818", ((1.0000001 ** 1e7)).inspect
-      assert_equal "2.73552396956703e-07", ((7.5 ** -7.5)).inspect
+      assert_equal "-1.3310000000000004", ((neg**3)).inspect
+      assert_equal "-0.064", (((neg - 1.4)**-3.0)).inspect
+      assert_equal "9.849155306759329", ((0.5**-3.3)).inspect
+      assert_equal "1.0e+305", ((1e10**30.5)).inspect
+      assert_equal "2.7182816941320818", ((1.0000001**1e7)).inspect
+      assert_equal "2.73552396956703e-07", ((7.5**-7.5)).inspect
     end
 
     # Float#** is exact wherever the power is a Float, on every path (decision 390)
@@ -806,33 +806,33 @@ module NumberTests
       bad = 0
       (2..40).each do |b|
         k = 1
-        while b ** k < 2 ** 53
-          bad += 1 if b.to_f ** k.to_f != (b ** k).to_f
-          bad += 1 if (-b).to_f ** k.to_f != ((-b) ** k).to_f
-          bad += 1 if b.to_f ** -k.to_f != 1.0 / (b ** k).to_f && b & (b - 1) == 0
+        while b**k < 2**53
+          bad += 1 if b.to_f**k.to_f != (b**k).to_f
+          bad += 1 if (-b).to_f**k.to_f != ((-b)**k).to_f
+          bad += 1 if b.to_f**-k.to_f != 1.0 / (b**k).to_f && b & (b - 1) == 0
           k += 1
         end
       end
-      (1..1074).each { |k| bad += 1 if 2.0 ** -k.to_f != Math.ldexp(1.0, -k) }
-      (1..1023).each { |k| bad += 1 if 2.0 ** k.to_f != Math.ldexp(1.0, k) }
+      (1..1074).each { |k| bad += 1 if 2.0**-k.to_f != Math.ldexp(1.0, -k) }
+      (1..1023).each { |k| bad += 1 if 2.0**k.to_f != Math.ldexp(1.0, k) }
       assert_equal 0, bad
     end
 
     # Float#** past the Float range, and large exponents in range
     def test_float_pow_large_exponents
-      assert_equal "8.104774656527117e-177", ((2.0 / 3.0) ** 1000.0).inspect
-      assert_equal "2.3365249867684727e-308", ((2.0 / 3.0) ** 1747.0).inspect
-      assert_equal "1.9423975992963885e+130", (1.0000001 ** 3.0e9).inspect
-      assert_equal "1.43959991515206e+304", (0.999 ** -700000.0).inspect
-      assert_equal "3.4336838202925124e+30", (3.0 ** 64.0).inspect
-      assert_equal "0.002243200793301555", (1.1 ** -64.0).inspect
-      assert_equal "-405.26506222962956", ((-1.1) ** 63.0).inspect
-      assert_equal "-0.0", ((-0.5) ** 2001.0).inspect
-      assert_equal "0.0", ((-0.5) ** 2000.0).inspect
-      assert_equal "-Infinity", ((-2.0) ** 2001.0).inspect
-      assert_equal "Infinity", (2.0 ** 2000.0).inspect
-      assert_equal "-Infinity", ((-0.5) ** -2001.0).inspect
-      assert_equal "0.0", (1e-300 ** 3.0).inspect
+      assert_equal "8.104774656527117e-177", ((2.0 / 3.0)**1000.0).inspect
+      assert_equal "2.3365249867684727e-308", ((2.0 / 3.0)**1747.0).inspect
+      assert_equal "1.9423975992963885e+130", (1.0000001**3.0e9).inspect
+      assert_equal "1.43959991515206e+304", (0.999**-700000.0).inspect
+      assert_equal "3.4336838202925124e+30", (3.0**64.0).inspect
+      assert_equal "0.002243200793301555", (1.1**-64.0).inspect
+      assert_equal "-405.26506222962956", ((-1.1)**63.0).inspect
+      assert_equal "-0.0", ((-0.5)**2001.0).inspect
+      assert_equal "0.0", ((-0.5)**2000.0).inspect
+      assert_equal "-Infinity", ((-2.0)**2001.0).inspect
+      assert_equal "Infinity", (2.0**2000.0).inspect
+      assert_equal "-Infinity", ((-0.5)**-2001.0).inspect
+      assert_equal "0.0", (1e-300**3.0).inspect
     end
 
     # Float#round rounds half away from zero
@@ -864,7 +864,7 @@ module NumberTests
       build_a = 7 #: Integer
       build_f = 1.5 #: Float
       assert_equal true, (1 < 1.5)
-      assert_equal "1.4142135623730951", ((2 ** 0.5)).inspect
+      assert_equal "1.4142135623730951", ((2**0.5)).inspect
       assert_equal "10.5", ((build_a * build_f)).inspect
       assert_equal "8.5", ((build_f + build_a)).inspect
       assert_equal 1, (build_a <=> build_f)
@@ -926,7 +926,7 @@ module NumberTests
 
     # a parenthesized literal as a receiver
     def test_a_parenthesized_literal_as_a
-      assert_equal -8, ((-2) ** 3)
+      assert_equal -8, ((-2)**3)
       assert_equal 3, (3)
       assert_equal "2.5", ((2.5)).inspect
       assert_equal 0, (-0)
@@ -1187,11 +1187,11 @@ module NumberTests
       assert_equal "-3.125", ((x * y)).inspect
       assert_equal "-2.0", ((x / y)).inspect
       assert_equal "-0.5", ((y / x)).inspect
-      assert_equal "6.25", ((x ** 2.0)).inspect
-      assert_equal "1.4142135623730951", ((2.0 ** 0.5)).inspect
-      assert_equal "0.25", ((4.0 ** -1.0)).inspect
-      assert_equal "1.0", ((x ** 0.0)).inspect
-      assert_equal "3.0", ((9.0 ** 0.5)).inspect
+      assert_equal "6.25", ((x**2.0)).inspect
+      assert_equal "1.4142135623730951", ((2.0**0.5)).inspect
+      assert_equal "0.25", ((4.0**-1.0)).inspect
+      assert_equal "1.0", ((x**0.0)).inspect
+      assert_equal "3.0", ((9.0**0.5)).inspect
       assert_equal "0.30000000000000004", ((0.1 + 0.2)).inspect
       assert_equal "3.3000000000000003", ((1.1 + 2.2)).inspect
       assert_equal "0.30000000000000004", ((0.1 * 3.0)).inspect
@@ -1211,7 +1211,7 @@ module NumberTests
       assert_equal "3.5", ((x + 1)).inspect
       assert_equal "5.0", ((x * 2)).inspect
       assert_equal "1.25", ((x / 2)).inspect
-      assert_equal "6.25", ((x ** 2)).inspect
+      assert_equal "6.25", ((x**2)).inspect
       assert_equal "-0.5", ((x - 3)).inspect
 
       # division by zero is IEEE, not an exception
@@ -1379,7 +1379,7 @@ module NumberTests
       assert_equal 7, (-b)
       assert_equal 0, (-z)
       assert_equal 7, (- -a)
-      assert_equal -4, (-2 ** 2)
+      assert_equal -4, (-2**2)
       assert_equal 2, (-2.abs)
 
       # / floors toward negative infinity
@@ -1404,14 +1404,14 @@ module NumberTests
       assert_equal -6, (1 % -7)
 
       # ** with non-negative exponents
-      assert_equal 1024, (2 ** 10)
-      assert_equal 1, (0 ** 0)
-      assert_equal 1, (5 ** 0)
-      assert_equal 0, (0 ** 3)
-      assert_equal 1, (1 ** 100)
-      assert_equal -343, (b ** 3)
-      assert_equal 49, (b ** 2)
-      assert_equal 4611686018427387904, (2 ** 62)
+      assert_equal 1024, (2**10)
+      assert_equal 1, (0**0)
+      assert_equal 1, (5**0)
+      assert_equal 0, (0**3)
+      assert_equal 1, (1**100)
+      assert_equal -343, (b**3)
+      assert_equal 49, (b**2)
+      assert_equal 4611686018427387904, (2**62)
 
       # abs, succ, pred
       assert_equal 7, a.abs
@@ -1740,17 +1740,17 @@ module NumberTests
       assert_equal 4611686018427387904, (-2_147_483_648 * -2_147_483_648)
       assert_equal 4611686018427387904, (1_099_511_627_776 * 4_194_304)
       assert_equal -9223372036854775808, (-1_099_511_627_776 * 8_388_608)
-      assert_equal 4611686018427387904, (2 ** 62)
-      assert_equal -9223372036854775808, (t ** 63)
-      assert_equal 4052555153018976267, (3 ** 39)
-      assert_equal 1000000000000000000, (10 ** 18)
-      assert_equal -27, (t - 1) ** 3
-      assert_equal 1, (7 ** 0)
-      assert_equal 1, (1 ** 1_000_000_000_000)
-      assert_equal -1, (o ** 1_000_000_000_001)
-      assert_equal 1, (o ** -4)
-      assert_equal -1, (o ** -3)
-      assert_equal 1, (1 ** -5)
+      assert_equal 4611686018427387904, (2**62)
+      assert_equal -9223372036854775808, (t**63)
+      assert_equal 4052555153018976267, (3**39)
+      assert_equal 1000000000000000000, (10**18)
+      assert_equal -27, (t - 1)**3
+      assert_equal 1, (7**0)
+      assert_equal 1, (1**1_000_000_000_000)
+      assert_equal -1, (o**1_000_000_000_001)
+      assert_equal 1, (o**-4)
+      assert_equal -1, (o**-3)
+      assert_equal 1, (1**-5)
       assert_equal 9223372036854775807, (-m).abs
       assert_equal 9223372036854775807, m.pred.succ
       assert_equal -9223372036854775808, (n / 1)
@@ -1830,7 +1830,7 @@ module NumberTests
       assert_equal "Num(-14)", (a * b).to_s
       assert_equal "Num(-4)", (a / b).to_s
       assert_equal "Num(-1)", (a % b).to_s
-      assert_equal "Num(49)", (a ** 2).to_s
+      assert_equal "Num(49)", (a**2).to_s
       assert_equal "Num(-7)", (-a).to_s
       assert_equal "Num(2)", (+b).to_s
       assert_equal "Num(-8)", (~a).to_s
@@ -2034,7 +2034,7 @@ module NumberTests
       assert_equal "15", ((v * 3)).inspect
       assert_equal "2", ((v / 2)).inspect
       assert_equal "2", ((v % 3)).inspect
-      assert_equal "25", ((v ** 2)).inspect
+      assert_equal "25", ((v**2)).inspect
       assert_equal "-5", ((-v)).inspect
       assert_equal "5.0", ((w * 2.0)).inspect
       assert_equal "2.0", ((w - 0.5)).inspect
@@ -2547,8 +2547,8 @@ module NumberTests
     end
 
     def test_rectangular_complex_part
-      assert_equal Complex(1.0, 2), Complex.rectangular(1.0+0i, 2+0.0i)
-      assert_equal TypeError, (begin; Complex.rectangular(1.0+1i, 2); rescue TypeError => e; e.class; end)
+      assert_equal Complex(1.0, 2), Complex.rectangular(1.0 + 0i, 2 + 0.0i)
+      assert_equal TypeError, (begin; Complex.rectangular(1.0 + 1i, 2); rescue TypeError => e; e.class; end)
     end
   end
 
@@ -2659,9 +2659,9 @@ module NumberTests
       b = 1
       100.times { a, b = b, a + b }
       assert_equal 354224848179261915075, a
-      assert_equal 1267650600228229401496703205376, 2 ** 100
-      assert_equal [0, 1], [(2 ** 64) % 2, (2 ** 64 + 1) % 2]
-      assert_equal true, a > 2 ** 63
+      assert_equal 1267650600228229401496703205376, 2**100
+      assert_equal [0, 1], [(2**64) % 2, (2**64 + 1) % 2]
+      assert_equal true, a > 2**63
       assert_equal Integer, f.class
     end
   end

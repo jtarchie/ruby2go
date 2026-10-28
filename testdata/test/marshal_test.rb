@@ -402,7 +402,7 @@ module MarshalTests
     # A loaded exponent past what BigDecimal arithmetic keeps would reach 10**n on the first comparison (#109).
     def test_bigdecimal_exponent_is_checked
       [2**61 + 1, -(2**61) - 1].each do |exp|
-        assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x011" +HostileInputTest.zigzag(exp) + "F\x00"))
+        assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x011" + HostileInputTest.zigzag(exp) + "F\x00"))
       end
     end
   end
