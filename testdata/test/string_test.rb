@@ -246,11 +246,11 @@ module StringTests
     # Percent literals with every delimiter pair, nesting included.
     def test_percent_literals_with_every_delimiter
       assert_equal "paren (nested) 'q'", %q(paren (nested) 'q')
-      assert_equal "brack 3", %Q[brack #{1 + 2}]
+      assert_equal "brack 3", %[brack #{1 + 2}]
       assert_equal "par (x)", %(par (x))
       assert_equal "ang", %<ang>
       assert_equal "bar", %|bar|
-      assert_equal "br {n} 1", %Q{br {n} #{1}}
+      assert_equal "br {n} 1", %{br {n} #{1}}
       assert_equal ["a", "b", "c"], %w[a b c]
       assert_equal [:a, :b, :c], %i[a b c]
       assert_equal [], %w[]
