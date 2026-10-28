@@ -35,4 +35,4 @@ puts "--- without headers, converted"
 CSV.parse(SALES, converters: :numeric).first(2).each { |r| p r }
 
 puts "--- as text again"
-print table.to_s
+print table

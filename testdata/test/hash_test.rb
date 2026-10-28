@@ -691,7 +691,7 @@ module HashTests
       assert_equal true, ov.key?("a")
       assert_equal ["a", "b"], ov.keys
       got = [] #: Array[String]
-      ov.each { |k, v| got << "#{k} #{v.nil?} #{v.to_s}" }
+      ov.each { |k, v| got << "#{k} #{v.nil?} #{v}" }
       ov.each_value { |v| got << v.inspect }
       assert_equal ["a true ", "b false 2", "nil", "2"], got
       assert_nil ov.fetch("a")

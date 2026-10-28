@@ -2715,7 +2715,7 @@ module DynamicTests
     end
 
     #: () -> String
-    def ivar_dyn = "#{@value.to_s}!"
+    def ivar_dyn = "#{@value}!"
   end
 
   class DynamicUntypedTest < Minitest::Test

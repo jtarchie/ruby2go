@@ -180,7 +180,7 @@ module Resty
         if resource.is_a?(Array)
           resource.map { |r| self.class.new(r).body }.join
         else
-          "<h1>#{resource.to_s}</h1>"
+          "<h1>#{resource}</h1>"
         end
       end
     end

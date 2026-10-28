@@ -27,7 +27,7 @@ puts sub.days_active(Date.parse("2024-03-01"))
 d = Date.parse("March 5, 2024")
 puts d.inspect
 puts "#{d} is a #{Date::DAYNAMES[d.wday]}, day #{d.yday}, ISO week #{d.cweek}"
-puts d.strftime("%a %-d %b %Y"), d.leap?, (d + 30).to_s, (d << 12).to_s
+puts d.strftime("%a %-d %b %Y"), d.leap?, (d + 30), (d << 12)
 puts Date.strptime("12/25/2023", "%m/%d/%Y"), Date.new(2024, -1, -1)
 
 weekend = (Date.new(2024, 3, 1)..Date.new(2024, 3, 14)).select { |x| x.saturday? || x.sunday? }
@@ -42,7 +42,7 @@ Date.new(2024, 1, 1).step(Date.new(2024, 12, 31), 7) do |x|
 end
 puts by_month.inspect
 
-puts [Date.new(2024, 5, 1), Date.new(2023, 5, 1)].max.to_s
+puts [Date.new(2024, 5, 1), Date.new(2023, 5, 1)].max
 puts Date.valid_date?(2023, 2, 29), Date.leap?(2000), Date.leap?(1900)
 
 begin

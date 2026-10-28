@@ -26,7 +26,7 @@ module ActionView
     def self.to_query_pairs(params, namespace)
       pairs = []
       params.each do |key, value|
-        name = namespace.empty? ? key.to_s : "#{namespace}[#{key.to_s}]"
+        name = namespace.empty? ? key.to_s : "#{namespace}[#{key}]"
         pair = to_query_value(name, value)
         pairs << pair unless pair.empty?
       end
