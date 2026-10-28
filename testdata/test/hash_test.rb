@@ -1359,7 +1359,7 @@ module HashTests
       acc = 0
       h.each_with_index do |pair, i|
         acc += i * 10 + pair[1]
-        break if (pair[1]).negative?
+        break if pair[1].negative?
       end
       assert_equal 34, acc
       out = []
@@ -1844,7 +1844,7 @@ module HashTests
       x = "a"
       assert_equal 1, sk["#{x}b"]
       assert_equal 1, sk["#{x}b"]
-      assert_equal 2, sk[("#{x}b").to_sym]
+      assert_equal 2, sk["#{x}b".to_sym]
       assert_nil sk[x]
     end
 

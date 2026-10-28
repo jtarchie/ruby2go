@@ -3037,13 +3037,13 @@ module ObjectTests
       assert_equal "CustomWidget", CmWidget.name
       assert_equal "ObjectTests::CmWidget", CmWidget.to_s
       assert_equal "ObjectTests::CmWidget", CmWidget.inspect
-      assert_equal "ObjectTests::CmWidget", (CmWidget).to_s
+      assert_equal "ObjectTests::CmWidget", CmWidget.to_s
       assert_equal "[ObjectTests::CmWidget]", [CmWidget].inspect
       assert_equal "CustomWidget", CmWidget.new.class.name
       assert_equal "ObjectTests::CmGadget", CmGadget.name
       assert_equal "GadgetClass", CmGadget.to_s
       assert_equal "ObjectTests::CmGadget", CmGadget.inspect
-      assert_equal "GadgetClass", (CmGadget).to_s
+      assert_equal "GadgetClass", CmGadget.to_s
     end
   end
 
@@ -3399,7 +3399,7 @@ module ObjectTests
       assert_equal "CustomWidget", SubWidget.new.class.name
       assert_equal "GadgetClass", MdGadget.to_s
       assert_equal "GadgetClass", SubGadget.to_s
-      assert_equal "GadgetClass", (SubGadget).to_s
+      assert_equal "GadgetClass", SubGadget.to_s
       assert_equal "GadgetInspect", SubGadget.inspect
       assert_equal "[GadgetInspect]", [SubGadget].inspect
       d = MdDoc.new

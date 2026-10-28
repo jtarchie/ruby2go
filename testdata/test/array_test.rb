@@ -1604,7 +1604,7 @@ module ArrayTests
         3
       ] #: Array[Integer]
       assert_equal "[1, 2, 3]", multi.inspect
-      assert_equal "[1.5, -0.0]", ([1.5, -0.0]).to_s
+      assert_equal "[1.5, -0.0]", [1.5, -0.0].to_s
       w = %w[]
       assert_equal "[]", w.inspect
       assert_equal 0, w.size

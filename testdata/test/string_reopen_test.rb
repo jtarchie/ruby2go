@@ -13,7 +13,7 @@ class String
   def palindrome? = self == reverse
 
   #: (Integer) -> String
-  def truncate(n) = size > n ? ("#{chars.first(n).join}...") : self
+  def truncate(n) = size > n ? "#{chars.first(n).join}..." : self
 
   #: () -> Integer
   def vowel_count
@@ -54,7 +54,7 @@ module StringReopenTests
       assert_equal :ABC, :abc.up
       assert_equal %i[X Y], %i[x y].map(&:up)
       assert_equal "BA...", "ab".reverse.shout.truncate(2)
-      assert_equal false, ("xy").palindrome?
+      assert_equal false, "xy".palindrome?
       assert_equal true, "noon".strip.palindrome?
       u = string_reopen_ident("dynamo")
       assert_equal "DYNAMO!", u.shout

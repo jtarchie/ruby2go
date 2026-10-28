@@ -1700,7 +1700,7 @@ b/
       assert_equal "[1,2]!", "#{j}!"
       assert_equal 5, j.size
       assert_equal "String", j.class.to_s
-      assert_equal "[1,2]x", ("#{j}x")
+      assert_equal "[1,2]x", "#{j}x"
       assert_equal "\"1\"", 1.to_json.to_json
       assert_equal "\"\\\"x\\\"\"", "x".to_json.to_json
       assert_equal "String", :a.to_json.class.to_s

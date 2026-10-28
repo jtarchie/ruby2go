@@ -124,7 +124,7 @@ module Tep
         slot = -1
         if Tep::APP.sched_fibers[i].f.alive? &&
            Tep::APP.sched_io_fd[i] >= 0 &&
-           (Tep::APP.sched_io_ready[i]).zero?
+           Tep::APP.sched_io_ready[i].zero?
           slot = Sock.sphttp_poll_add(Tep::APP.sched_io_fd[i],
                                       Tep::APP.sched_io_mode[i])
           added += 1
@@ -213,7 +213,7 @@ module Tep
       while i < n
         if Tep::APP.sched_fibers[i].f.alive? &&
            Tep::APP.sched_io_fd[i] >= 0 &&
-           (Tep::APP.sched_io_ready[i]).zero?
+           Tep::APP.sched_io_ready[i].zero?
           return true
         end
 
