@@ -16,7 +16,6 @@ module RugarooBoot
   @features = nil
 
   class << self
-
     # Valid UTF-8, since JSON raises on a binary or invalid String.
     def text(s)
       s.is_a?(String) ? s.dup.force_encoding(Encoding::UTF_8).scrub : s
