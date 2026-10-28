@@ -1,5 +1,6 @@
 # rbs_inline: enabled
 
+require 'English'
 require "minitest/autorun"
 require "bigdecimal"
 
@@ -2599,7 +2600,7 @@ end
       os = 2
       min = 3
       neg = -0.0
-      pid = $$
+      pid = $PROCESS_ID
       args = [1]
       assert_equal [1, 2, 3], [math, os, min]
       assert_equal "-0.0", neg.to_s

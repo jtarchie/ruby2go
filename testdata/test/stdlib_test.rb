@@ -1,5 +1,6 @@
 # rbs_inline: enabled
 
+require 'English'
 require "minitest/autorun"
 require "find"
 require "pathname"
@@ -1849,7 +1850,7 @@ end
         ensure
           r.close
         end
-        assert_equal [true, "hello\n", 1, true], [same, line, IO.new(1).fileno, $$ == Process.pid]
+        assert_equal [true, "hello\n", 1, true], [same, line, IO.new(1).fileno, $PROCESS_ID == Process.pid]
       end
       assert_raises(Errno::ENOENT) { IO.sysopen("/nonexistent/rugaroo/zz") }
       e = assert_raises(Errno::EBADF) { IO.new(9999) }
@@ -1869,9 +1870,9 @@ end
 
     def test_popen
       assert_equal "hi\n", IO.popen(%w[echo hi]) { |io| io.read }
-      assert_equal true, $?&.success?
+      assert_equal true, $CHILD_STATUS&.success?
       assert_equal "a\n", IO.popen("echo a; exit 3") { |io| io.gets }
-      assert_equal 3, $?&.exitstatus
+      assert_equal 3, $CHILD_STATUS&.exitstatus
       assert_equal %W[1\n 2\n], IO.popen("printf '1\\n2\\n'") { |io| io.readlines }
     end
   end
@@ -1961,7 +1962,7 @@ end
       io = IO.popen(["sh", "-c", "cat > /dev/null; exit 4"], "w")
       io.puts "x"
       io.close_write
-      assert_equal [true, 4], [io.closed?, $?&.exitstatus]
+      assert_equal [true, 4], [io.closed?, $CHILD_STATUS&.exitstatus]
       io = IO.popen("cat", "r+")
       fd = io.fileno
       io.close_read
@@ -1970,7 +1971,7 @@ end
       assert_equal "not opened for reading", e.message
       assert_equal false, io.closed?
       io.close_write
-      assert_equal [true, true], [io.closed?, $?&.success?]
+      assert_equal [true, true], [io.closed?, $CHILD_STATUS&.success?]
       io = IO.popen("cat >/dev/null", "wb")
       e = assert_raises(IOError) { io.gets }
       assert_equal "not opened for reading", e.message
@@ -1985,12 +1986,12 @@ end
       e = assert_raises(IOError) { io.write("y") }
       assert_equal "not opened for writing", e.message
       io.close
-      assert_equal [true, "#<IO:(closed)>", true], [io.closed?, io.inspect, $?&.success?]
+      assert_equal [true, "#<IO:(closed)>", true], [io.closed?, io.inspect, $CHILD_STATUS&.success?]
       assert_raises(IOError) { io.pid }
       io = IO.popen(["sh", "-c", "exit 7"])
       pid = io.pid
       assert_nil io.close
-      assert_equal [7, true], [$?&.exitstatus, $?&.pid == pid]
+      assert_equal [7, true], [$CHILD_STATUS&.exitstatus, $CHILD_STATUS&.pid == pid]
       e = assert_raises(Errno::ENOENT) { IO.popen(["no_such_cmd_rugaroo"]) }
       assert_equal "No such file or directory - no_such_cmd_rugaroo", e.message
     end

@@ -4,7 +4,7 @@
 # each file once.
 require_relative "inventory"
 
-puts "  item.rb loaded (the program: #{__FILE__ == $0}, in #{File.basename(__dir__)}/)"
+puts "  item.rb loaded (the program: #{__FILE__ == $PROGRAM_NAME}, in #{File.basename(__dir__)}/)"
 count = 0 # not main.rb's count: top-level locals belong to their file
 puts "  item.rb's count: #{count}"
 

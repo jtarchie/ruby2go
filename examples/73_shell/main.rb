@@ -2,8 +2,9 @@
 
 # Shelling out: Kernel#system, backticks and $?.
 
+require 'English'
 files = %x(printf 'b.txt\na.rb\nc.rb\n').lines.map(&:chomp)
-puts "listed #{files.size} names, status #{$?&.exitstatus}"
+puts "listed #{files.size} names, status #{$CHILD_STATUS&.exitstatus}"
 
 rubies = files.select { |f| f.end_with?(".rb") }.sort
 puts "ruby files: #{rubies.join(", ")}"
@@ -16,7 +17,7 @@ ok = system("echo", "  args pass through untouched: $HOME *")
 puts "succeeded: #{ok.inspect}"
 
 ok = system("exit 2")
-puts "exit 2 -> #{ok.inspect}, exitstatus #{$?&.exitstatus}"
+puts "exit 2 -> #{ok.inspect}, exitstatus #{$CHILD_STATUS&.exitstatus}"
 
 missing = system("no_such_command_rugaroo")
 puts "missing command -> #{missing.inspect}"

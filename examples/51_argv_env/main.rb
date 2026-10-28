@@ -32,7 +32,7 @@ class Options
   end
 end
 
-puts "program: #{$0}"
+puts "program: #{$PROGRAM_NAME}"
 puts "same file: #{__FILE__ == $PROGRAM_NAME}"
 puts "argc: #{ARGV.size}"
 p ARGV

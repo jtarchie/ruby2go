@@ -46,14 +46,14 @@ end
 def string_bin_lm_gsub
   y = "é".b
   out = y.gsub(/./) { |m| "#{m.ord}," }
-  $~ ? out : ""
+  $LAST_MATCH_INFO ? out : ""
 end
 
 #: () -> Integer?
 def string_bin_lm_index
   v = "éa".b
   r = v =~ /a/
-  $~ ? r : nil
+  $LAST_MATCH_INFO ? r : nil
 end
 
 #: (String) -> Integer
@@ -63,7 +63,7 @@ def string_bin_split(x) = x.split(//n).size
 def string_bin_lm_offsets
   v = "éa".b
   v =~ /a/
-  [$~&.begin(0), $~&.end(0)]
+  [$LAST_MATCH_INFO&.begin(0), $LAST_MATCH_INFO&.end(0)]
 end
 
 module StringTests
@@ -1560,7 +1560,7 @@ continued"
     end
 
     def test_record_separator_chomp
-      old = $/
+      old = $INPUT_RECORD_SEPARATOR
       begin
         $/ = "x"
         a = "abx".chomp
@@ -1588,7 +1588,7 @@ continued"
     def test_last_match
       assert_equal ["home:brew:github.com/home/brew", nil], [string_remote_path("https://github.com/home/brew"), string_remote_path("x")]
       system("true")
-      assert_equal [true, true], [$CHILD_STATUS.success?, $PROCESS_ID == $$]
+      assert_equal [true, true], [$CHILD_STATUS.success?, $PROCESS_ID == $PROCESS_ID]
     end
   end
 
@@ -1618,7 +1618,7 @@ continued"
 
     def test_gsub_block_last_match
       assert_equal ["FooBar", "a2b4", "x<y>"],
-                   [string_camel(:foo_bar), "a1b2".gsub(/\d/) { ($~[0].to_i * 2).to_s }, "xy".sub(/(y)/) { "<#{::Regexp.last_match(1)}>" }]
+                   [string_camel(:foo_bar), "a1b2".gsub(/\d/) { ($LAST_MATCH_INFO[0].to_i * 2).to_s }, "xy".sub(/(y)/) { "<#{::Regexp.last_match(1)}>" }]
     end
 
     def test_scan_interpolated_groups

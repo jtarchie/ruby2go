@@ -1,5 +1,6 @@
 # rbs_inline: enabled
 
+require 'English'
 require "minitest/autorun"
 require "tmpdir"
 require "fileutils"
@@ -65,26 +66,26 @@ module ProcessTests
 
     def test_signalled_child_status
       system("kill -9 $$")
-      st = $?
+      st = $CHILD_STATUS
       assert_equal [true, 9, nil, nil, false], [st&.signaled?, st&.termsig, st&.exitstatus, st&.success?, st&.exited?]
       assert_equal "pid N SIGKILL (signal 9)", st&.to_s&.sub(/\d+/, "N")
       assert_equal 9, st&.to_i
 
       Process.wait(Process.spawn("sh", "-c", "kill -15 $$"))
-      st = $?
+      st = $CHILD_STATUS
       assert_equal [true, 15, nil], [st&.signaled?, st&.termsig, st&.exitstatus]
     end
 
     def test_exited_child_status
       system("exit 3")
-      st = $?
+      st = $CHILD_STATUS
       assert_equal [false, nil, 3, false, true], [st&.signaled?, st&.termsig, st&.exitstatus, st&.success?, st&.exited?]
       assert_equal 768, st&.to_i
     end
 
     def test_popen_signalled_status
       IO.popen(["sh", "-c", "kill -9 $$"]) { |io| io.read }
-      st = $?
+      st = $CHILD_STATUS
       assert_equal [true, 9, nil], [st&.signaled?, st&.termsig, st&.exitstatus]
     end
 

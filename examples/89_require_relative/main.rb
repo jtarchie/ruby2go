@@ -14,4 +14,4 @@ inventory.add(Item.new("nut", 40, 0.1))
 inventory.add(Item.new("washer", count, 0.05))
 inventory.report
 puts "total value: #{format("%.2f", inventory.value)} #{CURRENCY}"
-puts "main.rb is the program: #{__FILE__ == $0}"
+puts "main.rb is the program: #{__FILE__ == $PROGRAM_NAME}"

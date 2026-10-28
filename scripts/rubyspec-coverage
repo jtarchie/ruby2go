@@ -12,13 +12,14 @@
 #
 # Without --spec, the checkout is cmd/rubyspec's (pinned commit, user cache dir; decision 272).
 
+require 'English'
 require "prism"
 
 ROOT = File.expand_path("..", __dir__)
 missing = ARGV.delete("--missing")
 spec = ARGV.index("--spec")&.then { |i| ARGV[i + 1] }
 spec ||= IO.popen(["go", "run", "./cmd/rubyspec", "-print-root"], chdir: ROOT, &:read).strip # the pinned, atomically fetched checkout cmd/rubyspec runs
-abort "rubyspec-coverage: no ruby/spec checkout (go run ./cmd/rubyspec -print-root failed)" unless $?.nil? || $?.success?
+abort "rubyspec-coverage: no ruby/spec checkout (go run ./cmd/rubyspec -print-root failed)" unless $CHILD_STATUS.nil? || $CHILD_STATUS.success?
 abort "rubyspec-coverage: #{spec} is not a ruby/spec checkout" unless Dir.exist?(File.join(spec, "core"))
 
 # class or module name => method names its prelude bodies define ("name.s" holds `def self.` ones)

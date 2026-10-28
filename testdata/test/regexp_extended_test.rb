@@ -1,5 +1,6 @@
 # rbs_inline: enabled
 
+require 'English'
 require "minitest/autorun"
 require "strscan"
 
@@ -62,10 +63,10 @@ module RegexpTests
       assert_equal %w[b b], %w[aba aba].grep(/a(b)a/) { ::Regexp.last_match(1) }
       "z" =~ /z/
       got = %w[abc def].grep(/b/) { |e| [e, ::Regexp.last_match(0)] }
-      assert_equal [[%w[abc b]], nil], [got, $~]
+      assert_equal [[%w[abc b]], nil], [got, $LAST_MATCH_INFO]
       "z" =~ /z/
       assert_equal [["abc"], "z"], [%w[abc def].grep(/b/), ::Regexp.last_match(0)]
-      inv = %w[abc def].grep_v(/e/) { |e| [e, $~.nil?] }
+      inv = %w[abc def].grep_v(/e/) { |e| [e, $LAST_MATCH_INFO.nil?] }
       assert_equal [[["abc", true]], "e"], [inv, ::Regexp.last_match(0)]
     end
 
@@ -170,7 +171,7 @@ module RegexpTests
       assert_equal "a-b-c", "a b c".gsub(/ /, "-")
       assert_equal %w[1 2], "1a2".scan(/\d/)
       assert_equal 1, "aab".index(/ab/)
-      assert_equal %w[ab 12], "ab12".match(/\A[a-z]+/).to_a + [$~.post_match]
+      assert_equal %w[ab 12], "ab12".match(/\A[a-z]+/).to_a + [$LAST_MATCH_INFO.post_match]
       assert_equal "X日X", "a日b".gsub(/[ab]/, "X")
     end
 
@@ -226,9 +227,9 @@ module RegexpExtendedTests
   class LastMatchAssignTest < Minitest::Test
     def test_assign_last_match
       "cd" =~ /(c)/
-      m = $~
+      m = $LAST_MATCH_INFO
       "x" =~ /y/
-      assert_nil $~
+      assert_nil $LAST_MATCH_INFO
       $~ = m
       assert_equal "c", ::Regexp.last_match(1)
       $~ = nil
@@ -244,7 +245,7 @@ module RegexpExtendedTests
       m = /(.).(.)/.match("01234", 1)
       assert_equal %w[1 3], m&.captures
       assert_equal "1", ::Regexp.last_match(1)
-      assert_equal "123", $~&.[](0)
+      assert_equal "123", $LAST_MATCH_INFO&.[](0)
     end
 
     def test_fixed_encoding_flag

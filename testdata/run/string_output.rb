@@ -1,5 +1,6 @@
 # rbs_inline: enabled
 
+require 'English'
 require "stringio"
 
 class Named
@@ -188,7 +189,7 @@ exit 3
 
 # $~, $& and $1 at the top level (decision 171); return with two values is an Array
 "ab" =~ /(b)/
-puts Regexp.last_match(0).inspect, Regexp.last_match(1).inspect, $~.inspect
+puts Regexp.last_match(0).inspect, Regexp.last_match(1).inspect, $LAST_MATCH_INFO.inspect
 puts "ab".match?(/(?x) a b /)
 #: () -> [Integer, Integer]
 def string_two_values
