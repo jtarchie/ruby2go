@@ -4360,7 +4360,7 @@ module ObjectTests
     end
 
     #: (String, ?greeting: String, punct: String) -> String
-    def object_greet(name, greeting: "hello", punct:) = "#{greeting} #{name}#{punct}"
+    def object_greet(name, punct:, greeting: "hello") = "#{greeting} #{name}#{punct}"
 
     # @rbs a: Integer
     # @rbs b: Integer
