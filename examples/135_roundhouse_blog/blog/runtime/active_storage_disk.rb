@@ -297,7 +297,7 @@ module ActiveStorage
             ActiveStorage::Preview.new(blob, variation).variant.image_blob
           else
             ActiveStorage::VariantWithRecord.new(blob, variation).image_blob
-          end
+                  end
           redirect_to(ActiveStorage::DiskKey.disk_url(image.nil? ? blob : image, "inline"))
         end
         nil

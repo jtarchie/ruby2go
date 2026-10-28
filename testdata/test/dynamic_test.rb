@@ -477,7 +477,7 @@ def dynamic_pick(n) = if n.zero?
 nil
 else
 (n.positive? ? DynamicTests::Sq.new("p") : DynamicTests::Blob.new("q"))
-end
+                      end
 
 #: (untyped) -> String
 def truth(v)

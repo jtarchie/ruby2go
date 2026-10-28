@@ -55,7 +55,7 @@ module TypedStore
         raw[1, raw.length - 2].to_s
       else
         raw
-      end
+               end
     end
     @cache_key = s
     @cache_val = h

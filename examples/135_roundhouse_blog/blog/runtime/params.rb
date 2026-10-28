@@ -99,7 +99,7 @@ module Params
     value = sub.fetch(key, "")
     narrowed = if value.is_a?(String)
       value
-    end
+               end
     !narrowed.nil?
   end
 end

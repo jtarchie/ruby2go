@@ -267,7 +267,7 @@ module ActiveRecord
           ActiveSupport.json_time(self[k])
         else
           self[k]
-        end
+                    end
       end
       h
     end

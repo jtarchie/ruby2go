@@ -81,7 +81,7 @@ module Tep
           if (subs[i].fd == fd) && (subs[i].topic == topic)
               subs.delete_at(i)
               dropped += 1
-            end
+          end
           i -= 1
         end
       end

@@ -133,7 +133,7 @@ module ActiveRecord
         hash_conditions(condition)
       else
         substitute_binds(condition.to_s, args)
-      end
+            end
       return false if sql == ""
       @wheres << (negate ? "NOT (#{sql})" : "(#{sql})")
       true
@@ -910,7 +910,7 @@ module ActiveRecord
         parts.join(", ")
       else
         updates.to_s
-      end
+                end
       sql = "UPDATE #{@table} SET #{set_sql}#{scoped_write_where}"
       ActiveRecord.adapter.execute_ddl(sql)
       ActiveRecord.adapter.changes

@@ -371,7 +371,7 @@ module UnionTests
 i
 else
 (i.zero? ? nil : "s")
-end
+                   end
 
     def test_or_and_on_unions
       y = maybe(0)

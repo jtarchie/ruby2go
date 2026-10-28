@@ -245,7 +245,7 @@ class UserAgent
 app.nil? ? "" : app.product
 else
 named
-end
+      end
     else
       app.nil? ? "" : app.product
     end
@@ -281,7 +281,7 @@ end
 app.nil? ? "" : app.version
 else
 v
-end
+      end
     else
       app.nil? ? "" : app.version
     end
@@ -406,7 +406,7 @@ end
       -1
     else
       1
-    end
+            end
     return "" if index < 0
     slot = app.comment[index]
     UserAgent.normalize_os(slot.nil? ? "" : slot)

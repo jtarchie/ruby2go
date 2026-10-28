@@ -287,7 +287,7 @@ module DemoDeep
       value.upcase
     else
       value
-    end
+            end
     value
   end
 
@@ -387,7 +387,7 @@ module DemoRebind
       else
         "-#{rebuild}"
       end
-    end
+              end
 
     "#{version}#{bottle_tag}#{rebuild}"
   end

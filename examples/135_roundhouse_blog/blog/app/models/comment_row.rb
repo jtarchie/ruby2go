@@ -64,12 +64,12 @@ class CommentRow
       nil
     else
       (row["commenter"]).nil? ? nil : (row["commenter"]).to_s
-    end
+                         end
     instance.body = if row["body"].nil?
       nil
     else
       (row["body"]).nil? ? nil : (row["body"]).to_s
-    end
+                    end
     instance.created_at = (row["created_at"]).to_s
     instance.updated_at = (row["updated_at"]).to_s
     instance

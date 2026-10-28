@@ -225,8 +225,8 @@ else
 comma
 else
 (comma < brace ? comma : brace)
-end)
-end
+ end)
+              end
       return "" if close.nil?
       envelope[rest, close - rest]
     end

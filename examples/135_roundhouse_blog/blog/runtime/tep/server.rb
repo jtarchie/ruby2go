@@ -4,27 +4,38 @@
 module Tep
   def self.reason(status)
     if status == 200
- return "OK"; end
+ return "OK"; 
+    end
     if status == 201
- return "Created"; end
+ return "Created"; 
+    end
     if status == 204
- return "No Content"; end
+ return "No Content"; 
+    end
     if status == 301
- return "Moved Permanently"; end
+ return "Moved Permanently"; 
+    end
     if status == 302
- return "Found"; end
+ return "Found"; 
+    end
     if status == 304
- return "Not Modified"; end
+ return "Not Modified"; 
+    end
     if status == 400
- return "Bad Request"; end
+ return "Bad Request"; 
+    end
     if status == 401
- return "Unauthorized"; end
+ return "Unauthorized"; 
+    end
     if status == 403
- return "Forbidden"; end
+ return "Forbidden"; 
+    end
     if status == 404
- return "Not Found"; end
+ return "Not Found"; 
+    end
     if status == 500
- return "Internal Server Error"; end
+ return "Internal Server Error"; 
+    end
     "OK"
   end
 

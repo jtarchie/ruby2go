@@ -175,7 +175,7 @@ module Demo
 nil
 else
 (n == "x" ? GemTab.empty : GemAbstractTab.empty)
-end
+                     end
 
     # A yield inside a block, its value the method's (decision 226).
     def synced = synchronize { @state }

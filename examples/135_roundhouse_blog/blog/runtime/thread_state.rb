@@ -273,7 +273,7 @@ module TypedStore
         raw[1, raw.length - 2].to_s
       else
         raw
-      end
+               end
     end
     Thread.current[:typed_store_key] = s
     Thread.current[:typed_store_val] = h

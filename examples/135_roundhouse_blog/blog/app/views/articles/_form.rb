@@ -9,12 +9,12 @@ module Views
         :patch
       else
         :post
-      end
+                    end
       io << "<form action=\"#{ActionView::ViewHelpers.html_escape(if article.persisted?
         RouteHelpers.article_path(article.id)
       else
         RouteHelpers.articles_path
-      end)}\" accept-charset=\"UTF-8\" method=\"post\" class=\"#{"contents"}\">"
+                                                                  end)}\" accept-charset=\"UTF-8\" method=\"post\" class=\"#{"contents"}\">"
       io << ActionView::ViewHelpers.method_override_input(form_method)
       io << ActionView::ViewHelpers.csrf_token_hidden_input
       io << "\n"
@@ -42,11 +42,11 @@ module Views
         "Update Article"
       else
         "Create Article"
-      end)}\" data-disable-with=\"#{ActionView::ViewHelpers.html_escape(if form_method == :patch
+                                                                                                  end)}\" data-disable-with=\"#{ActionView::ViewHelpers.html_escape(if form_method == :patch
         "Update Article"
       else
         "Create Article"
-      end)}\" class=\"#{"w-full sm:w-auto rounded-md px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white inline-block font-medium cursor-pointer"}\">"
+                                                                                                                                                                    end)}\" class=\"#{"w-full sm:w-auto rounded-md px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white inline-block font-medium cursor-pointer"}\">"
       io << "\n  </div>\n"
       io << "</form>"
       nil

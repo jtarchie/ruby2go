@@ -2478,7 +2478,7 @@ module ControlTests
 x > 2 ? "gt2" : "eq2"
 else
 "le1"
-end
+               end
       assert_equal "gt2", nested
       assert_equal "arg if", (x > 1 ? "arg if" : "arg else")
       s = "a" + (x.odd? ? "odd" : "even") + "z"
@@ -2604,12 +2604,12 @@ end
 "a"
 else
 x > 3 ? "b" : "c"
-end)
+                         end)
       assert_equal "c", (if x > 5
 "a"
 else
 x > 4 ? "b" : "c"
-end)
+                         end)
       assert_equal "even big", (x.even? && x > 2 ? "even big" : "other")
     end
 
@@ -5371,7 +5371,7 @@ end)
     control_pick.upcase
   else
     control_pick
-  end.freeze
+                   end.freeze
 
   class ControlBeginValue
     #: () -> void
