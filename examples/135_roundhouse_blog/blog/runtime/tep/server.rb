@@ -3,17 +3,28 @@
 # (-w workers) using SO_REUSEPORT so the kernel load-balances.
 module Tep
   def self.reason(status)
-    if status == 200; return "OK"; end
-    if status == 201; return "Created"; end
-    if status == 204; return "No Content"; end
-    if status == 301; return "Moved Permanently"; end
-    if status == 302; return "Found"; end
-    if status == 304; return "Not Modified"; end
-    if status == 400; return "Bad Request"; end
-    if status == 401; return "Unauthorized"; end
-    if status == 403; return "Forbidden"; end
-    if status == 404; return "Not Found"; end
-    if status == 500; return "Internal Server Error"; end
+    if status == 200
+ return "OK"; end
+    if status == 201
+ return "Created"; end
+    if status == 204
+ return "No Content"; end
+    if status == 301
+ return "Moved Permanently"; end
+    if status == 302
+ return "Found"; end
+    if status == 304
+ return "Not Modified"; end
+    if status == 400
+ return "Bad Request"; end
+    if status == 401
+ return "Unauthorized"; end
+    if status == 403
+ return "Forbidden"; end
+    if status == 404
+ return "Not Found"; end
+    if status == 500
+ return "Internal Server Error"; end
     "OK"
   end
 
