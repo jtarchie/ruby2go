@@ -34,8 +34,8 @@ class ArticlesController < ApplicationController
     Db.finalize(__comments_stmt)
     results.each do |a|
       __comments_group = []
-  __comments_loaded.each { |r| __comments_group << r if r.article_id == a.id }
-  a._preload_comments(__comments_group)
+      __comments_loaded.each { |r| __comments_group << r if r.article_id == a.id }
+      a._preload_comments(__comments_group)
     end
     @articles = results
     if request_format == :json

@@ -234,109 +234,109 @@ module FfiTests
       mp.put_char(8, -100)
       mp.write_char(-50)
       assert_equal [-100, -50, [-100, -50]], [mp.get_char(8), mp.read_char, (mp.put_array_of_char(16, [-100, -50])
- mp.get_array_of_char(16, 2))]
+                                                                             mp.get_array_of_char(16, 2))]
       mp.write_array_of_char([-50, -100])
       assert_equal [-50, -100], mp.read_array_of_char(2)
       mp.put_uchar(8, 200)
       mp.write_uchar(100)
       assert_equal [200, 100, [200, 100]], [mp.get_uchar(8), mp.read_uchar, (mp.put_array_of_uchar(16, [200, 100])
- mp.get_array_of_uchar(16, 2))]
+                                                                             mp.get_array_of_uchar(16, 2))]
       mp.write_array_of_uchar([100, 200])
       assert_equal [100, 200], mp.read_array_of_uchar(2)
       mp.put_short(8, -30_000)
       mp.write_short(-15_000)
       assert_equal [-30_000, -15_000, [-30_000, -15_000]], [mp.get_short(8), mp.read_short, (mp.put_array_of_short(16, [-30_000, -15_000])
- mp.get_array_of_short(16, 2))]
+                                                                                             mp.get_array_of_short(16, 2))]
       mp.write_array_of_short([-15_000, -30_000])
       assert_equal [-15_000, -30_000], mp.read_array_of_short(2)
       mp.put_ushort(8, 60_000)
       mp.write_ushort(30_000)
       assert_equal [60_000, 30_000, [60_000, 30_000]], [mp.get_ushort(8), mp.read_ushort, (mp.put_array_of_ushort(16, [60_000, 30_000])
- mp.get_array_of_ushort(16, 2))]
+                                                                                           mp.get_array_of_ushort(16, 2))]
       mp.write_array_of_ushort([30_000, 60_000])
       assert_equal [30_000, 60_000], mp.read_array_of_ushort(2)
       mp.put_int(8, -2_000_000_000)
       mp.write_int(-1_000_000_000)
       assert_equal [-2_000_000_000, -1_000_000_000, [-2_000_000_000, -1_000_000_000]], [mp.get_int(8), mp.read_int, (mp.put_array_of_int(16, [-2_000_000_000, -1_000_000_000])
- mp.get_array_of_int(16, 2))]
+                                                                                                                     mp.get_array_of_int(16, 2))]
       mp.write_array_of_int([-1_000_000_000, -2_000_000_000])
       assert_equal [-1_000_000_000, -2_000_000_000], mp.read_array_of_int(2)
       mp.put_uint(8, 4_000_000_000)
       mp.write_uint(2_000_000_000)
       assert_equal [4_000_000_000, 2_000_000_000, [4_000_000_000, 2_000_000_000]], [mp.get_uint(8), mp.read_uint, (mp.put_array_of_uint(16, [4_000_000_000, 2_000_000_000])
- mp.get_array_of_uint(16, 2))]
+                                                                                                                   mp.get_array_of_uint(16, 2))]
       mp.write_array_of_uint([2_000_000_000, 4_000_000_000])
       assert_equal [2_000_000_000, 4_000_000_000], mp.read_array_of_uint(2)
       mp.put_long(8, -4_611_686_018_427_387_904)
       mp.write_long(-2_305_843_009_213_693_952)
       assert_equal [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952, [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952]], [mp.get_long(8), mp.read_long, (mp.put_array_of_long(16, [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952])
- mp.get_array_of_long(16, 2))]
+                                                                                                                                                                       mp.get_array_of_long(16, 2))]
       mp.write_array_of_long([-2_305_843_009_213_693_952, -4_611_686_018_427_387_904])
       assert_equal [-2_305_843_009_213_693_952, -4_611_686_018_427_387_904], mp.read_array_of_long(2)
       mp.put_ulong(8, 4_611_686_018_427_387_904)
       mp.write_ulong(2_305_843_009_213_693_952)
       assert_equal [4_611_686_018_427_387_904, 2_305_843_009_213_693_952, [4_611_686_018_427_387_904, 2_305_843_009_213_693_952]], [mp.get_ulong(8), mp.read_ulong, (mp.put_array_of_ulong(16, [4_611_686_018_427_387_904, 2_305_843_009_213_693_952])
- mp.get_array_of_ulong(16, 2))]
+                                                                                                                                                                     mp.get_array_of_ulong(16, 2))]
       mp.write_array_of_ulong([2_305_843_009_213_693_952, 4_611_686_018_427_387_904])
       assert_equal [2_305_843_009_213_693_952, 4_611_686_018_427_387_904], mp.read_array_of_ulong(2)
       mp.put_long_long(8, -4_611_686_018_427_387_904)
       mp.write_long_long(-2_305_843_009_213_693_952)
       assert_equal [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952, [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952]], [mp.get_long_long(8), mp.read_long_long, (mp.put_array_of_long_long(16, [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952])
- mp.get_array_of_long_long(16, 2))]
+                                                                                                                                                                                 mp.get_array_of_long_long(16, 2))]
       mp.write_array_of_long_long([-2_305_843_009_213_693_952, -4_611_686_018_427_387_904])
       assert_equal [-2_305_843_009_213_693_952, -4_611_686_018_427_387_904], mp.read_array_of_long_long(2)
       mp.put_ulong_long(8, 4_611_686_018_427_387_904)
       mp.write_ulong_long(2_305_843_009_213_693_952)
       assert_equal [4_611_686_018_427_387_904, 2_305_843_009_213_693_952, [4_611_686_018_427_387_904, 2_305_843_009_213_693_952]], [mp.get_ulong_long(8), mp.read_ulong_long, (mp.put_array_of_ulong_long(16, [4_611_686_018_427_387_904, 2_305_843_009_213_693_952])
- mp.get_array_of_ulong_long(16, 2))]
+                                                                                                                                                                               mp.get_array_of_ulong_long(16, 2))]
       mp.write_array_of_ulong_long([2_305_843_009_213_693_952, 4_611_686_018_427_387_904])
       assert_equal [2_305_843_009_213_693_952, 4_611_686_018_427_387_904], mp.read_array_of_ulong_long(2)
       mp.put_int8(8, -100)
       mp.write_int8(-50)
       assert_equal [-100, -50, [-100, -50]], [mp.get_int8(8), mp.read_int8, (mp.put_array_of_int8(16, [-100, -50])
- mp.get_array_of_int8(16, 2))]
+                                                                             mp.get_array_of_int8(16, 2))]
       mp.write_array_of_int8([-50, -100])
       assert_equal [-50, -100], mp.read_array_of_int8(2)
       mp.put_uint8(8, 200)
       mp.write_uint8(100)
       assert_equal [200, 100, [200, 100]], [mp.get_uint8(8), mp.read_uint8, (mp.put_array_of_uint8(16, [200, 100])
- mp.get_array_of_uint8(16, 2))]
+                                                                             mp.get_array_of_uint8(16, 2))]
       mp.write_array_of_uint8([100, 200])
       assert_equal [100, 200], mp.read_array_of_uint8(2)
       mp.put_int16(8, -30_000)
       mp.write_int16(-15_000)
       assert_equal [-30_000, -15_000, [-30_000, -15_000]], [mp.get_int16(8), mp.read_int16, (mp.put_array_of_int16(16, [-30_000, -15_000])
- mp.get_array_of_int16(16, 2))]
+                                                                                             mp.get_array_of_int16(16, 2))]
       mp.write_array_of_int16([-15_000, -30_000])
       assert_equal [-15_000, -30_000], mp.read_array_of_int16(2)
       mp.put_uint16(8, 60_000)
       mp.write_uint16(30_000)
       assert_equal [60_000, 30_000, [60_000, 30_000]], [mp.get_uint16(8), mp.read_uint16, (mp.put_array_of_uint16(16, [60_000, 30_000])
- mp.get_array_of_uint16(16, 2))]
+                                                                                           mp.get_array_of_uint16(16, 2))]
       mp.write_array_of_uint16([30_000, 60_000])
       assert_equal [30_000, 60_000], mp.read_array_of_uint16(2)
       mp.put_int32(8, -2_000_000_000)
       mp.write_int32(-1_000_000_000)
       assert_equal [-2_000_000_000, -1_000_000_000, [-2_000_000_000, -1_000_000_000]], [mp.get_int32(8), mp.read_int32, (mp.put_array_of_int32(16, [-2_000_000_000, -1_000_000_000])
- mp.get_array_of_int32(16, 2))]
+                                                                                                                         mp.get_array_of_int32(16, 2))]
       mp.write_array_of_int32([-1_000_000_000, -2_000_000_000])
       assert_equal [-1_000_000_000, -2_000_000_000], mp.read_array_of_int32(2)
       mp.put_uint32(8, 4_000_000_000)
       mp.write_uint32(2_000_000_000)
       assert_equal [4_000_000_000, 2_000_000_000, [4_000_000_000, 2_000_000_000]], [mp.get_uint32(8), mp.read_uint32, (mp.put_array_of_uint32(16, [4_000_000_000, 2_000_000_000])
- mp.get_array_of_uint32(16, 2))]
+                                                                                                                       mp.get_array_of_uint32(16, 2))]
       mp.write_array_of_uint32([2_000_000_000, 4_000_000_000])
       assert_equal [2_000_000_000, 4_000_000_000], mp.read_array_of_uint32(2)
       mp.put_int64(8, -4_611_686_018_427_387_904)
       mp.write_int64(-2_305_843_009_213_693_952)
       assert_equal [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952, [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952]], [mp.get_int64(8), mp.read_int64, (mp.put_array_of_int64(16, [-4_611_686_018_427_387_904, -2_305_843_009_213_693_952])
- mp.get_array_of_int64(16, 2))]
+                                                                                                                                                                         mp.get_array_of_int64(16, 2))]
       mp.write_array_of_int64([-2_305_843_009_213_693_952, -4_611_686_018_427_387_904])
       assert_equal [-2_305_843_009_213_693_952, -4_611_686_018_427_387_904], mp.read_array_of_int64(2)
       mp.put_uint64(8, 4_611_686_018_427_387_904)
       mp.write_uint64(2_305_843_009_213_693_952)
       assert_equal [4_611_686_018_427_387_904, 2_305_843_009_213_693_952, [4_611_686_018_427_387_904, 2_305_843_009_213_693_952]], [mp.get_uint64(8), mp.read_uint64, (mp.put_array_of_uint64(16, [4_611_686_018_427_387_904, 2_305_843_009_213_693_952])
- mp.get_array_of_uint64(16, 2))]
+                                                                                                                                                                       mp.get_array_of_uint64(16, 2))]
       mp.write_array_of_uint64([2_305_843_009_213_693_952, 4_611_686_018_427_387_904])
       assert_equal [2_305_843_009_213_693_952, 4_611_686_018_427_387_904], mp.read_array_of_uint64(2)
       mp.put_float(8, 1.5)

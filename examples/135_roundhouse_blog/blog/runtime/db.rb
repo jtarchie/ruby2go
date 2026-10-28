@@ -1035,10 +1035,10 @@ module Db
     rc = SQL.sqlite3_exec(h, sql, nil, nil, nil)
     return unless rc != SQL::OK
 
-      msg = SQL.sqlite3_errmsg(h)
-      raise ActiveRecord::RecordNotUnique, msg if Db.unique_violation?(msg)
+    msg = SQL.sqlite3_errmsg(h)
+    raise ActiveRecord::RecordNotUnique, msg if Db.unique_violation?(msg)
 
-      raise "Db.exec failed (" + rc.to_s + "): " + msg + " — sql: " + sql
+    raise "Db.exec failed (" + rc.to_s + "): " + msg + " — sql: " + sql
 
   end
 

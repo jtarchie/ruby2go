@@ -522,7 +522,7 @@ end
 def definite_guarded(out, n)
   return unless n > 0
 
-    v = n
+  v = n
 
 
 
@@ -533,7 +533,7 @@ end
 def raised(n)
   raise ArgumentError, "neg" unless n > 0
 
-    v = n
+  v = n
 
 
 
@@ -1380,7 +1380,7 @@ end
 def control_block_local_first
   [1].each do |i|
   item = ControlTests::Counter.new
- item.n += i
+  item.n += i
 end
   item = nil #: ControlTests::Counter?
   item = ControlTests::Counter.new
@@ -1864,8 +1864,8 @@ module ControlTests
       ww = 0
       res = [5].map do |x|
         ww = x
-              z = x * 2
- z
+        z = x * 2
+        z
       end
       assert_equal 5, ww
       assert_equal [10], res
@@ -2230,7 +2230,7 @@ module ControlTests
           break if b > 10 * a
 
 
-            found << "#{a}-#{b}"
+          found << "#{a}-#{b}"
 
         end
       end
@@ -2259,7 +2259,7 @@ module ControlTests
       n = 0
       total = 0
       (total += n
- n += 1) while n < 4
+       n += 1) while n < 4
       assert_equal 6, total
     end
 
@@ -2489,14 +2489,14 @@ module ControlTests
       assert_equal "{\"a\" => 1}", nv_h.select { |k, v|
   next false if k == "b"
 
- v > 0
+  v > 0
 }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
       assert_equal([1], nv_xs.select do |n|
   next false if n > 1
 
- true
+  true
 end)
     end
   end
@@ -2747,7 +2747,7 @@ end)
       when 3 then seen << "three"
       end
 
-        seen << "body"
+      seen << "body"
 
 
       assert_equal %w[three body], seen
@@ -2941,7 +2941,7 @@ end)
              when ArgumentError then "arg"
              else "other #{e.class}"
              end
-        kinds << kind
+      kinds << kind
 
       end
       assert_equal ["key", "arg", "other IOError"], kinds
@@ -3281,7 +3281,7 @@ end)
         raise ArgumentError, "first"
     ensure
       out << "ensure raising"
-        raise KeyError, "from ensure"
+      raise KeyError, "from ensure"
 
       end
       assert_equal ["ensure raising"], out
@@ -3386,7 +3386,7 @@ end)
         raise KeyError, "orig"
     rescue KeyError => e
       out << "logging #{e.message}"
-        raise e
+      raise e
 
       end
       assert_equal ["logging orig"], out
@@ -3871,7 +3871,7 @@ end)
       sum = 0
       doubled = [1, 2, 3].map do |x|
   sum += x
- x * 2
+  x * 2
 end
       assert_equal 6, sum
       assert_equal [2, 4, 6], doubled
@@ -4471,11 +4471,11 @@ end
       names = %w[ann bo] #: Array[String]
       names.each do |n|
   s = n.upcase
- got << s
+  got << s
 end
       [4, 5].each do |c|
   s = c * 2
- got << s.to_s
+  got << s.to_s
 end
       assert_equal %w[2 4 s3 ANN BO 8 10], got
       out = [] #: Array[String]
@@ -5111,7 +5111,7 @@ end
         raise "inner"
     rescue StandardError => inner
       inner.set_backtrace(["i.rb:1:in 'x'"])
-        raise IOError, "outer"
+      raise IOError, "outer"
 
       end
       e.set_backtrace(["o.rb:1:in 'y'", "o.rb:2:in 'z'"])
@@ -5984,7 +5984,7 @@ module ControlTests
       assert_equal %i[pos zero neg], [control_sign(3), control_sign(0), control_sign(-2)]
       assert_equal([1, 20, 3, 40], [1, 2, 3, 4].map do |i|
         i.even? and next i * 10
-  i
+        i
       end)
       seen = [] #: Array[Integer]
       [1, 2, 3].each do |v|
@@ -6255,7 +6255,7 @@ module ControlTests
       calls = 0
       lim = lambda {
   calls += 1
- 3
+  3
 }
       1.upto(lim.call) { |i| calls += i * 0 }
       lim.call.times { calls += 0 }

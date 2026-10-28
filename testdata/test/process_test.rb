@@ -193,14 +193,14 @@ module ProcessTests
       ts = pipes.map do |r, _w|
   Thread.new do
   50.times { r.autoclose = false }
- true
+  true
 end
 end
       ts.each(&:join)
       assert_equal([false] * 16, pipes.map { |r, _w| r.autoclose? })
       pipes.each do |r, w|
   w.close
- r.close
+  r.close
 end
     end
   end

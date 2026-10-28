@@ -656,10 +656,10 @@ module RxjsonTests
       assert cm
       return unless cm
 
-        cs = cm.captures
-        cs << "extra"
-        assert_equal 2, cs.size
-        assert_equal 1, cm.captures.size
+      cs = cm.captures
+      cs << "extra"
+      assert_equal 2, cs.size
+      assert_equal 1, cm.captures.size
 
     end
 
@@ -894,8 +894,8 @@ b/
       assert pm
       return unless pm
 
-        assert_equal "#<MatchData \"/posts/42.json\" 1:\"posts\" 2:\"42\" 3:\".json\">", pm.inspect
-        assert_equal "posts#42", pm[1].to_s + "#" + pm[2].to_s
+      assert_equal "#<MatchData \"/posts/42.json\" 1:\"posts\" 2:\"42\" 3:\".json\">", pm.inspect
+      assert_equal "posts#42", pm[1].to_s + "#" + pm[2].to_s
 
     end
 
@@ -917,8 +917,8 @@ b/
       assert em2
       return unless em2
 
-        assert_equal "", em2.pre_match
-        assert_equal "abc", em2.post_match
+      assert_equal "", em2.pre_match
+      assert_equal "abc", em2.post_match
 
     end
 
@@ -1122,9 +1122,9 @@ b/
       assert m2_neg
       return unless m2_neg
 
-        assert_equal "\"a\"", m2_neg[-1].inspect
-        assert_equal "nil", m2_neg[-2].inspect
-        assert_equal "nil", m2_neg[-3].inspect
+      assert_equal "\"a\"", m2_neg[-1].inspect
+      assert_equal "nil", m2_neg[-2].inspect
+      assert_equal "nil", m2_neg[-3].inspect
 
     end
 
@@ -1141,11 +1141,11 @@ b/
       assert m_named
       return unless m_named
 
-        assert_equal "\"2024\"", m_named[1].inspect
-        assert_equal "\"05\"", m_named[2].inspect
-        assert_equal "nil", m_named[3].inspect
-        assert_equal 3, m_named.captures.size
-        assert_equal "#<MatchData \"2024-05\" year:\"2024\" mon:\"05\" day:nil>", m_named.inspect
+      assert_equal "\"2024\"", m_named[1].inspect
+      assert_equal "\"05\"", m_named[2].inspect
+      assert_equal "nil", m_named[3].inspect
+      assert_equal 3, m_named.captures.size
+      assert_equal "#<MatchData \"2024-05\" year:\"2024\" mon:\"05\" day:nil>", m_named.inspect
 
     end
 
@@ -1155,10 +1155,10 @@ b/
       assert m_plain
       return unless m_plain
 
-        assert_equal 1, m_plain.captures.size
-        assert_equal "\"x\"", m_plain[1].inspect
-        assert_equal "nil", m_plain[2].inspect
-        assert_equal "x", m_plain.captures.join(",")
+      assert_equal 1, m_plain.captures.size
+      assert_equal "\"x\"", m_plain[1].inspect
+      assert_equal "nil", m_plain[2].inspect
+      assert_equal "x", m_plain.captures.join(",")
 
     end
 

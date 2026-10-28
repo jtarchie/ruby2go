@@ -174,7 +174,7 @@ puts test(3)
 def ctrl_pub = 1
 p ctrl_pub
 p((ctrl_a = 1
- ctrl_a + 1))
+   ctrl_a + 1))
 p(())
 ctrl_w = (break 7 while true)
 p ctrl_w

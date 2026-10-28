@@ -178,8 +178,8 @@ class Article < ApplicationRecord
     end
     return unless creating && (@created_at_raw.nil? || (@created_at_raw || "").empty?)
 
-      @__t_created_at = nil
-      @created_at_raw = now
+    @__t_created_at = nil
+    @created_at_raw = now
 
   end
 
@@ -314,8 +314,8 @@ class Article < ApplicationRecord
     errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
     return if @body.nil?
 
-      len = @body.length
-      errors << "Body is too short (minimum is 10 characters)" if len < 10
+    len = @body.length
+    errors << "Body is too short (minimum is 10 characters)" if len < 10
 
   end
 

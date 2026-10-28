@@ -50,9 +50,9 @@ module Tep
     frames = e.backtrace
     return if frames.nil?
 
-      frames.each do |frame|
-        warn(tag + "        " + frame)
-      end
+    frames.each do |frame|
+      warn(tag + "        " + frame)
+    end
 
   end
 

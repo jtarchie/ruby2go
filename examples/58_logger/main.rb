@@ -23,11 +23,11 @@ logger.warn("disk 90% full")
 calls = 0
 logger.debug do
   calls += 1
- "expensive: #{calls}"
+  "expensive: #{calls}"
 end
 logger.error do
   calls += 1
- "expensive: #{calls}"
+  "expensive: #{calls}"
 end
 puts calls
 
@@ -67,6 +67,6 @@ disabled.formatter = deterministic
 ran = false
 disabled.error do
   ran = true
- "unreachable"
+  "unreachable"
 end
 puts ran
