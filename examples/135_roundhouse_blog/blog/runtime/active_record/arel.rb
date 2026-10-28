@@ -72,7 +72,6 @@ module Arel
     def in(subquery)
       "#{@qualified} IN (#{subquery.to_sql})"
     end
-
   end
 end
 

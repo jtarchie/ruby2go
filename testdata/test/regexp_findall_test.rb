@@ -743,6 +743,5 @@ module RegexpTests
       assert_equal ["été", "\n", "noël"], s.split(/^|$/)
       assert_equal ["été", "\n", "noël", ""], s.split(/^|$/, -1)
     end
-
   end
 end

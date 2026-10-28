@@ -41,7 +41,6 @@ module ActiveRecord
   end
 
   class Connection
-
     # Rails `quote`: a full SQL literal, quotes included for strings.
     # `Db.escape_string` already wraps in single quotes (sqlite literal
     # syntax with '' doubling).

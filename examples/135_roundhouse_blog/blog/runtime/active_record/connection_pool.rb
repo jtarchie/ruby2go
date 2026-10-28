@@ -71,7 +71,6 @@ module ActiveRecord
       def available_count
         @free.length
       end
-
     end
   end
 end

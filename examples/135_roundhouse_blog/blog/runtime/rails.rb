@@ -136,7 +136,6 @@ module Rails
     def production?
       @name == "production"
     end
-
   end
 
   # `Rails.cache`, in two halves.
@@ -458,7 +457,6 @@ module Rails
     def active_storage_excluded_content_types
       []
     end
-
   end
 end
 
