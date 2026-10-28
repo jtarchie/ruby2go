@@ -33,11 +33,10 @@ Style/FrozenStringLiteralComment:
   Enabled: false
 
 # The prelude's Go text names its parameters (`rbBigAdd(self, o)`), so they cannot be renamed.
-Naming/MethodParameterName: &prelude_params
+Naming/BinaryOperatorParameterName: &prelude_params
   Exclude:
     - prelude/**/*
     - prelude.rb
-Naming/BinaryOperatorParameterName: *prelude_params
 Lint/UnusedMethodArgument: *prelude_params
 Lint/UnusedBlockArgument: *prelude_params
 
@@ -47,4 +46,118 @@ Metrics:
 Style/Documentation:
   Enabled: false
 Layout/LineLength:
+  Enabled: false
+
+# Disabled where the autocorrect changes what a fixture or the prelude deliberately exercises.
+Lint/DeprecatedClassMethods:
+  # stdlib_hardening asserts the deprecated call's behaviour
+  Enabled: false
+Lint/ToJSON:
+  # the fix adds *args to to_json, which rugaroo's signature for it rejects
+  Enabled: false
+Style/RedundantAssignment:
+  # testdata/boot pins the assign-then-return form
+  Enabled: false
+Style/RedundantRegexpCharacterClass:
+  # rxjson inspects the regexp source it wrote
+  Enabled: false
+Lint/RedundantSplatExpansion:
+  # `a[*x, y] = z` calls are what the Array#[]= tests exercise
+  Enabled: false
+Layout/HeredocIndentation:
+  # string tests pin squiggly-heredoc dedent
+  Enabled: false
+Lint/RedundantRequireStatement:
+  # fixtures require libraries explicitly; rugaroo loads libraries on a literal require
+  Enabled: false
+Lint/UselessAssignment:
+  # fixtures assign for the compiler's benefit (dead stores, inference)
+  Enabled: false
+Naming/RescuedExceptionsVariableName:
+  # renames break fixtures that name the rescued variable
+  Enabled: false
+Style/EmptyLiteral:
+  # tests exercise Array.new / Hash.new / String.new themselves
+  Enabled: false
+Style/ExplicitBlockArgument:
+  # tests exercise explicit `yield` forwarding vs &block
+  Enabled: false
+Lint/LiteralInInterpolation:
+  # tests interpolate literals on purpose
+  Enabled: false
+Style/TrivialAccessors:
+  # def x = @x and attr_reader differ in arity, writers and the prelude's Go bodies
+  Enabled: false
+
+# Cops with no autocorrect whose offenses are constructs the fixtures, prelude, benchmarks and boot
+# hooks exercise on purpose (global vars, `a == a`, rescue Exception, Struct.new overrides, ...).
+# New code under scripts/ and cmd/ is still checked.
+Lint/BinaryOperatorWithIdenticalOperands: &fixtures
+  Exclude:
+    - testdata/**/*
+    - examples/**/*
+    - prelude/**/*
+    - prelude.rb
+    - benchmarks/**/*
+    - internal/boot/**/*
+Lint/ConstantDefinitionInBlock: *fixtures
+Lint/DuplicateElsifCondition: *fixtures
+Lint/DuplicateMethods: *fixtures
+Lint/EmptyConditionalBody: *fixtures
+Lint/EmptyExpression: *fixtures
+Lint/EmptyWhen: *fixtures
+Lint/EnsureReturn: *fixtures
+Lint/FloatComparison: *fixtures
+Lint/FormatParameterMismatch: *fixtures
+Lint/IneffectiveAccessModifier: *fixtures
+Lint/LiteralAsCondition: *fixtures
+Lint/MissingSuper: *fixtures
+Lint/MixedRegexpCaptureTypes: *fixtures
+Lint/NonLocalExitFromIterator: *fixtures
+Lint/RandOne: *fixtures
+Lint/RescueException: *fixtures
+Lint/ReturnInVoidContext: *fixtures
+Lint/ShadowedException: *fixtures
+Lint/StructNewOverride: *fixtures
+Lint/SuppressedException: *fixtures
+Lint/UnderscorePrefixedVariableName: *fixtures
+Lint/UnreachableCode: *fixtures
+Lint/UnreachableLoop: *fixtures
+Lint/UnusedMethodArgument: *fixtures
+Naming/AccessorMethodName: *fixtures
+Naming/AsciiIdentifiers: *fixtures
+Naming/ClassAndModuleCamelCase: *fixtures
+Naming/ConstantName: *fixtures
+Naming/HeredocDelimiterNaming: *fixtures
+Naming/MethodName: *fixtures
+Naming/PredicatePrefix: *fixtures
+Naming/VariableName: *fixtures
+Naming/VariableNumber: *fixtures
+Security/MarshalLoad: *fixtures
+Security/Open: *fixtures
+Style/BeginBlock: *fixtures
+Style/CaseEquality: *fixtures
+Style/ClassVars: *fixtures
+Style/ExponentialNotation: *fixtures
+Style/FormatStringToken: *fixtures
+Style/GlobalVars: *fixtures
+Style/MissingRespondToMissing: *fixtures
+Style/MixinUsage: *fixtures
+Style/MultilineBlockChain: *fixtures
+Style/OptionalArguments: *fixtures
+Style/OptionalBooleanParameter: *fixtures
+
+# Style opinions that do not fit: short parameter names (a, b, io) are idiomatic, `%s` is fine in
+# format strings, and the scripts/hooks use globals and class variables on purpose.
+Naming/MethodParameterName:
+  Enabled: false
+Style/FormatStringToken:
+  Enabled: false
+Style/ClassVars:
+  Enabled: false
+Style/OptionalBooleanParameter:
+  Enabled: false
+Style/GlobalVars:
+  Enabled: false
+Style/MultilineBlockChain:
   Enabled: false

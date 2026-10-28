@@ -57,6 +57,7 @@ end
   begin
     out.puts "e #{cp.to_s(16)} #{hex([cp].pack("U").encode(e))}"
   rescue EncodingError
+    # the encoding has no mapping for this codepoint
   end
 end
 begin
