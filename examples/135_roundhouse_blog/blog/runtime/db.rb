@@ -870,7 +870,7 @@ module Db
   # per request, not a lock ever.
   def self.pool_for_thread
     pi = Thread.current[:db_pool]
-    return @pools[pi] if pi != nil
+    return @pools[pi] if !pi.nil?
     n = 0
     @assign_lock.synchronize do
       n = @next_pool

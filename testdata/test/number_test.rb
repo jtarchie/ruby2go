@@ -528,7 +528,7 @@ module NumberTests
       assert_equal false, (t == :true)
       assert_equal true, (t != f)
       assert_equal false, (t != true)
-      assert_equal true, (f != nil)
+      assert_equal true, (!f.nil?)
 
       # && || and conditions
       assert_equal false, (t && f)

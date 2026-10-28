@@ -3872,7 +3872,7 @@ module ObjectTests
       assert_equal false, (pa == 9)
       assert_equal false, (pa == [9, 2])
       assert_equal false, (Money.new(1, "x") == SdPoint.new(1, 2))
-      assert_equal true, (pa != nil)
+      assert_equal true, (!pa.nil?)
     end
   end
 

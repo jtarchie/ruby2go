@@ -1598,7 +1598,7 @@ module DynamicTests
       ne_o = nil #: Integer?
       ne_o = 3 if ne_a.size > 1
       assert_equal false, ne_o != 3
-      assert_equal true, ne_o != nil
+      assert_equal true, !ne_o.nil?
     end
   end
 
@@ -1908,7 +1908,7 @@ module DynamicTests
       assert_equal "3", some.to_s
       assert_equal true, none == nil
       assert_equal false, some == nil
-      assert_equal false, none != nil
+      assert_equal false, !none.nil?
       assert_equal false, some != 3
       assert_equal true, some == 3
       assert_equal false, none == 3
@@ -1968,7 +1968,7 @@ module DynamicTests
       assert_equal true, dynamic_maybe(-1) == dynamic_maybe(-2)
       assert_equal false, dynamic_maybe(1) == dynamic_maybe(-1)
       assert_equal true, dynamic_maybe(2) != dynamic_maybe(3)
-      assert_equal false, dynamic_maybe(-1) != nil
+      assert_equal false, !dynamic_maybe(-1).nil?
       assert_equal true, nil == dynamic_maybe(-1)
       assert_equal true, dynamic_maybe(7) == 7
       assert_equal false, dynamic_maybe(7) != 7.0
