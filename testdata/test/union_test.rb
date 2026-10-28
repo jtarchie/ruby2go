@@ -190,10 +190,10 @@ module UnionTests
 
     #: (Integer | String | Symbol) -> String
     def unless_else(x)
-      unless x.is_a?(Integer)
-        x.to_s
-      else
+      if x.is_a?(Integer)
         (x * 3).to_s
+      else
+        x.to_s
       end
     end
 

@@ -190,10 +190,10 @@ end
 
 #: (Integer) -> String
 def unless_else(n)
-  unless n.even?
-    "odd"
-  else
+  if n.even?
     "even"
+  else
+    "odd"
   end
 end
 
@@ -2469,7 +2469,7 @@ module ControlTests
       assert_equal 2, (x.even? ? 1 : 2)
       z = if x == 3 then 30 else 0 end
       assert_equal 30, z
-      w = unless x == 3 then 1 else 2 end
+      w = if x == 3 then 2 else 1 end
       assert_equal 2, w
       v = x > 100 ? nil : x * 2
       assert_equal 6, v
@@ -3702,10 +3702,10 @@ module ControlTests
         i += 1
       end
       assert_equal 20, last
-      unless i.zero?
-        msg = "i=#{i}"
-      else
+      if i.zero?
         msg = "zero"
+      else
+        msg = "i=#{i}"
       end
       assert_equal "i=3", msg
       maybe = nil
