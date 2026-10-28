@@ -2676,7 +2676,6 @@ module ControlTests
       if i > 5
         seen << "big"
       elsif i > 3
-      else
       end
       while i > 5
       end
@@ -2684,7 +2683,6 @@ module ControlTests
       case i
       when 1, 2
       when 3 then seen << "three"
-      else
       end
       begin
         seen << "body"

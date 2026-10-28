@@ -66,8 +66,6 @@ module ActionDispatch
         value = sub[key]
         if value.is_a?(ActionDispatch::Http::UploadedFile)
           value
-        else
-          nil
         end
       end
 

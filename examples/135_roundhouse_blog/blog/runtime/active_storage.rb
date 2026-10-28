@@ -382,8 +382,6 @@ module ActiveStorage
         @width == 0 ? nil : @width
       elsif key == :height
         @height == 0 ? nil : @height
-      else
-        nil
       end
     end
 

@@ -73,8 +73,6 @@ module ActiveStorage
         value
       elsif value.is_a?(String)
         Blob.find_signed(value)
-      else
-        nil
       end
     end
   end
