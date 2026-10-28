@@ -434,7 +434,7 @@ module Cable
       @ws = Tep::WebSocket::Driver.new(0)
     end
 
-    def handle_event(evt)
+    def handle_event(_evt)
       @ws.text("{\"type\":\"welcome\"}")
       Cable.register(@ws)
       0
@@ -542,7 +542,7 @@ module Cable
       @msg = Cable::WsMessage.new
     end
 
-    def handle_event(evt)
+    def handle_event(_evt)
       Cable.unregister(@msg.ws)
       Db.with_connection do
         @msg.unsubscribe_all

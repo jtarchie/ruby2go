@@ -5,10 +5,10 @@
 
 class NullObject
   #: (Symbol, *untyped) -> untyped
-  def method_missing(name, *args) = nil
+  def method_missing(_name, *_args) = nil
 
   #: (Symbol, ?bool) -> bool
-  def respond_to_missing?(name, include_private = false) = true
+  def respond_to_missing?(_name, _include_private = false) = true
 end
 
 class Settings
@@ -28,7 +28,7 @@ class Settings
   end
 
   #: (Symbol, ?bool) -> bool
-  def respond_to_missing?(name, include_private = false) = @values.key?(name.to_s)
+  def respond_to_missing?(name, _include_private = false) = @values.key?(name.to_s)
 end
 
 class Plain

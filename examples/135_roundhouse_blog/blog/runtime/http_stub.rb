@@ -193,7 +193,7 @@ module HttpStub
   # `Net::HTTP` exactly as it would with no double installed. Accepted
   # so the lowering stays uniform; the ruby family's delegate passes it
   # on to WebMock, where it means something.
-  def self.allow_net_connect(hosts)
+  def self.allow_net_connect(_hosts)
     nil
   end
 

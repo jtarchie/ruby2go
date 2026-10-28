@@ -9,7 +9,7 @@ module ClassMethodTests
     def self.find(id) = _find(id)
 
     #: (Integer) -> Model
-    def self._find(id) = Model.new
+    def self._find(_id) = Model.new
 
     #: () -> Array[Model]
     def self._all = []
@@ -20,7 +20,7 @@ module ClassMethodTests
 
   class Post < Model
     #: (Integer) -> Post
-    def self._find(id) = Post.new
+    def self._find(_id) = Post.new
 
     #: () -> Array[Post]
     def self._all = [Post.new, Post.new]

@@ -165,24 +165,24 @@ module ActiveJob
 
   class Base
     # `queue_as :default` — queue routing has no meaning inline.
-    def self.queue_as(name = nil)
+    def self.queue_as(_name = nil)
       nil
     end
 
     # `self.enqueue_after_transaction_commit = true` — inline jobs run
     # at the call site; transaction-commit deferral is a queue concern.
-    def self.enqueue_after_transaction_commit=(value)
+    def self.enqueue_after_transaction_commit=(_value)
       nil
     end
 
     # `retry_on` / `discard_on` — error-handling policy for queued
     # execution; inert inline (an inline job's exception propagates to
     # the caller, which is the honest development-mode behavior).
-    def self.retry_on(error, opts = nil)
+    def self.retry_on(_error, _opts = nil)
       nil
     end
 
-    def self.discard_on(error)
+    def self.discard_on(_error)
       nil
     end
   end

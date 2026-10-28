@@ -198,7 +198,7 @@ module Tep
         @req = Tep::Request.new
       end
 
-      def handle_event(event)
+      def handle_event(_event)
         0
       end
     end

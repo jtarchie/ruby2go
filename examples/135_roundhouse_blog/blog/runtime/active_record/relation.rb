@@ -404,7 +404,7 @@ module ActiveRecord
     # what to load from `eager_load`/`includes` alone, so the marker
     # carries no state; accept and ignore it so marker-bearing chains
     # stay chainable (lobsters' filters page).
-    def references(*names)
+    def references(*_names)
       self
     end
 

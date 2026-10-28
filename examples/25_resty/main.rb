@@ -140,7 +140,7 @@ module Resty
       end
 
       #: (Request) -> bool
-      def self.matches?(request) = false
+      def self.matches?(_request) = false
 
       #: () -> Hash[String, String]
       def headers = {}
@@ -188,7 +188,7 @@ module Resty
       end
 
       #: (Request) -> bool
-      def self.matches?(request) = false
+      def self.matches?(_request) = false
 
       #: () -> Integer
       def status = 501

@@ -205,7 +205,7 @@ module Concurrent
       n
     end
 
-    def wait(timeout = nil)
+    def wait(_timeout = nil)
       @lock.synchronize do
         gen = @generation
         @waiting += 1

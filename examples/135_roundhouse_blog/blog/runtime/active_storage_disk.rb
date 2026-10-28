@@ -82,7 +82,7 @@ module ActiveStorage
   # decoder — which is all Rails' own `ImageAnalyzer` reports either.
   # `[0, 0]` for anything else, which `BlobMetadata` answers as nil.
   class ImageAnalyzer
-    def self.dimensions(data, content_type)
+    def self.dimensions(data, _content_type)
       n = data.bytesize
       return [0, 0] if n < 10
       b0 = data.getbyte(0).to_i
@@ -253,7 +253,7 @@ module ActiveStorage
   # base class. `params` carries the route's segments and the query.
   module Blobs
     class RedirectController < ActionController::Base
-      def process_action(action_name)
+      def process_action(_action_name)
         show
         nil
       end
@@ -279,7 +279,7 @@ module ActiveStorage
   # decodes to nothing is the identity variant: the original.
   module Representations
     class RedirectController < ActionController::Base
-      def process_action(action_name)
+      def process_action(_action_name)
         show
         nil
       end
@@ -310,7 +310,7 @@ module ActiveStorage
   # makes a "Download" link download; the app's initializer asks for an
   # hour of public caching on this route and gets it.
   class DiskController < ActionController::Base
-    def process_action(action_name)
+    def process_action(_action_name)
       show
       nil
     end

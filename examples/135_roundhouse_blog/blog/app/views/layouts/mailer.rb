@@ -2,7 +2,7 @@ require_relative ".."
 
 module Views
   module Layouts
-    def self.mailer_into(io, body, notice, alert)
+    def self.mailer_into(io, body, _notice, _alert)
       io << "<!DOCTYPE html>\n<html>\n  <head>\n    <meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">\n    <style>\n      /* Email styles need to be inline */\n    </style>\n  </head>\n\n  <body>\n    "
       io << body
       io << "\n  </body>\n</html>\n"

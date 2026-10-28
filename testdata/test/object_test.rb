@@ -1121,7 +1121,7 @@ module ObjectTests
 
     # the default is never read, but runs for its side effect
     #: (String, ?String) -> String
-    def f(a, b = note("side")) = a
+    def f(a, _b = note("side")) = a
 
     #: () -> Integer
     def count = @lines.size
@@ -1168,7 +1168,7 @@ module ObjectTests
 
     class Base
       #: (String) -> bool
-      def self.matches?(path) = false
+      def self.matches?(_path) = false
     end
 
     class Posts < Base
@@ -1912,7 +1912,7 @@ module ObjectTests
     include PimShared
 
     def test_child = 4
-    def ==(other) = true
+    def ==(_other) = true
   end
 
   # Helpers for the checks that were testdata/run/object_modules.rb.
@@ -5296,7 +5296,7 @@ module ObjectTests
     end
 
     #: (DupBox) -> void
-    def initialize_copy(other)
+    def initialize_copy(_other)
       @copied = true
     end
   end
@@ -5856,7 +5856,7 @@ module ObjectTests
 
   class SuperBlkImplicit < SuperBlkRes
     #: (String) ?{ () -> String } -> void
-    def initialize(path, &block)
+    def initialize(path)
       super(path)
     end
   end
@@ -6064,12 +6064,12 @@ module ObjectTests
   # (decision 241).
   class ObjectKwPkg
     #: (String, ?preinstall: bool, ?verbose: bool, **untyped) -> bool
-    def self.install!(name, preinstall: true, verbose: false, **options) = false
+    def self.install!(_name, preinstall: true, verbose: false, **_options) = false
   end
 
   class ObjectKwExt < ObjectKwPkg
     #: (String, ?with: Array[String]?, ?preinstall: bool, ?verbose: bool, **untyped) -> bool
-    def self.install!(name, with: nil, preinstall: true, verbose: false, **_options)
+    def self.install!(_name, with: nil, preinstall: true, verbose: false, **_options)
       !with.nil? && preinstall
     end
   end

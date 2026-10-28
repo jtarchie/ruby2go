@@ -27,7 +27,7 @@ class Ghost
   def method_missing(name, *args) = "ghost #{name}(#{args.size})"
 
   #: (Symbol, ?bool) -> bool
-  def respond_to_missing?(name, include_private = false) = name.to_s.start_with?("g")
+  def respond_to_missing?(name, _include_private = false) = name.to_s.start_with?("g")
 end
 
 things = [Greeter.new("ada"), Ghost.new] #: Array[untyped]

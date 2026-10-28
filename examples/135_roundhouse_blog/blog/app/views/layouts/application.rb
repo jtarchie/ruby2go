@@ -7,7 +7,7 @@ module Views
     HOISTED_CONCAT = HOISTED_STYLESHEET_LINK_TAG_APPLICATION + "\n" + HOISTED_STYLESHEET_LINK_TAG_TAILWIND
     HOISTED_JAVASCRIPT_IMPORTMAP_TAGS = ActionView::ViewHelpers.javascript_importmap_tags(Importmap.pins, Importmap.entry)
 
-    def self.application_into(io, body, notice, alert)
+    def self.application_into(io, body, _notice, _alert)
       io << "<!DOCTYPE html>\n<html>\n  <head>\n    <title>"
       io << ActionView::ViewHelpers.html_escape((ActionView::ViewHelpers.content_for_get(:title) || "Blog").to_s)
       io << "</title>\n    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n    <meta name=\"apple-mobile-web-app-capable\" content=\"yes\">\n    <meta name=\"application-name\" content=\"Blog\">\n    <meta name=\"mobile-web-app-capable\" content=\"yes\">\n    "

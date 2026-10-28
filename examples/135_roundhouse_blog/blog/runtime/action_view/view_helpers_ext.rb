@@ -1463,7 +1463,7 @@ module ActionView
     # that does appear says which one it is, instead of vanishing into a
     # NameError (or, on a strict target, an unresolved-call build wall
     # with no explanation attached).
-    def self.concat(string)
+    def self.concat(_string)
       raise "concat outside capture — emitted views buffer through io<<, not concat"
     end
 

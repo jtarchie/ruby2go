@@ -701,7 +701,7 @@ module ActiveStorage
   # analyzer identified — `metadata[:width]` is nil and the view's
   # guard takes its no-dimensions branch.
   class ImageAnalyzer
-    def self.dimensions(data, content_type)
+    def self.dimensions(_data, _content_type)
       [0, 0]
     end
   end

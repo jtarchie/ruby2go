@@ -623,10 +623,10 @@ module DynamicTests
   # a public method_missing is still respond_to?-visible
   class MmConfig
     #: (Symbol, *untyped) -> String
-    def method_missing(name, *args) = "mm #{name}"
+    def method_missing(name, *_args) = "mm #{name}"
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, include_private = false) = false
+    def respond_to_missing?(_name, _include_private = false) = false
   end
 
   class Foo
@@ -1062,7 +1062,7 @@ module DynamicTests
     end
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, include_private = false) = @values.key?(name.to_s)
+    def respond_to_missing?(name, _include_private = false) = @values.key?(name.to_s)
 
     private
 
@@ -1126,7 +1126,7 @@ module DynamicTests
     def method_missing(name, *args) = "fallback #{name} #{args.size}"
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, include_private = false) = name.to_s.end_with?("_x")
+    def respond_to_missing?(name, _include_private = false) = name.to_s.end_with?("_x")
 
     #: () -> String
     def real = "real"
@@ -1146,7 +1146,7 @@ module DynamicTests
     include Chatty
 
     #: (Symbol, *untyped) -> String
-    def method_missing(name, *args) = "talker #{name}"
+    def method_missing(name, *_args) = "talker #{name}"
   end
 
   class Shy
@@ -1159,7 +1159,7 @@ module DynamicTests
     def method_missing(name, *args) = "shy #{name} #{args.inspect}"
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, include_private = false) = name == :maybe
+    def respond_to_missing?(name, _include_private = false) = name == :maybe
   end
 
   class Proxy
@@ -1169,10 +1169,10 @@ module DynamicTests
     end
 
     #: (Symbol, *untyped) -> untyped
-    def method_missing(name, *args) = @target.send(name)
+    def method_missing(name, *_args) = @target.send(name)
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, include_private = false) = @target.respond_to?(name)
+    def respond_to_missing?(name, _include_private = false) = @target.respond_to?(name)
   end
 
   class DynamicMethodMissingTest < Minitest::Test
@@ -2212,7 +2212,7 @@ module DynamicTests
     def method_missing(name, *args) = "ghost #{name}(#{args.map { |a| a.inspect }.join(", ")})"
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, include_private = false) = name.to_s.start_with?("g")
+    def respond_to_missing?(name, _include_private = false) = name.to_s.start_with?("g")
   end
 
   class Robot
@@ -3161,7 +3161,7 @@ module DynamicTests
     #: (Symbol, *untyped) -> untyped
     def method_missing(name, *args) = "dog mm #{name}(#{args.size})"
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, include_private = false) = name.to_s.start_with?("x")
+    def respond_to_missing?(name, _include_private = false) = name.to_s.start_with?("x")
   end
 
   class SendOnTypedReceiverTest < Minitest::Test

@@ -15,7 +15,7 @@ class Shape
   def self.kind = "shape"
 
   #: (Integer) -> bool
-  def self.fits?(n) = false
+  def self.fits?(_n) = false
 
   # `new` on an implicit self dispatches to the receiving class.
   #: (Integer) -> Shape

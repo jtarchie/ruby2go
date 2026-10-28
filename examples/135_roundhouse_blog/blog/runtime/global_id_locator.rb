@@ -139,7 +139,7 @@ end
 module ActionText
   module Attachable
     # >>> generated: attachable-locate
-    def self.locate(model_name, id)
+    def self.locate(_model_name, _id)
       nil
     end
     # <<< generated: attachable-locate

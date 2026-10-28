@@ -14,7 +14,7 @@ module Handlers
 
   class Base
     #: (String) -> bool
-    def self.matches?(path) = false
+    def self.matches?(_path) = false
   end
 
   class Posts < Base

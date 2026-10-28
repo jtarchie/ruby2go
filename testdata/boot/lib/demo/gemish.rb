@@ -815,7 +815,7 @@ end
 # concurrent-ruby's BlockedPromise.new_blocked_by1 → ChainPromise#initialize(…, &task): the dynamic new of a subclass
 # passes initialize the block, and `super(…, *args, &task)` spreads an untyped args (decision 255).
 class DemoBlocked2
-  def initialize(delayed, count, *args, &task)
+  def initialize(delayed, _count, *args, &task)
     @delayed = delayed
     @args = args
     @task = task

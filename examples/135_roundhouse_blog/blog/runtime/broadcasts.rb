@@ -21,7 +21,7 @@ module Broadcasts
   # has no caller of `set_transport` and defaults its `transport`
   # param to int, poisoning TRANSPORTS' element type.
   class SeedTransport
-    def broadcast(stream, fragment)
+    def broadcast(_stream, _fragment)
       nil
     end
   end

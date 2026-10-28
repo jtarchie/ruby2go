@@ -2296,7 +2296,7 @@ module HashTests
   end
 
   class HashDefaultSub < Hash
-    def default(key)
+    def default(_key)
       100
     end
   end

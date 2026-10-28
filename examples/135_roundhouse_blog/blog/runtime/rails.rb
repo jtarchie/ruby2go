@@ -180,7 +180,7 @@ module Rails
       @expires_at = {}
     end
 
-    def fetch(key, opts = {})
+    def fetch(_key, _opts = {})
       yield
     end
 
@@ -281,11 +281,11 @@ module Rails
       nil
     end
 
-    def read(key)
+    def read(_key)
       nil
     end
 
-    def write(key, value)
+    def write(_key, value)
       value
     end
 
@@ -297,7 +297,7 @@ module Rails
       forget(key.to_s)
     end
 
-    def exist?(key)
+    def exist?(_key)
       false
     end
   end

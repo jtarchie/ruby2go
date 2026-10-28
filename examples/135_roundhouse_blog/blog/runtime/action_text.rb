@@ -55,7 +55,7 @@ module ActionText
     # as missing there, which is what Rails answers for a gid naming no
     # class. Redefinition by a later reopen is a shape both CRuby and
     # spinel take (the later definition wins; probed).
-    def self.locate(model_name, id)
+    def self.locate(_model_name, _id)
       nil
     end
   end
@@ -482,7 +482,7 @@ module ActionText
     # An unclosed element runs to the end of the string — the same
     # forgiving reading `to_plain_text` gives bad nesting, and for the
     # same reason: repairing it would be a second, different parser.
-    def self.element_end(html, at, tag_end, name, raw)
+    def self.element_end(html, _at, tag_end, name, raw)
       return tag_end + 1 if raw[raw.length - 1, 1].to_s == "/"
       return tag_end + 1 if void_element(name)
       depth = 1

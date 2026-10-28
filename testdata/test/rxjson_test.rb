@@ -188,7 +188,7 @@ module RxjsonTests
   # Helpers for the checks that were testdata/run/rxjson_bug_to_json_signature.rb.
   class OptState
     #: (?untyped) -> String
-    def to_json(state = nil) = "\"opt\""
+    def to_json(_state = nil) = "\"opt\""
   end
 
   class NoArg

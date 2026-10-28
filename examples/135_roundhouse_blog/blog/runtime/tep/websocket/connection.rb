@@ -139,7 +139,7 @@ module Tep
         0
       end
 
-      def self.dispatch_message(driver, data, text)
+      def self.dispatch_message(driver, data, _text)
         evt = Tep::WebSocket::Event.new
         evt.data = data
         driver.h_message.handle_event(evt)

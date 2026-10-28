@@ -4,7 +4,7 @@ require_relative "../../route_helpers"
 
 module Views
   module Articles
-    def self.form_into(io, article, notice, alert)
+    def self.form_into(io, article, _notice, _alert)
       form_method = if article.persisted?
                       :patch
                     else

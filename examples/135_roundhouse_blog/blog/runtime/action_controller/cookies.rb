@@ -264,7 +264,7 @@ end
 module ActionDispatch
   module Cookies
     class CookieJar
-      def self.build(request, cookies)
+      def self.build(_request, cookies)
         ActionController::CookieJar.new(cookies)
       end
     end

@@ -65,7 +65,7 @@ module Resty
   module NullController
     NullAction = Struct.new(:params) do
       #: (*untyped) -> untyped
-      def method_missing(*args) = nil
+      def method_missing(*_args) = nil
     end #: [Hash[String, untyped]]
     Index   = NullAction
     Show    = NullAction
@@ -129,7 +129,7 @@ module Resty
   module Formats
     Base = Struct.new(:resource) do
       #: (Request) -> untyped
-      def self.matches?(request)
+      def self.matches?(_request)
         false
       end
 
@@ -149,7 +149,7 @@ end
 module Resty
   module Formats
     class UnknownContentType < Base
-      def self.matches?(request)
+      def self.matches?(_request)
         false
       end
 
@@ -220,7 +220,7 @@ module Resty
   module Actions
     Base = Struct.new(:controller, :request) do
       #: (Request) -> untyped
-      def self.matches?(request)
+      def self.matches?(_request)
         false
       end
 
@@ -243,7 +243,7 @@ end
 module Resty
   module Actions
     class ServiceUnavailable < Base
-      def self.matches?(request)
+      def self.matches?(_request)
         false
       end
 
