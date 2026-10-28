@@ -3212,7 +3212,7 @@ end
   "t"
 else
   "f"
-end)
+              end)
       assert_equal ["cond ok", "f"], out
       rx = begin
              edges_risky(2)
