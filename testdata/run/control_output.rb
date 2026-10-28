@@ -173,12 +173,12 @@ def ctrl_pub = 1
 p ctrl_pub
 p((ctrl_a = 1; ctrl_a + 1))
 p(())
-ctrl_w = while true; break 7; end
+ctrl_w = (break 7 while true)
 p ctrl_w
-ctrl_wa = while true; break *[1, 2]; end
+ctrl_wa = (break *[1, 2] while true)
 p ctrl_wa
 ctrl_i = 0
-p(until ctrl_i > 2; ctrl_i += 1; end)
+p((ctrl_i += 1 until ctrl_i > 2))
 ctrl_m, ctrl_n = 1
 p [ctrl_m, ctrl_n]
 ctrl_o = Object.new

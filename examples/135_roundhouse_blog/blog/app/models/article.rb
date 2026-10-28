@@ -195,9 +195,7 @@ class Article < ApplicationRecord
   def self._adapter_all
     stmt = Db.prepare("SELECT id, title, body, created_at, updated_at FROM articles")
     results = []
-    while Db.step?(stmt)
-      results << Article.from_stmt(stmt)
-    end
+    results << Article.from_stmt(stmt) while Db.step?(stmt)
     Db.finalize(stmt)
     results
   end
@@ -273,9 +271,7 @@ class Article < ApplicationRecord
   def self._hydrate_all(sql)
     stmt = Db.prepare(sql)
     results = []
-    while Db.step?(stmt)
-      results << Article.from_stmt(stmt)
-    end
+    results << Article.from_stmt(stmt) while Db.step?(stmt)
     Db.finalize(stmt)
     results
   end
@@ -329,9 +325,7 @@ class Article < ApplicationRecord
     return __comments_cache if @comments_loaded
     stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE article_id = " + Db.escape_int(@id))
     results = []
-    while Db.step?(stmt)
-      results << Comment.from_stmt(stmt)
-    end
+    results << Comment.from_stmt(stmt) while Db.step?(stmt)
     Db.finalize(stmt)
     results
   end

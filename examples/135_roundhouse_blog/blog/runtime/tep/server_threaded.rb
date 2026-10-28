@@ -162,9 +162,7 @@ module Tep
       def self.handle_connection(client)
         io = IO.for_fd(client, autoclose: false)
         keep_going = true
-        while keep_going
-          keep_going = Tep::Server::Threaded.handle_one(client, io)
-        end
+        keep_going = Tep::Server::Threaded.handle_one(client, io) while keep_going
         io.close
         Sock.sphttp_close(client)
         0

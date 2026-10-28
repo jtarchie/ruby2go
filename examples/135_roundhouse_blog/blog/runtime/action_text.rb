@@ -494,9 +494,7 @@ module ActionText
           close = html[i + 1, 1].to_s == "/"
           start = close ? i + 2 : i + 1
           j = i + 1
-          while j < n && html[j, 1].to_s != ">"
-            j = j + 1
-          end
+          j = j + 1 while j < n && html[j, 1].to_s != ">"
           inner_raw = html[start, j - start].to_s
           if Content.tag_name_of(inner_raw) == name
             if close
@@ -796,9 +794,7 @@ module ActionText
           close = @html[i + 1, 1].to_s == "/"
           name_start = close ? i + 2 : i + 1
           j = name_start
-          while j < n && @html[j, 1].to_s != ">"
-            j = j + 1
-          end
+          j = j + 1 while j < n && @html[j, 1].to_s != ">"
           raw = @html[name_start, j - name_start].to_s
           name = Content.tag_name_of(raw)
           void = raw[raw.length - 1, 1].to_s == "/"
@@ -939,9 +935,7 @@ module ActionText
       while i < n
         if html[i, 1].to_s == "<"
           j = i + 1
-          while j < n && html[j, 1].to_s != ">"
-            j = j + 1
-          end
+          j = j + 1 while j < n && html[j, 1].to_s != ">"
           raw = html[i + 1, j - i - 1].to_s
           if raw[0, 1].to_s != "/" && raw[0, 1].to_s != "!"
             attrs = parse_attributes(raw)
@@ -979,17 +973,11 @@ module ActionText
       i = 0
       n = raw.length
       # Step past the element name.
-      while i < n && !Content.space_at(raw, i)
-        i = i + 1
-      end
+      i = i + 1 while i < n && !Content.space_at(raw, i)
       while i < n
-        while i < n && Content.space_at(raw, i)
-          i = i + 1
-        end
+        i = i + 1 while i < n && Content.space_at(raw, i)
         name_start = i
-        while i < n && !Content.space_at(raw, i) && raw[i, 1].to_s != "="
-          i = i + 1
-        end
+        i = i + 1 while i < n && !Content.space_at(raw, i) && raw[i, 1].to_s != "="
         name = raw[name_start, i - name_start].to_s.downcase
         break if name == ""
         value = ""
@@ -999,16 +987,12 @@ module ActionText
           if ["\"", "'"].include?(quote)
             i = i + 1
             value_start = i
-            while i < n && raw[i, 1].to_s != quote
-              i = i + 1
-            end
+            i = i + 1 while i < n && raw[i, 1].to_s != quote
             value = raw[value_start, i - value_start].to_s
             i = i + 1
           else
             value_start = i
-            while i < n && !Content.space_at(raw, i)
-              i = i + 1
-            end
+            i = i + 1 while i < n && !Content.space_at(raw, i)
             value = raw[value_start, i - value_start].to_s
           end
         end
@@ -1147,9 +1131,7 @@ module ActionText
     # trailing newline, not just one.
     def self.chomp_newlines(text)
       stop = text.length
-      while stop > 0 && text[stop - 1, 1].to_s == "\n"
-        stop = stop - 1
-      end
+      stop = stop - 1 while stop > 0 && text[stop - 1, 1].to_s == "\n"
       text[0, stop].to_s
     end
   end

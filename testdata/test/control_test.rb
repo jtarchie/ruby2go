@@ -619,9 +619,7 @@ end
 #: (Integer) -> String
 def tail_while(n)
   i = 0
-  while i < n
-    i += 1
-  end
+  i += 1 while i < n
   "done #{i}"
 end
 
@@ -2185,16 +2183,12 @@ end
     def test_while_and_until_conditions
       arr = [3, 8, 0, 5] #: Array[Integer]
       i = 0
-      while i < arr.size && arr[i] != 0
-        i += 1
-      end
+      i += 1 while i < arr.size && arr[i] != 0
       assert_equal 2, i
 
       opt = [1, 2] #: Array[Integer]
       j = 0
-      until opt[j].nil?
-        j += 1
-      end
+      j += 1 until opt[j].nil?
       assert_equal 2, j
     end
 
@@ -2230,9 +2224,7 @@ end
       assert_equal [1, -2, 3, 5, -6], odds
 
       w = 0
-      while true
-        break
-      end
+      break while true
       assert_equal 0, w
 
       n = 0
@@ -2981,12 +2973,10 @@ end
       end
       assert_equal [1], ws
       a = 0
-      while a < 2 do a += 1 end
+      a += 1 while a < 2
       assert_equal 2, a
       b = 10
-      until b < 5 || b.even? && b < 8
-        b -= 1
-      end
+      b -= 1 until b < 5 || b.even? && b < 8
       assert_equal 6, b
     end
 
@@ -4054,14 +4044,10 @@ end
   class ControlLoopsTest < Minitest::Test
     def test_while_and_until
       i = 0
-      while i < 3
-        i += 1
-      end
+      i += 1 while i < 3
       assert_equal 3, i
       j = 10
-      until j <= 7
-        j -= 1
-      end
+      j -= 1 until j <= 7
       assert_equal 7, j
       never = 0
 

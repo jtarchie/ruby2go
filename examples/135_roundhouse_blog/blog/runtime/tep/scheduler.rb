@@ -162,9 +162,7 @@ module Tep
     # Pure non-blocking; no poll() wait between passes.
     def self.run_until_empty
       n = 0
-      while Scheduler.tick(0)
-        n += 1
-      end
+      n += 1 while Scheduler.tick(0)
       n
     end
 

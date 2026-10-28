@@ -751,9 +751,7 @@ class DbPool
   def lease
     idx = 0
     @lock.synchronize do
-      while @free.length == 0
-        @cv.wait(@lock)
-      end
+      @cv.wait(@lock) while @free.length == 0
       idx = @free.delete_at(@free.length - 1)
     end
     idx

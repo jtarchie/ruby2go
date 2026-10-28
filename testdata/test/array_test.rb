@@ -2950,13 +2950,9 @@ module ArrayTests
     def test_guarded_takes_fill_a_typed_array
       src = (1..5).to_a
       dst = Array.new
-      until src.empty?
-        dst.push(src.shift)
-      end
+      dst.push(src.shift) until src.empty?
       back = []
-      until dst.empty?
-        back << dst.pop
-      end
+      back << dst.pop until dst.empty?
       assert_equal [5, 4, 3, 2, 1], back
       assert_equal 15, back.sum
       words = %w[a b c]
@@ -2994,9 +2990,7 @@ module ArrayTests
     def test_frozen_receiver_raises
       a = [1, 2].freeze
       err = assert_raises(FrozenError) do
-        until a.empty?
-          a.shift
-        end
+        a.shift until a.empty?
       end
       assert_equal "can't modify frozen Array: [1, 2]", err.message
     end
@@ -3027,18 +3021,14 @@ module ArrayTests
     def test_call_before_take_keeps_the_nil_check
       a = [1, 2]
       out = []
-      until a.empty?
-        sure_drain(a, out).push(a.shift)
-      end
+      sure_drain(a, out).push(a.shift) until a.empty?
       assert_equal [nil], out
     end
 
     def test_optional_elements_stay_optional
       a = [1, nil, 3]
       out = []
-      until a.empty?
-        out << a.shift
-      end
+      out << a.shift until a.empty?
       assert_equal [1, nil, 3], out
     end
   end

@@ -42,28 +42,20 @@ module SchematizedJson
     s = serialized.to_s
     n = s.length
     i = 0
-    while i < n && s[i, 1].to_s != "{"
-      i = i + 1
-    end
+    i = i + 1 while i < n && s[i, 1].to_s != "{"
     i = i + 1
     scanning = true
     while scanning
-      while i < n && separator?(s[i, 1].to_s)
-        i = i + 1
-      end
+      i = i + 1 while i < n && separator?(s[i, 1].to_s)
       if i >= n || s[i, 1].to_s != "\""
         scanning = false
       else
         key_end = scan_string(s, i)
         key = decode_string(s[i, key_end - i].to_s)
         i = key_end
-        while i < n && s[i, 1].to_s != ":"
-          i = i + 1
-        end
+        i = i + 1 while i < n && s[i, 1].to_s != ":"
         i = i + 1
-        while i < n && separator?(s[i, 1].to_s)
-          i = i + 1
-        end
+        i = i + 1 while i < n && separator?(s[i, 1].to_s)
         value_end = scan_value(s, i)
         if i >= n || value_end == i
           scanning = false

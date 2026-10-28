@@ -214,9 +214,7 @@ module Concurrent
           @generation += 1
           @cv.broadcast
         else
-          while gen == @generation
-            @cv.wait(@lock)
-          end
+          @cv.wait(@lock) while gen == @generation
         end
       end
       true

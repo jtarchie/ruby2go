@@ -179,9 +179,7 @@ module Db
     h = nil
     adopt_after_fork
     @mutex.synchronize do
-      while @pool.available_count == 0
-        @cv.wait(@mutex)
-      end
+      @cv.wait(@mutex) while @pool.available_count == 0
       h = @pool.checkout
     end
     Fiber[:db_handle] = h

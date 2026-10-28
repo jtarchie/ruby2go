@@ -147,9 +147,7 @@ module Tep
     # reclaiming the previous request's allocations.
     def handle_connection(client)
       keep_going = true
-      while keep_going
-        keep_going = handle_one(client)
-      end
+      keep_going = handle_one(client) while keep_going
       Sock.sphttp_close(client)
     end
 

@@ -604,9 +604,7 @@ module ActionView
       end
       # Close anything the input left open, innermost first — measured:
       # the gem answers "<b>unclosed</b>" for "<b>unclosed".
-      while open_stack.length > 0
-        out = out + "</" + open_stack.pop.to_s + ">"
-      end
+      out = out + "</" + open_stack.pop.to_s + ">" while open_stack.length > 0
       out
     end
 
@@ -690,29 +688,21 @@ module ActionView
             i = i + 1
           end
           aname = raw[astart, i - astart].to_s.downcase
-          while i < n && sanitize_space?(raw[i, 1].to_s)
-            i = i + 1
-          end
+          i = i + 1 while i < n && sanitize_space?(raw[i, 1].to_s)
           value = ""
           if raw[i, 1].to_s == "="
             i = i + 1
-            while i < n && sanitize_space?(raw[i, 1].to_s)
-              i = i + 1
-            end
+            i = i + 1 while i < n && sanitize_space?(raw[i, 1].to_s)
             q = raw[i, 1].to_s
             if ["\"", "'"].include?(q)
               i = i + 1
               vstart = i
-              while i < n && raw[i, 1].to_s != q
-                i = i + 1
-              end
+              i = i + 1 while i < n && raw[i, 1].to_s != q
               value = raw[vstart, i - vstart].to_s
               i = i + 1 if i < n
             else
               vstart = i
-              while i < n && !sanitize_space?(raw[i, 1].to_s)
-                i = i + 1
-              end
+              i = i + 1 while i < n && !sanitize_space?(raw[i, 1].to_s)
               value = raw[vstart, i - vstart].to_s
             end
           end
@@ -862,14 +852,10 @@ module ActionView
         j = i + 2
         if t[j, 1].to_s == "x"
           j = j + 1
-          while t[j, 1].to_s == "0"
-            j = j + 1
-          end
+          j = j + 1 while t[j, 1].to_s == "0"
           return j + 2 - i if t[j, 2] == "3a"
         else
-          while t[j, 1].to_s == "0"
-            j = j + 1
-          end
+          j = j + 1 while t[j, 1].to_s == "0"
           return j + 2 - i if t[j, 2] == "58"
         end
       end
@@ -943,17 +929,13 @@ module ActionView
             end
             digits = hex ? "0123456789abcdefABCDEF" : "0123456789"
             dstart = j
-            while j < n && digits.include?(value[j, 1].to_s) && value[j, 1].to_s != ""
-              j = j + 1
-            end
+            j = j + 1 while j < n && digits.include?(value[j, 1].to_s) && value[j, 1].to_s != ""
             if j > dstart
               semi = value[j, 1].to_s == ";"
               if semi || !first_pass
                 dtext = value[dstart, j - dstart].to_s
                 k = 0
-                while k < dtext.length && dtext[k, 1].to_s == "0"
-                  k = k + 1
-                end
+                k = k + 1 while k < dtext.length && dtext[k, 1].to_s == "0"
                 sig = dtext.length - k
                 if sig <= (hex ? 6 : 7)
                   cp = dtext.to_i(hex ? 16 : 10)
@@ -1052,9 +1034,7 @@ module ActionView
         return 0 unless "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".include?(s[j, 1].to_s) && s[j, 1].to_s != ""
       end
       start = j
-      while j < n && digits.include?(s[j, 1].to_s) && s[j, 1].to_s != ""
-        j = j + 1
-      end
+      j = j + 1 while j < n && digits.include?(s[j, 1].to_s) && s[j, 1].to_s != ""
       return 0 if j == start
       return 0 unless s[j, 1].to_s == ";"
       j + 1 - i
@@ -1228,9 +1208,7 @@ module ActionView
       j = auto_link_url_prefix_end(s, i)
       return 0 if j == 0
       k = j
-      while k < n && auto_link_url_char?(s[k, 1].to_s)
-        k = k + 1
-      end
+      k = k + 1 while k < n && auto_link_url_char?(s[k, 1].to_s)
       return 0 if k == j
       k - i
     end
@@ -1405,15 +1383,11 @@ module ActionView
       return 0 unless auto_link_email_start_char?(s[i, 1].to_s)
       j = i + 1
       j = j + 1 if s[j, 1].to_s == "."
-      while j < n && auto_link_email_local_char?(s[j, 1].to_s)
-        j = j + 1
-      end
+      j = j + 1 while j < n && auto_link_email_local_char?(s[j, 1].to_s)
       return 0 unless s[j, 1].to_s == "@"
       j = j + 1
       k = j
-      while k < n && auto_link_email_domain_char?(s[k, 1].to_s)
-        k = k + 1
-      end
+      k = k + 1 while k < n && auto_link_email_domain_char?(s[k, 1].to_s)
       return 0 if k == j
       # `(?:\.[\w-]+)+` — one label is not a domain.
       labels = 0
@@ -1422,9 +1396,7 @@ module ActionView
         more = false
         next unless s[k, 1].to_s == "."
         m = k + 1
-        while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
-          m = m + 1
-        end
+        m = m + 1 while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
         next unless m > k + 1
         k = m
         labels = labels + 1

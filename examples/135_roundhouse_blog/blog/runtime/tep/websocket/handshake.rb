@@ -130,13 +130,9 @@ module Tep
 
       def self.trim(s)
         i = 0
-        while i < s.length && ([" ", "\t"].include?(s[i]))
-          i += 1
-        end
+        i += 1 while i < s.length && ([" ", "\t"].include?(s[i]))
         j = s.length - 1
-        while j >= i && ([" ", "\t"].include?(s[j]))
-          j -= 1
-        end
+        j -= 1 while j >= i && ([" ", "\t"].include?(s[j]))
         if j < i
           return ""
         end

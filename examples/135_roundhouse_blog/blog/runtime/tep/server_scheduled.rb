@@ -185,9 +185,7 @@ module Tep
       # server; this Scheduled server is the one the blog actually runs.
       def self.handle_connection(client)
         keep_going = true
-        while keep_going
-          keep_going = Tep::Server::Scheduled.handle_one(client)
-        end
+        keep_going = Tep::Server::Scheduled.handle_one(client) while keep_going
         Sock.sphttp_close(client)
         0
       end

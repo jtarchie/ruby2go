@@ -135,9 +135,7 @@ module Base64
   def self.urlsafe_encode64_nopad(s)
     out = urlsafe_encode64(s)
     n = out.length
-    while n > 0 && out[n - 1] == "="
-      n = n - 1
-    end
+    n = n - 1 while n > 0 && out[n - 1] == "="
     out[0, n].to_s
   end
 
