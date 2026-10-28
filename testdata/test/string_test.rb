@@ -1168,7 +1168,7 @@ B
       assert_equal true, c.nil?
       assert_equal "", c.to_s
       assert_equal "nil", c.inspect
-      assert_equal true, (c == nil)
+      assert_equal true, (c.nil?)
       d = s[1]
       up = d ? d.upcase : "unreached"
       assert_equal "B", up

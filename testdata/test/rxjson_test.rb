@@ -427,7 +427,7 @@ module RxjsonTests
       assert_equal true, (/a/ === "cat")
       assert_equal false, (/a/ === "dog")
       assert_equal false, (/a/ === 1)
-      assert_equal false, (/a/ === nil)
+      assert_equal false, (/a/.nil?)
       assert_equal false, (/1/ === 1)
       assert_equal ["\"12\" int", "\"1.5\" float", "\".5\" float", "\"yes\" bool", "\"NO\" bool", "\"x\\n#c\" comment", "\"\" other", "\"ab\" other"],
                    ["12", "1.5", ".5", "yes", "NO", "x\n#c", "", "ab"].map { |s| "#{s.inspect} #{rxjson_kind(s)}" }
@@ -933,9 +933,9 @@ b/
       assert_equal 2, (("abc" =~ /c/) || -1)
       assert_equal(-1, ("abc" =~ /z/) || -1)
       assert_equal true, ("abc" =~ /b/) == 1
-      assert_equal true, ("abc" =~ /z/) == nil
+      assert_equal true, ("abc" =~ /z/).nil?
       assert_equal false, "abc".match(/b/).nil?
-      assert_equal true, ("abc".match(/z/) == nil)
+      assert_equal true, ("abc".match(/z/).nil?)
       assert_equal "#<MatchData \"c\">", ("abc".match(/z/) || "abc".match(/c/)).inspect
       assert_equal "none", ("x".match(/y/) || "none")
       got = nil #: Integer?

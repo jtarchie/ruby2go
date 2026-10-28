@@ -166,7 +166,7 @@ module Tep
         return false if blob.length == 0
 
         req = Parser.parse(blob)
-        if req == nil
+        if req.nil?
           Tep::Server::Threaded.send_simple(client, 400, "bad request")
           return false
         end

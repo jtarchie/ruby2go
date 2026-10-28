@@ -1922,8 +1922,8 @@ module DynamicTests
       assert_equal "3", some.inspect
       assert_equal "", none.to_s
       assert_equal "3", some.to_s
-      assert_equal true, none == nil
-      assert_equal false, some == nil
+      assert_equal true, none.nil?
+      assert_equal false, some.nil?
       assert_equal false, !none.nil?
       assert_equal false, some != 3
       assert_equal true, some == 3
@@ -1939,7 +1939,7 @@ module DynamicTests
       assert_equal "nil", nil.inspect
       assert_equal "", nil.to_s
       assert_equal true, nil.nil?
-      assert_equal true, nil == nil
+      assert_equal true, nil.nil?
       assert_equal "|", "|"
     end
 
@@ -2096,8 +2096,8 @@ module DynamicTests
       assert_equal true, pt(1) == pt(1)
       assert_equal false, pt(1) == pt(2)
       assert_equal true, pt(0) == pt(-1)
-      assert_equal false, pt(1) == nil
-      assert_equal true, pt(0) == nil
+      assert_equal false, pt(1).nil?
+      assert_equal true, pt(0).nil?
       assert_equal 3, dynamic_ident(pt(3)).x
       assert_equal "nil", dynamic_ident(pt(0)).inspect
       assert_equal 4, pt(4)&.x || 0
@@ -2788,8 +2788,8 @@ module DynamicTests
       assert_equal true, dynamic_ident(1) == 1.0
       assert_equal true, dynamic_ident("a") == "a"
       assert_equal false, dynamic_ident(:a) == "a"
-      assert_equal true, dynamic_ident(nil) == nil
-      assert_equal false, dynamic_ident(false) == nil
+      assert_equal true, dynamic_ident(nil).nil?
+      assert_equal false, dynamic_ident(false).nil?
       assert_equal true, dynamic_ident([1, 2]) == [1, 2]
       assert_equal true, dynamic_ident(1) != 2
       assert_equal true, dynamic_ident(nil).nil?

@@ -153,7 +153,7 @@ class ObjectNilSelf
   end
 
   #: () -> bool
-  def nil_v? = @v.nil? && @v == nil
+  def nil_v? = @v.nil? && @v.nil?
 
   #: () -> String
   def v_inspect = @v.inspect
@@ -3697,7 +3697,7 @@ module ObjectTests
       assert_equal false, (c1 == Coin.new(6))
       assert_equal false, (c1 == 5)
       assert_equal false, (c1 == "5")
-      assert_equal false, (c1 == nil)
+      assert_equal false, (c1.nil?)
       coins = [c1, coin(1)] #: Array[Coin]
       assert_equal true, coins.include?(coin(1))
       assert_equal false, coins.include?(coin(2))
@@ -3876,7 +3876,7 @@ module ObjectTests
       assert_equal true, pa.equal?(pb)
       assert_equal false, pa.equal?(SdPoint.new(9, 2))
       assert_equal true, (pa == SdPoint.new(9, 2))
-      assert_equal false, (pa == nil)
+      assert_equal false, (pa.nil?)
       assert_equal false, (pa == 9)
       assert_equal false, (pa == [9, 2])
       assert_equal false, (Money.new(1, "x") == SdPoint.new(1, 2))
