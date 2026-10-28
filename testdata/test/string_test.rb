@@ -284,19 +284,19 @@ continued"
   indented #{n}
     more
   done
-EOS
+      EOS
       assert_equal "indented 5\n  more\ndone\n", h
       r = <<~'RAW'
   raw #{n} \t
-RAW
+      RAW
       assert_equal "raw \#{n} \\t\n", r
       d = <<-DASH
     keep #{s}
-    DASH
+      DASH
       assert_equal "    keep str\n", d
       assert_equal "SHOUT IT", <<~EOS.strip.upcase
   shout #{"it"}
-EOS
+      EOS
     end
 
     # Squiggly dedent skips blank lines, counts a tab, and keeps an interpolated value's own spaces.
@@ -309,19 +309,19 @@ EOS
     b
 	tab
     #{val}
-EOS
+      EOS
       assert_equal "\na\n\n  b\n\ttab\n    val\n", dedent
       m = <<~EOS
   x #{[1, 2].map do |i|
     i * 2
   end.join(",")} y
-EOS
+      EOS
       assert_equal "x 2,4 y\n", m
       a, b = <<~A, <<~B
   first
-A
+      A
   second
-B
+      B
       assert_equal "first\n", a
       assert_equal "second\n", b
     end

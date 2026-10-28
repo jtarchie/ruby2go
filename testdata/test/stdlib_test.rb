@@ -293,7 +293,7 @@ module StdlibTests
     def test_strings_with_escapes_unicode
       escaped = <<~'JSON'.chomp
       "a\tb\nc\"d\\e"
-    JSON
+      JSON
       assert_equal "a\tb\nc\"d\\e", JSON.parse(escaped)
       assert_equal "café", JSON.parse('"café"')
       assert_equal "😀", JSON.parse('"😀"')
