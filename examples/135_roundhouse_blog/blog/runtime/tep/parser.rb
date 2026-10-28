@@ -12,7 +12,7 @@ module Tep
 
       headers_blob = blob[0, end_of_headers]
       lines = headers_blob.split("\r\n")
-      return nil if lines.length.zero?
+      return nil if lines.empty?
 
       first = lines[0]
       first_parts = first.split(" ")

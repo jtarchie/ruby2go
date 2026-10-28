@@ -55,7 +55,7 @@ module Tep
       line = "#{name}=#{Url.escape(value)}"
       if opts.length.positive?
         opts.each do |k, v|
-          line << if v.length.zero?
+          line << if v.empty?
                     "; #{k}" # bare flag (HttpOnly, Secure)
                   else
                     "; #{k}=#{v}"
@@ -75,7 +75,7 @@ module Tep
     # value, so we force the assignment through this method (where
     # `self` is unambiguously Response).
     def set_body_if_empty(s)
-      @body = s if @body.length.zero? && s.length.positive?
+      @body = s if @body.empty? && s.length.positive?
     end
 
     def set_status(n) = @status = n

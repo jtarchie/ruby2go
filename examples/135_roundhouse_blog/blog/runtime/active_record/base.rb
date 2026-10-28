@@ -353,7 +353,7 @@ module ActiveRecord
       # (`Item.find_by(title: "B")`) lift to NamedTuple in Crystal,
       # but the adapter's `where` slot is typed `Hash(Symbol, _)`.
       rows = ActiveRecord.adapter.where(table_name, conditions.to_h)
-      return nil if rows.length.zero?
+      return nil if rows.empty?
 
       instantiate(rows[0])
     end

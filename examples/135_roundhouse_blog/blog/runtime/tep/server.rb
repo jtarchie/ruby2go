@@ -135,7 +135,7 @@ module Tep
       buf = +""
       while buf.length < 65_535
         chunk = Sock.sp_net_recv_some(client, 4096)
-        return "" if chunk.length.zero?
+        return "" if chunk.empty?
 
         buf += chunk
         return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
@@ -145,7 +145,7 @@ module Tep
 
     def handle_one(client)
       blob = read_request_blocking(client)
-      return false if blob.length.zero?
+      return false if blob.empty?
 
       req = Parser.parse(blob)
       if req.nil?

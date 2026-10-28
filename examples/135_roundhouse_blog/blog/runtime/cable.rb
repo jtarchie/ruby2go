@@ -176,7 +176,7 @@ module Cable
   # it never heard back about, so a dropped frame is a reconnect loop.
   def self.subscribe(ws, connection, identifier, holder)
     name = ActionCable::Channel::Parameters.read(identifier, "channel")
-    return Cable.reject(ws, identifier) if name.length.zero?
+    return Cable.reject(ws, identifier) if name.empty?
 
     channel = Cable.build_channel(name, connection, identifier)
     return Cable.reject(ws, identifier) if channel.nil?
@@ -241,7 +241,7 @@ module Cable
     return 0 if frame["command"].to_s != "subscribe"
 
     identifier = frame["identifier"].to_s
-    return 0 if identifier.length.zero?
+    return 0 if identifier.empty?
 
     Cable.subscribe(ws, connection, identifier, holder)
   end
@@ -622,7 +622,7 @@ module Cable
 
   def self.publish_raw(stream, message_json)
     id = Cable.identifier_for(stream)
-    return nil if id.length.zero?
+    return nil if id.empty?
 
     envelope = "{\"identifier\":#{JSON.generate(id)},\"message\":#{message_json}}"
     Tep::Broadcast.publish(stream, envelope)
@@ -636,7 +636,7 @@ module Cable
   class Transport
     def broadcast(stream, fragment)
       id = Cable.identifier_for(stream)
-      if id.length.zero?
+      if id.empty?
         return nil # no subscriber has named this stream yet
       end
 

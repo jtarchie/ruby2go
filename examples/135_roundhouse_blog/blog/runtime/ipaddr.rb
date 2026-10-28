@@ -200,7 +200,7 @@ class IPAddr
   # column. A nil at the call site is a type error there, which is
   # where it belongs.
   def self.parse_octets(addr)
-    raise InvalidAddressError, "invalid address: #{addr}" if addr.length.zero?
+    raise InvalidAddressError, "invalid address: #{addr}" if addr.empty?
     return parse_v6(addr) if addr.include?(":")
 
     parse_v4(addr)
@@ -212,7 +212,7 @@ class IPAddr
   # invalid address, which is what the stdlib answers for `"1.2.3.4/"`
   # too.
   def self.parse_prefix(part, addr)
-    raise InvalidAddressError, "invalid address: #{addr}" if part.length.zero?
+    raise InvalidAddressError, "invalid address: #{addr}" if part.empty?
     raise InvalidAddressError, "invalid address: #{addr}" if part.length > 3
 
     value = 0
@@ -263,7 +263,7 @@ class IPAddr
   end
 
   def self.parse_dec_octet(part, text)
-    raise InvalidAddressError, "invalid address: #{text}" if part.length.zero?
+    raise InvalidAddressError, "invalid address: #{text}" if part.empty?
     raise InvalidAddressError, "invalid address: #{text}" if part.length > 3
 
     value = 0
@@ -319,7 +319,7 @@ class IPAddr
   # side, which is what makes `::1` and `fe80::` both work.
   def self.parse_v6_groups(part, text)
     out = []
-    return out if part.length.zero?
+    return out if part.empty?
 
     groups = part.split(":", -1)
     i = 0
@@ -339,7 +339,7 @@ class IPAddr
   end
 
   def self.parse_hex_group(group, text)
-    raise InvalidAddressError, "invalid address: #{text}" if group.length.zero?
+    raise InvalidAddressError, "invalid address: #{text}" if group.empty?
     raise InvalidAddressError, "invalid address: #{text}" if group.length > 4
 
     value = 0

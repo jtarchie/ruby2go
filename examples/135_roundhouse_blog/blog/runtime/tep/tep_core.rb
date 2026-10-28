@@ -14,7 +14,7 @@ module Tep
   # reports the declaration, never a measurement.
   def self.os_workers_desc
     w = ENV["SPINEL_WORKERS"] || ""
-    if w.length.zero?
+    if w.empty?
       "one per core (SPINEL_WORKERS=N to cap)"
     else
       "#{w} (SPINEL_WORKERS)"

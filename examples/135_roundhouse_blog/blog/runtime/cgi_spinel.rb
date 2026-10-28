@@ -45,7 +45,7 @@ module CGI
           d = CGI.decode_entity(s[(i + 1), semi - i - 1])
           rep = d unless d.nil?
         end
-        if rep.length.zero?
+        if rep.empty?
           out << c
           i += 1
         else

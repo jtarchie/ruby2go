@@ -124,14 +124,14 @@ module Tep
         out["path"]  = rest[0, qi]
         out["query"] = rest[qi + 1, rest.length - qi - 1]
       end
-      out["path"] = "/" if out["path"].length.zero?
+      out["path"] = "/" if out["path"].empty?
       out
     end
 
     # "a=1&b=2&c" -> Hash {"a"=>"1","b"=>"2","c"=>""}
     def self.parse_query(s)
       h = Tep.str_hash
-      return h if s.length.zero?
+      return h if s.empty?
 
       pairs = s.split("&")
       pairs.each do |pair|

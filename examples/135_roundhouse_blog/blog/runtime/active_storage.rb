@@ -541,14 +541,14 @@ module ActiveStorage
       rows = ActiveRecord.adapter.select_rows(
         "SELECT #{columns("b")} FROM active_storage_blobs b WHERE b.id = #{ActiveRecord.adapter.escape_value(id)} LIMIT 1"
       )
-      rows.length.zero? ? nil : from_row(rows[0])
+      rows.empty? ? nil : from_row(rows[0])
     end
 
     def self.find_by_key(key)
       rows = ActiveRecord.adapter.select_rows(
         "SELECT #{columns("b")} FROM active_storage_blobs b WHERE b.key = #{ActiveRecord.adapter.escape_value(key)} LIMIT 1"
       )
-      rows.length.zero? ? nil : from_row(rows[0])
+      rows.empty? ? nil : from_row(rows[0])
     end
 
     # Rails' `ActiveStorage.verifier` signs the blob id with purpose

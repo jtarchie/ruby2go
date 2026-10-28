@@ -181,7 +181,7 @@ module Tep
       # connection open for the next keep-alive request, false to close.
       def self.handle_one(client)
         blob = Tep::Server::Scheduled.read_request_blob(client, KEEPALIVE_TIMEOUT)
-        return false if blob.length.zero?
+        return false if blob.empty?
 
         req = Parser.parse(blob)
         if req.nil?
@@ -229,7 +229,7 @@ module Tep
           return "" if ready.zero?
 
           chunk = Sock.sphttp_recv_some(fd, 4096)
-          return "" if chunk.length.zero?
+          return "" if chunk.empty?
 
           buf << chunk
           return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
@@ -291,7 +291,7 @@ module Tep
         # Tep::Server#send; without it, the Security::Headers nosniff
         # default leaves the browser refusing to interpret an erb
         # response as HTML.
-        res.headers["Content-Type"] = "text/html; charset=utf-8" if res.file_path.length.zero? && res.body.length.positive? && !res.headers.key?("Content-Type")
+        res.headers["Content-Type"] = "text/html; charset=utf-8" if res.file_path.empty? && res.body.length.positive? && !res.headers.key?("Content-Type")
         reason = Tep.reason(res.status)
         head = "#{req.http_version} #{res.status} #{reason}\r\n"
         res.headers.each do |k, v|

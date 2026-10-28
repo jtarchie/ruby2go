@@ -158,7 +158,7 @@ module Tep
       # connection open for the next keep-alive request, false to close.
       def self.handle_one(client, io)
         blob = Tep::Server::Threaded.read_request_blob(client, io, KEEPALIVE_TIMEOUT)
-        return false if blob.length.zero?
+        return false if blob.empty?
 
         req = Parser.parse(blob)
         if req.nil?
@@ -204,7 +204,7 @@ module Tep
           return "" if ready.nil?
 
           chunk = Sock.sphttp_recv_some(fd, 4096)
-          return "" if chunk.length.zero?
+          return "" if chunk.empty?
 
           buf << chunk
           return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
@@ -256,7 +256,7 @@ module Tep
         end
 
         # Default Content-Type for inline-body responses.
-        res.headers["Content-Type"] = "text/html; charset=utf-8" if res.file_path.length.zero? && res.body.length.positive? && !res.headers.key?("Content-Type")
+        res.headers["Content-Type"] = "text/html; charset=utf-8" if res.file_path.empty? && res.body.length.positive? && !res.headers.key?("Content-Type")
         reason = Tep.reason(res.status)
         head = "#{req.http_version} #{res.status} #{reason}\r\n"
         res.headers.each do |k, v|

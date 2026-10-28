@@ -585,7 +585,7 @@ module ActionText
         out << parts[i].to_s.split(")")[0].to_s
         i += 1
       end
-      raise "ActionText::Fragment: unsupported selector #{text.inspect}" if out.length.zero?
+      raise "ActionText::Fragment: unsupported selector #{text.inspect}" if out.empty?
 
       out
     end

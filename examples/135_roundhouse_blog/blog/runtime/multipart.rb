@@ -133,7 +133,7 @@ module ActionDispatch
       def self.parse(body, content_type)
         form = Form.new
         b = boundary(content_type)
-        return form if b.length.zero?
+        return form if b.empty?
 
         delimiter = "--#{b}"
         n = body.bytesize
@@ -181,11 +181,11 @@ module ActionDispatch
           end
         end
         name = disposition_param(disposition, "name")
-        return nil if name.length.zero?
+        return nil if name.empty?
 
         if disposition.include?("filename=")
           filename = disposition_param(disposition, "filename")
-          return nil if filename.length.zero?
+          return nil if filename.empty?
 
           # A browser sends the basename; a client that sends a path
           # gets the same treatment Rack gives it.

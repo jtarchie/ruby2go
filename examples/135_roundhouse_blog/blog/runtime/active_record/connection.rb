@@ -186,7 +186,7 @@ module ActiveRecord
     # that has timestamps. Returns the affected-row count, the same
     # currency `update_counters` deals in.
     def self.upsert_all(rows, unique_by: nil, on_duplicate: nil, returning: nil)
-      return 0 if rows.length.zero?
+      return 0 if rows.empty?
       raise NotImplementedError, "#{name}.upsert_all: RETURNING is not supported" if returning
 
       cols = rows[0].keys
@@ -203,7 +203,7 @@ module ActiveRecord
         # Every column IS the conflict target: there is nothing left to
         # assign, and `DO UPDATE SET` with an empty list is a syntax
         # error. Rails degrades to a no-op insert here too.
-        assigns = updatable.length.zero? ? nil : updatable.map { |c| "#{c} = excluded.#{c}" }.join(", ")
+        assigns = updatable.empty? ? nil : updatable.map { |c| "#{c} = excluded.#{c}" }.join(", ")
       end
       action = assigns.nil? ? "DO NOTHING" : "DO UPDATE SET #{assigns}"
 

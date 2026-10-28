@@ -1037,7 +1037,7 @@ module NumberTests
       d = (h["a"] || 0) + 100
       assert_equal 101, d
       e = nil #: Float?
-      e = 2.5 if h.size > 0
+      e = 2.5 if !h.empty?
       assert_equal "5.0", ((e ? e * 2.0 : 0.0)).inspect
       counts = {} #: Hash[String, Integer]
       %w[a b a c a].each { |k| counts[k] = (counts[k] || 0) + 1 }

@@ -49,7 +49,7 @@ module Tep
 
         # Sec-WebSocket-Key: 24-char base64 (16-byte nonce).
         key = req.req_headers["sec-websocket-key"]
-        if key.length.zero?
+        if key.empty?
           out.valid = false
           out.reason = "missing Sec-WebSocket-Key"
           return out
@@ -82,7 +82,7 @@ module Tep
       # leaves values as-is, and clients sometimes send
       # `Connection: keep-alive, Upgrade` capitalised.
       def self.icontains(hay, needle)
-        return false if hay.length.zero? || needle.length.zero?
+        return false if hay.empty? || needle.empty?
 
         hl = Handshake.downcase(hay)
         nl = Handshake.downcase(needle)
@@ -109,7 +109,7 @@ module Tep
       def self.split_csv(s)
         out = [""]
         out.pop
-        return out if s.length.zero?
+        return out if s.empty?
 
         pos = 0
         while pos < s.length

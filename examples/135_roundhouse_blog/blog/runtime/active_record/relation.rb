@@ -234,7 +234,7 @@ module ActiveRecord
     # anything that is not one column with an optional ASC/DESC.
     def order_column(term)
       words = term.strip.split(/\s+/)
-      return nil if words.length.zero? || words.length > 2
+      return nil if words.empty? || words.length > 2
 
       col = words[0]
       dot = col.rindex(".")
@@ -722,7 +722,7 @@ module ActiveRecord
       # holding the single row `first` asked for would answer those with
       # one row out of many. Same terminal rule as `pluck`.
       @records = nil
-      rows.length.zero? ? nil : rows[0]
+      rows.empty? ? nil : rows[0]
     end
 
     # `take` — a row with no ordering imposed. Rails leaves the order
@@ -743,12 +743,12 @@ module ActiveRecord
 
     def last
       rows = to_a
-      rows.length.zero? ? nil : rows[rows.length - 1]
+      rows.empty? ? nil : rows[rows.length - 1]
     end
 
     def count
       rows = ActiveRecord.adapter.select_rows(count_sql)
-      rows.length.zero? ? 0 : rows[0]["n"].to_i
+      rows.empty? ? 0 : rows[0]["n"].to_i
     end
 
     # `sum(:col)` / `sum("<sql expr>")` — SQL SUM over the relation.
@@ -761,7 +761,7 @@ module ActiveRecord
       sql = "#{sql} #{@joins.join(" ")}" if @joins.length.positive?
       sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length.positive?
       rows = ActiveRecord.adapter.select_rows(sql)
-      rows.length.zero? ? 0.0 : rows[0]["n"].to_f
+      rows.empty? ? 0.0 : rows[0]["n"].to_f
     end
 
     # `group(:col).count` — Rails hands back a Hash of group-key =>
@@ -786,7 +786,7 @@ module ActiveRecord
     # COUNT round-trip (Rails asks EXISTS here — one row either way).
     def empty?
       r = @records
-      r.nil? ? count.zero? : r.length.zero?
+      r.nil? ? count.zero? : r.empty?
     end
 
     # Like `empty?`: a loaded relation answers from its records, an
@@ -950,8 +950,8 @@ module ActiveRecord
     # still emits a bare `DELETE FROM <table>` — Rails' truncate-shaped
     # statement, not a subquery over every row.
     def scoped_write_where
-      return "" if @wheres.length.zero? && @joins.length.zero?
-      return " WHERE #{@wheres.join(" AND ")}" if @joins.length.zero?
+      return "" if @wheres.empty? && @joins.empty?
+      return " WHERE #{@wheres.join(" AND ")}" if @joins.empty?
 
       key = "#{@table}.#{@model.primary_key}"
       inner = "SELECT #{key} FROM #{@table} #{@joins.join(" ")}"
@@ -987,7 +987,7 @@ module ActiveRecord
       @limit = 1
       rows = pluck(col)
       @limit = prior
-      rows.length.zero? ? nil : rows[0]
+      rows.empty? ? nil : rows[0]
     end
 
     # `ids` — primary keys, as integers.
