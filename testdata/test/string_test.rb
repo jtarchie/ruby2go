@@ -2359,7 +2359,6 @@ module StringTests
     end
   end
 
-
   ESCAPES = { "&" => "&amp;", "<" => "&lt;" }.freeze
 
   # A view in roundhouse's shape: partials append to the caller's String (decision 405).

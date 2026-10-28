@@ -33,7 +33,6 @@ greeting = ERB.new(%q(Hello <%= name %>, you have <%= count %> message<%= count 
 puts greeting.result_with_hash(name: "Grace", count: 3)
 puts greeting.result_with_hash(name: "Linus", count: 1)
 
-
 html = ERB.new(<<~HTML, trim_mode: "<>")
   <ul>
   <% items.each do |item| %>
