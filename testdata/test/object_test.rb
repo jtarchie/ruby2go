@@ -2536,7 +2536,6 @@ def secret = "s3cret"
     #: () -> String
     def status = "ok #{check(3)}"
 
-
     #: () -> String
     def reveal = secret.reverse
   end
