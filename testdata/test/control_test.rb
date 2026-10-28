@@ -1830,13 +1830,15 @@ module ControlTests
       pairs = [[1, 9], [2, 8]] #: Array[[Integer, Integer]]
       pairs.each { |pair| 
         lo = pair[1]
-                          hi = pair[0] }
+                          hi = pair[0]
+}
       assert_equal 8, lo
       assert_equal 2, hi
       ww = 0
       res = [5].map { |x| 
               ww = x
-                          z = x * 2; z }
+                          z = x * 2; z
+}
       assert_equal 5, ww
       assert_equal [10], res
     end
