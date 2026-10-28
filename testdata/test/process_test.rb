@@ -64,13 +64,13 @@ module ProcessTests
     end
 
     def test_signalled_child_status
-      system('kill -9 $$')
+      system("kill -9 $$")
       st = $?
       assert_equal [true, 9, nil, nil, false], [st&.signaled?, st&.termsig, st&.exitstatus, st&.success?, st&.exited?]
       assert_equal "pid N SIGKILL (signal 9)", st&.to_s&.sub(/\d+/, "N")
       assert_equal 9, st&.to_i
 
-      Process.wait(Process.spawn("sh", "-c", 'kill -15 $$'))
+      Process.wait(Process.spawn("sh", "-c", "kill -15 $$"))
       st = $?
       assert_equal [true, 15, nil], [st&.signaled?, st&.termsig, st&.exitstatus]
     end
@@ -83,7 +83,7 @@ module ProcessTests
     end
 
     def test_popen_signalled_status
-      IO.popen(["sh", "-c", 'kill -9 $$']) { |io| io.read }
+      IO.popen(["sh", "-c", "kill -9 $$"]) { |io| io.read }
       st = $?
       assert_equal [true, 9, nil], [st&.signaled?, st&.termsig, st&.exitstatus]
     end

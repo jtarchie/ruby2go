@@ -12,14 +12,14 @@
 #
 # Without --spec, the checkout is cmd/rubyspec's (pinned commit, user cache dir; decision 272).
 
-require 'prism'
+require "prism"
 
-ROOT = File.expand_path('..', __dir__)
-missing = ARGV.delete('--missing')
-spec = ARGV.index('--spec')&.then { |i| ARGV[i + 1] }
-spec ||= IO.popen(['go', 'run', './cmd/rubyspec', '-print-root'], chdir: ROOT, &:read).strip # the pinned, atomically fetched checkout cmd/rubyspec runs
-abort 'rubyspec-coverage: no ruby/spec checkout (go run ./cmd/rubyspec -print-root failed)' unless $?.nil? || $?.success?
-abort "rubyspec-coverage: #{spec} is not a ruby/spec checkout" unless Dir.exist?(File.join(spec, 'core'))
+ROOT = File.expand_path("..", __dir__)
+missing = ARGV.delete("--missing")
+spec = ARGV.index("--spec")&.then { |i| ARGV[i + 1] }
+spec ||= IO.popen(["go", "run", "./cmd/rubyspec", "-print-root"], chdir: ROOT, &:read).strip # the pinned, atomically fetched checkout cmd/rubyspec runs
+abort "rubyspec-coverage: no ruby/spec checkout (go run ./cmd/rubyspec -print-root failed)" unless $?.nil? || $?.success?
+abort "rubyspec-coverage: #{spec} is not a ruby/spec checkout" unless Dir.exist?(File.join(spec, "core"))
 
 # class or module name => method names its prelude bodies define ("name.s" holds `def self.` ones)
 defs = Hash.new { |h, k| h[k] = [] }
@@ -34,7 +34,7 @@ walk = lambda do |node, owner|
   when Prism::DefNode
     defs[node.receiver ? "#{owner}.s" : owner] << node.name.to_s.sub(/\A__(.+?)_(?:\d+|block|enum|[a-z_]+)\z/, '\1')
   when Prism::AliasMethodNode
-    defs[owner] << node.new_name.slice.delete_prefix(':')
+    defs[owner] << node.new_name.slice.delete_prefix(":")
   when Prism::CallNode
     if %i[alias_method attr_reader attr_accessor attr_writer].include?(node.name) && node.arguments
       node.arguments.arguments.each { |a| defs[owner] << a.unescaped if a.respond_to?(:unescaped) }
@@ -42,38 +42,38 @@ walk = lambda do |node, owner|
   end
   node&.compact_child_nodes&.each { |c| walk.call(c, owner) }
 end
-Dir[File.join(ROOT, 'prelude/*.rb')].each { |f| walk.call(Prism.parse_file(f).value, 'Object') }
-intrinsics = Dir[File.join(ROOT, 'internal/compiler/*.go')].reject do |f|
-  f.end_with?('_test.go')
+Dir[File.join(ROOT, "prelude/*.rb")].each { |f| walk.call(Prism.parse_file(f).value, "Object") }
+intrinsics = Dir[File.join(ROOT, "internal/compiler/*.go")].reject do |f|
+  f.end_with?("_test.go")
 end.map { |f| File.read(f) }.join
 
 # ruby/spec's file names for operators and the classes whose directory names differ
-OPS = { 'element_reference' => '[]', 'element_set' => '[]=', 'plus' => '+', 'minus' => '-', 'multiply' => '*',
-        'divide' => '/', 'modulo' => '%', 'comparison' => '<=>', 'equal_value' => '==', 'case_compare' => '===',
-        'lt' => '<', 'lte' => '<=', 'gt' => '>', 'gte' => '>=', 'uplus' => '+@', 'uminus' => '-@', 'exponent' => '**',
-        'bit_and' => '&', 'bit_or' => '|', 'bit_xor' => '^', 'complement' => '~', 'left_shift' => '<<',
-        'right_shift' => '>>', 'match' => '=~', 'not_equal' => '!=', 'equal' => 'equal?', 'not' => '!',
-        'and' => '&', 'or' => '|', 'xor' => '^', 'times' => '*', 'intersection' => '&', 'union' => '|', 'difference' => '-' }.freeze
-CLASSES = { 'nil' => 'NilClass', 'true' => 'TrueClass', 'false' => 'FalseClass', 'basicobject' => 'BasicObject',
-            'matchdata' => 'MatchData', 'filetest' => 'FileTest', 'objectspace' => 'ObjectSpace', 'systemexit' => 'SystemExit',
-            'sizedqueue' => 'SizedQueue', 'conditionvariable' => 'ConditionVariable', 'threadgroup' => 'ThreadGroup',
-            'unboundmethod' => 'UnboundMethod', 'tracepoint' => 'TracePoint', 'env' => 'ENVClass', 'gc' => 'GC',
-            'io' => 'IO', 'argf' => 'ARGFClass' }.freeze
-MIXINS = { 'Array' => %w[Enumerable], 'Hash' => %w[Enumerable], 'Range' => %w[Enumerable], 'Set' => %w[Enumerable],
-           'Struct' => %w[Enumerable], 'Integer' => %w[Comparable], 'Float' => %w[Comparable], 'String' => %w[Comparable],
-           'File' => %w[IO IOReadable IOWritable], 'IO' => %w[IOReadable IOWritable] }.freeze
+OPS = { "element_reference" => "[]", "element_set" => "[]=", "plus" => "+", "minus" => "-", "multiply" => "*",
+        "divide" => "/", "modulo" => "%", "comparison" => "<=>", "equal_value" => "==", "case_compare" => "===",
+        "lt" => "<", "lte" => "<=", "gt" => ">", "gte" => ">=", "uplus" => "+@", "uminus" => "-@", "exponent" => "**",
+        "bit_and" => "&", "bit_or" => "|", "bit_xor" => "^", "complement" => "~", "left_shift" => "<<",
+        "right_shift" => ">>", "match" => "=~", "not_equal" => "!=", "equal" => "equal?", "not" => "!",
+        "and" => "&", "or" => "|", "xor" => "^", "times" => "*", "intersection" => "&", "union" => "|", "difference" => "-" }.freeze
+CLASSES = { "nil" => "NilClass", "true" => "TrueClass", "false" => "FalseClass", "basicobject" => "BasicObject",
+            "matchdata" => "MatchData", "filetest" => "FileTest", "objectspace" => "ObjectSpace", "systemexit" => "SystemExit",
+            "sizedqueue" => "SizedQueue", "conditionvariable" => "ConditionVariable", "threadgroup" => "ThreadGroup",
+            "unboundmethod" => "UnboundMethod", "tracepoint" => "TracePoint", "env" => "ENVClass", "gc" => "GC",
+            "io" => "IO", "argf" => "ARGFClass" }.freeze
+MIXINS = { "Array" => %w[Enumerable], "Hash" => %w[Enumerable], "Range" => %w[Enumerable], "Set" => %w[Enumerable],
+           "Struct" => %w[Enumerable], "Integer" => %w[Comparable], "Float" => %w[Comparable], "String" => %w[Comparable],
+           "File" => %w[IO IOReadable IOWritable], "IO" => %w[IOReadable IOWritable] }.freeze
 
-rows = Dir[File.join(spec, 'core/*/')].sort.filter_map do |dir|
+rows = Dir[File.join(spec, "core/*/")].sort.filter_map do |dir|
   key = File.basename(dir)
-  cls = CLASSES.fetch(key) { key.split('_').map(&:capitalize).join }
+  cls = CLASSES.fetch(key) { key.split("_").map(&:capitalize).join }
   have = defs[cls] + defs["#{cls}.s"] + MIXINS.fetch(cls, []).flat_map { |m| defs[m] }
-  have += defs['Kernel'] + defs['Object'] + defs['BasicObject'] if %w[Kernel BasicObject Object].include?(cls)
-  names = Dir[File.join(dir, '*_spec.rb')].map { |f| File.basename(f, '_spec.rb') }
+  have += defs["Kernel"] + defs["Object"] + defs["BasicObject"] if %w[Kernel BasicObject Object].include?(cls)
+  names = Dir[File.join(dir, "*_spec.rb")].map { |f| File.basename(f, "_spec.rb") }
   next if names.empty?
 
   uncovered = names.reject do |n|
     m = OPS.fetch(n, n)
-    cands = [m, "#{m}?", "#{m}!", "#{m}=", m.sub(/_p\z/, '?')]
+    cands = [m, "#{m}?", "#{m}!", "#{m}=", m.sub(/_p\z/, "?")]
     cands.any? { |c| have.include?(c) || intrinsics.include?(%("#{c}")) }
   end
   [cls, names.size - uncovered.size, names.size, uncovered.sort]
@@ -89,4 +89,4 @@ rows.sort_by { |_, got, total, _| [-got.fdiv(total), -total] }.each do |cls, got
 end
 got = rows.sum { |r| r[1] }
 total = rows.sum { |r| r[2] }
-puts format("%-#{width}s %4d / %-4d %5.1f%%", 'total', got, total, 100.0 * got / total)
+puts format("%-#{width}s %4d / %-4d %5.1f%%", "total", got, total, 100.0 * got / total)

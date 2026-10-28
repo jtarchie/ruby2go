@@ -34,6 +34,6 @@ module MessageDigest
   # PBKDF2-HMAC-SHA256 as RAW BYTES (not hex, not base64): the derived
   # key is the HMAC key above, and HMAC keys are bytes.
   def self.pbkdf2_sha256(secret, salt, iters, dklen)
-    OpenSSL::PKCS5.pbkdf2_hmac(secret, salt, iters, dklen, OpenSSL::Digest.new('SHA256'))
+    OpenSSL::PKCS5.pbkdf2_hmac(secret, salt, iters, dklen, OpenSSL::Digest.new("SHA256"))
   end
 end

@@ -2,9 +2,9 @@
 
 # mspec's expectations over minitest, for running ruby/spec under rugaroo (cmd/rubyspec).
 # The runner rewrites what must be static first: context → describe, guards, shared specs.
-require 'minitest/autorun'
-require 'fileutils'
-require 'stringio'
+require "minitest/autorun"
+require "fileutils"
+require "stringio"
 
 # `actual.should == x`, `actual.should.equal?(x)`, `-> { }.should.raise(E)`; should_not negates.
 class SpecExpectation
@@ -70,14 +70,14 @@ class SpecExpectation
   def respond_to?(other) = check(@actual.respond_to?(other), "to respond to #{other.inspect}")
 
   #: () -> bool
-  def frozen? = check(@actual.frozen?, 'to be frozen')
+  def frozen? = check(@actual.frozen?, "to be frozen")
 
   # mspec's predicate matchers with an argument (`File.should.exist?(path)`), each the actual's own answer.
   #: () -> bool
-  def eof? = check(@actual.eof?, 'to be at eof')
+  def eof? = check(@actual.eof?, "to be at eof")
 
   #: () -> bool
-  def binmode? = check(@actual.binmode?, 'to be in binmode')
+  def binmode? = check(@actual.binmode?, "to be in binmode")
 
   #: (untyped) -> bool
   def exist?(x) = check(@actual.exist?(x), "exist? #{x.inspect}")
@@ -104,22 +104,22 @@ class SpecExpectation
   def instance_variable_defined?(x) = check(@actual.instance_variable_defined?(x), "to define #{x.inspect}")
 
   #: () -> bool
-  def empty? = check(@actual.empty?, 'to be empty')
+  def empty? = check(@actual.empty?, "to be empty")
 
   #: () -> bool
-  def nil? = check(@actual.nil?, 'to be nil')
+  def nil? = check(@actual.nil?, "to be nil")
 
   #: () -> bool
-  def nan? = check(@actual.nan?, 'to be NaN')
+  def nan? = check(@actual.nan?, "to be NaN")
 
   #: () -> bool
-  def zero? = check(@actual.zero?, 'to be zero')
+  def zero? = check(@actual.zero?, "to be zero")
 
   #: () -> bool
-  def finite? = check(@actual.finite?, 'to be finite')
+  def finite? = check(@actual.finite?, "to be finite")
 
   #: () -> bool
-  def infinite? = check(!@actual.infinite?.nil?, 'to be infinite')
+  def infinite? = check(!@actual.infinite?.nil?, "to be infinite")
 end
 
 # `-> { ... }.should.raise(E)`, which the runner rewrites to ProcExpectation.new(-> { ... }, true).raise(E): a Proc has no methods to add.
@@ -262,7 +262,7 @@ module ScratchPad
   def self.recorded = @@record
 end
 
-SPEC_TEMP_DIR = ENV['SPEC_TEMP_DIR'] || File.join(Dir.pwd, 'rubyspec_temp', Process.pid.to_s) #: String
+SPEC_TEMP_DIR = ENV["SPEC_TEMP_DIR"] || File.join(Dir.pwd, "rubyspec_temp", Process.pid.to_s) #: String
 SPEC_TEMP_UNIQUIFIER = [0] #: Array[Integer]
 
 # A path under SPEC_TEMP_DIR, made unique by a counter before its basename.
@@ -271,7 +271,7 @@ def tmp(name, uniquify = true)
   FileUtils.mkdir_p(SPEC_TEMP_DIR)
   if uniquify && !name.empty?
     SPEC_TEMP_UNIQUIFIER[0] += 1
-    slash = name.rindex('/')
+    slash = name.rindex("/")
     at = slash.nil? ? 0 : slash + 1
     name = "#{name[0, at]}#{SPEC_TEMP_UNIQUIFIER[0]}-#{name[at..]}"
   end
@@ -293,7 +293,7 @@ def rm_r(*paths)
 end
 
 #: (String, ?String) ?{ (File) -> void } -> void
-def touch(name, mode = 'w', &blk)
+def touch(name, mode = "w", &blk)
   FileUtils.mkdir_p(File.dirname(name))
   File.open(name, mode) { |f| blk&.call(f) }
 end
@@ -304,43 +304,43 @@ def cp(source, dest) = FileUtils.cp(source, dest)
 # The fixtures directory beside file (a shared spec's is its parent's), joined with args.
 #: (String, *String) -> String
 def fixture(file, *args)
-  path = File.dirname(file).delete_suffix('/shared')
-  fixtures = path.end_with?('/fixtures') ? '' : 'fixtures'
+  path = File.dirname(file).delete_suffix("/shared")
+  fixtures = path.end_with?("/fixtures") ? "" : "fixtures"
   File.join(File.expand_path(path), fixtures, *args)
 end
 
 # A mode String, or mspec's Hash of open options (only its mode: is read).
 #: (String, ?(String | Hash[Symbol, untyped])) -> File
-def new_io(name, mode = 'w:utf-8')
+def new_io(name, mode = "w:utf-8")
   return File.new(name, mode) if mode.is_a?(String)
 
-  File.new(name, (mode[:mode] || 'r').to_s)
+  File.new(name, (mode[:mode] || "r").to_s)
 end
 
 #: (String, ?String) -> Integer
-def new_fd(name, mode = 'w:utf-8') = IO.sysopen(name, mode)
+def new_fd(name, mode = "w:utf-8") = IO.sysopen(name, mode)
 
 # Runs the block with ENV["TZ"] set to name (offset hours east, which POSIX TZ writes west-positive), as mspec's.
 #: [T] (String, ?Integer?, ?String) { () -> T } -> T
-def with_timezone(name, offset = nil, daylight_saving_zone = '')
+def with_timezone(name, offset = nil, daylight_saving_zone = "")
   zone = name.dup
   zone += "#{-offset}:00:00" if offset
   zone += daylight_saving_zone
-  old = ENV['TZ']
-  ENV['TZ'] = zone
+  old = ENV["TZ"]
+  ENV["TZ"] = zone
   begin
     yield
   ensure
-    ENV['TZ'] = old
+    ENV["TZ"] = old
   end
 end
 
 # ruby_exe and ruby_cmd hand Ruby source to a fresh MRI process; a compiled program has no Ruby to run it (no eval), so each such example skips for good.
 #: (*untyped, **untyped) -> bot
-def ruby_exe(*, **) = raise(Minitest::Skip, 'rugaroo: ruby_exe runs Ruby source in a subprocess (no eval)')
+def ruby_exe(*, **) = raise(Minitest::Skip, "rugaroo: ruby_exe runs Ruby source in a subprocess (no eval)")
 
 #: (*untyped, **untyped) -> bot
-def ruby_cmd(*, **) = raise(Minitest::Skip, 'rugaroo: ruby_cmd runs Ruby source in a subprocess (no eval)')
+def ruby_cmd(*, **) = raise(Minitest::Skip, "rugaroo: ruby_cmd runs Ruby source in a subprocess (no eval)")
 
 # mspec's suppress_warning: the block runs with $VERBOSE nil, so warn prints nothing.
 #: [T] () { () -> T } -> T
@@ -357,8 +357,8 @@ end
 # platform_is/platform_is_not as values (the runner decides their block forms statically): this machine's OS.
 #: (*Symbol) -> bool
 def platform_is(*names)
-  os = RUBY_PLATFORM.split('-').last.to_s.sub(/\d+\z/, '')
-  names.any? { |n| n.to_s == os || (n == :bsd && os.end_with?('bsd')) || %i[posix unix].include?(n) && os != 'windows' }
+  os = RUBY_PLATFORM.split("-").last.to_s.sub(/\d+\z/, "")
+  names.any? { |n| n.to_s == os || (n == :bsd && os.end_with?("bsd")) || %i[posix unix].include?(n) && os != "windows" }
 end
 
 #: (*Symbol) -> bool
@@ -383,6 +383,6 @@ def mock_to_path(path) = MSpecMockToPath.new(path)
 def mock(_name = nil) = Object.new
 
 #: (?String) -> bot
-def flunk(message = 'This example is a failure') = mspec_fail(message)
+def flunk(message = "This example is a failure") = mspec_fail(message)
 
 at_exit { FileUtils.rm_rf(SPEC_TEMP_DIR) }

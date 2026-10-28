@@ -1,5 +1,5 @@
 # What `bundle install --standalone` writes: RubyGems shims, then the gems' lib dirs.
-require 'rbconfig'
+require "rbconfig"
 module Kernel
   remove_method(:gem) if private_method_defined?(:gem)
 

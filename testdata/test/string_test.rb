@@ -231,7 +231,7 @@ module StringTests
     def test_single_quotes_keep_and_n
       assert_equal "single \#{not} \\n raw", 'single #{not} \n raw'
       assert_equal "'q' \\ \\n", '\'q\' \\ \n'
-      assert_equal "", ''
+      assert_equal "", ""
     end
 
     # Double-quoted escapes, including \u{} with several codepoints and octal/hex.
@@ -258,12 +258,12 @@ module StringTests
 
     # Character literals are one-character strings.
     def test_character_literals_are_one_character
-      assert_equal "a", 'a'
+      assert_equal "a", "a"
       assert_equal "\n", "\n"
-      assert_equal "é", 'é'
+      assert_equal "é", "é"
       assert_equal " ", "\s"
       assert_equal "\t", "\t"
-      assert_equal "ab", ('a' + 'b')
+      assert_equal "ab", ("a" + "b")
       assert_equal "a)b", %q(a\)b)
       assert_equal 1, "\C-a".ord
       assert_equal 1, "\c?".bytesize
@@ -271,7 +271,7 @@ module StringTests
 
     # Adjacent plain literals and backslash-newline continue one string.
     def test_adjacent_plain_literals_and_backslash
-      assert_equal "adjacentlits", "adj" + "acent" + 'lits'
+      assert_equal "adjacentlits", "adj" + "acent" + "lits"
       assert_equal "line one continued", "line one \
 continued"
     end
@@ -981,7 +981,7 @@ B
     # adjacent literals and a line continuation concatenate
     def test_adjacent_literals_and_a_line
       n_interp = 1
-      assert_equal "tu1v", "t" + "u" + "#{n_interp}" + 'v'
+      assert_equal "tu1v", "t" + "u" + "#{n_interp}" + "v"
       assert_equal "total: 1 items", "total: #{n_interp} " \
         "items"
     end

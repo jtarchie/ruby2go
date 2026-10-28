@@ -154,7 +154,7 @@ module Resty
       end
 
       def body
-        ''
+        ""
       end
 
       def headers
@@ -233,7 +233,7 @@ module Resty
 
       #: () -> untyped
       def action
-        action_class = self.class.name.split('::').last
+        action_class = self.class.name.split("::").last
         controller.constant.const_get(action_class)
       end
     end #: [Controller, Request]
@@ -290,7 +290,7 @@ module Resty
       def headers
         return {} unless resource
         {
-          'Location' => "/#{controller_name}/#{resource.id}#{format}"
+          "Location" => "/#{controller_name}/#{resource.id}#{format}"
         }
       end
 
@@ -341,7 +341,7 @@ module Resty
       #: () -> Hash[String, untyped]
       def params
         @params ||= request.params.merge(
-          'id' => resource_id
+          "id" => resource_id
         )
       end
 
@@ -377,7 +377,7 @@ module Resty
       #: () -> Hash[String, untyped]
       def params
         @params ||= request.params.merge(
-          'id' => resource_id
+          "id" => resource_id
         )
       end
 
@@ -470,7 +470,7 @@ module Resty
       #: () -> Hash[String, untyped]
       def params
         @params ||= request.params.merge(
-          'id' => resource_id
+          "id" => resource_id
         )
       end
 
@@ -502,7 +502,7 @@ module Resty
       def headers
         return {} unless resource
         {
-          'Location' => "/#{controller_name}/#{resource.id}#{format}"
+          "Location" => "/#{controller_name}/#{resource.id}#{format}"
         }
       end
 
@@ -516,7 +516,7 @@ module Resty
       #: () -> Hash[String, untyped]
       def params
         @params ||= request.params.merge(
-          'id' => resource_id
+          "id" => resource_id
         )
       end
 
@@ -665,7 +665,7 @@ module ExampleApp
     class Show < Action
       #: () -> untyped
       def resource
-        Post.find(params['id'])
+        Post.find(params["id"])
       end
     end
 
@@ -686,14 +686,14 @@ module ExampleApp
     class Edit < Action
       #: () -> untyped
       def resource
-        Post.find(params['id'])
+        Post.find(params["id"])
       end
     end
 
     class Create < Action
       #: () -> untyped
       def resource
-        post = Post.create(params['post'])
+        post = Post.create(params["post"])
         post.persisted? ? post : nil
       end
     end
@@ -701,9 +701,9 @@ module ExampleApp
     class Update < Action
       #: () -> untyped
       def resource
-        post = Post.find(params['id'])
+        post = Post.find(params["id"])
         return nil unless post
-        post.attributes = params['post']
+        post.attributes = params["post"]
         post.save
         post
       end
@@ -712,7 +712,7 @@ module ExampleApp
     class Destroy < Action
       #: () -> untyped
       def resource
-        Post.find(params['id'])&.destroy
+        Post.find(params["id"])&.destroy
       end
     end
   end
