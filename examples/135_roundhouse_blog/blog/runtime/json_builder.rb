@@ -78,7 +78,7 @@ module JsonBuilder
   # no strict target has to narrow an `Integer?` — neither Rust's nor
   # Swift's emit does past a `nil?` guard.
   def self.encode_enum(labels, value)
-    return "null" if value < 0 || value >= labels.length
+    return "null" if value.negative? || value >= labels.length
 
     "\"#{encode_string(labels[value])}\""
   end

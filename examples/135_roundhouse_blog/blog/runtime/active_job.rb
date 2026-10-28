@@ -151,7 +151,7 @@ module ActiveJob
   # Rails' behaviour for an inline drain too.
   def self.drain
     ran = 0
-    while PENDING.length > 0
+    while PENDING.length.positive?
       work = PENDING.shift
       begin
         work.call

@@ -96,7 +96,7 @@ module Tep
     # proxy sets.
     def scheme
       proto = @req_headers["x-forwarded-proto"]
-      return proto.downcase if proto.length > 0
+      return proto.downcase if proto.length.positive?
 
       "http"
     end
@@ -160,12 +160,12 @@ module Tep
       cl = content_length
       while @raw_body.bytesize < cl
         ready = Tep::Scheduler.io_wait(client_fd, Tep::Scheduler::READ, 5)
-        if ready == 0
+        if ready.zero?
           break   # timeout -- client never finished sending
         end
 
         chunk = Sock.sphttp_recv_some(client_fd, cl - @raw_body.bytesize)
-        if chunk.bytesize == 0
+        if chunk.bytesize.zero?
           break   # peer closed mid-body
         end
 
@@ -192,7 +192,7 @@ module Tep
         end
 
         chunk = Sock.sphttp_recv_some(client_fd, cl - @raw_body.bytesize)
-        if chunk.bytesize == 0
+        if chunk.bytesize.zero?
           break   # peer closed mid-body
         end
 

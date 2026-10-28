@@ -99,7 +99,7 @@ module Tep
         rest = rest[8, rest.length - 8]
       end
 
-      if out["scheme"].length > 0
+      if out["scheme"].length.positive?
         slash = rest.index("/")
         hostport = rest
         tail     = "/"
@@ -124,18 +124,18 @@ module Tep
         out["path"]  = rest[0, qi]
         out["query"] = rest[qi + 1, rest.length - qi - 1]
       end
-      out["path"] = "/" if out["path"].length == 0
+      out["path"] = "/" if out["path"].length.zero?
       out
     end
 
     # "a=1&b=2&c" -> Hash {"a"=>"1","b"=>"2","c"=>""}
     def self.parse_query(s)
       h = Tep.str_hash
-      return h if s.length == 0
+      return h if s.length.zero?
 
       pairs = s.split("&")
       pairs.each do |pair|
-        next unless pair.length > 0
+        next unless pair.length.positive?
 
         eq = pair.index("=")
         if eq.nil?

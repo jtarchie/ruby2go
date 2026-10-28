@@ -389,7 +389,7 @@ module MarshalTests
 
     #: (Integer) -> String
     def self.zigzag(n)
-      z = n < 0 ? ((-n) << 1) - 1 : n << 1
+      z = n.negative? ? ((-n) << 1) - 1 : n << 1
       bytes = [] #: Array[Integer]
       while z >= 0x80
         bytes << ((z & 0x7f) | 0x80)

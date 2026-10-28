@@ -11,7 +11,7 @@ class Node
 end
 
 def make_tree(depth)
-  return Node.new(nil, nil) if depth == 0
+  return Node.new(nil, nil) if depth.zero?
 
   d = depth - 1
   Node.new(make_tree(d), make_tree(d))

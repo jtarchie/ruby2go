@@ -428,7 +428,7 @@ class UserAgent
             else
               1
             end
-    return "" if index < 0
+    return "" if index.negative?
 
     slot = app.comment[index]
     UserAgent.normalize_os(slot.nil? ? "" : slot)

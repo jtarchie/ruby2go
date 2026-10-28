@@ -51,10 +51,10 @@ module CgiIo
     if %w[POST PATCH PUT].include?(method)
       length = (env["CONTENT_LENGTH"] || "0").to_i
       ctype  = env["CONTENT_TYPE"] || ""
-      if length > 0 && ctype.start_with?("application/x-www-form-urlencoded")
+      if length.positive? && ctype.start_with?("application/x-www-form-urlencoded")
         body = stdin.read(length).to_s
         parse_form_into(body, params)
-      elsif length > 0 && ctype.start_with?("multipart/form-data")
+      elsif length.positive? && ctype.start_with?("multipart/form-data")
         # File parts land in the params tree as UploadedFile objects
         # under their bracket-nested name, the way Rack nests them; see
         # runtime/multipart.rb.

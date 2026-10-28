@@ -342,7 +342,7 @@ continued"
       assert_equal "1", "#{"#{"#{1}"}"}"
       assert_equal "STR3", "#{s.upcase}#{s.size}"
       assert_equal "[2, 4]", "#{[1, 2].map { |x| x * 2 }}"
-      assert_equal "pos", "#{n > 0 ? "pos" : "neg"}"
+      assert_equal "pos", "#{n.positive? ? "pos" : "neg"}"
       assert_equal "few", "#{case n when 1 then "one" when 4, 5 then "few" else "many" end}"
       assert_equal %w[a5 b strc], %W[a#{n} b #{s}c]
       assert_equal 1, %W[#{n}].size

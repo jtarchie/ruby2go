@@ -223,7 +223,7 @@ module ActiveJob
     loop do
       work = nil
       QUEUE_LOCK.synchronize do
-        work = PENDING.shift if PENDING.length > 0
+        work = PENDING.shift if PENDING.length.positive?
       end
       break if work.nil?
 

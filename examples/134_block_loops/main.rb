@@ -10,7 +10,7 @@ OFFSETS = [-1, 0, 1].freeze
 def neighbours(cells, x, y)
   OFFSETS.sum do |dy|
     OFFSETS.count do |dx|
-      next false if dx == 0 && dy == 0
+      next false if dx.zero? && dy.zero?
 
       cells[((y + dy) % H) * W + (x + dx) % W] == 1
     end

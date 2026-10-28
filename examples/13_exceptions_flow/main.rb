@@ -38,8 +38,8 @@ end
 #: (Integer) -> String
 def classify(n)
 
-  raise ArgumentError, "negative" if n < 0
-  return "zero" if n == 0
+  raise ArgumentError, "negative" if n.negative?
+  return "zero" if n.zero?
 
   "positive"
 rescue ArgumentError => e

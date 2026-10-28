@@ -81,7 +81,7 @@ module Main
     # poly-into-poly unifies (a raw StrStrHash value would not).
     out = Main.deep_dup(path_params)
     scalars.each { |k, v| out[k] = v }
-    out[outer_name] = Main.deep_dup(sub) if outer_name.length > 0
+    out[outer_name] = Main.deep_dup(sub) if outer_name.length.positive?
     out
   end
 
@@ -181,7 +181,7 @@ module Main
   # static/ and `./build/blog` is launched from.
   def self.serve_static(path, res)
     disk = "static#{path}"
-    if Sock.sphttp_filesize(disk) < 0
+    if Sock.sphttp_filesize(disk).negative?
       res.status = 404
       res.body = "<h1>404 Not Found</h1>"
       return nil
@@ -264,7 +264,7 @@ module Main
   def self.job_loop
     loop do
       sleep(JOB_POLL_INTERVAL)
-      Db.with_connection { ActiveJob.drain } if ActiveJob.pending_count > 0
+      Db.with_connection { ActiveJob.drain } if ActiveJob.pending_count.positive?
     end
     0
   end
@@ -367,7 +367,7 @@ module Main
     # the form body into flat bracket keys (req.req_params["article[title]"]);
     # re-nest them + merge the route's path captures (id, ...).
     controller.params = Main.nest_params(req.req_params, matched.path_params)
-    Main.nest_uploads(controller.params, req.uploads) if req.uploads.length > 0
+    Main.nest_uploads(controller.params, req.uploads) if req.uploads.length.positive?
     # Typed request object + per-request context statics. Helpers are
     # module functions with no controller in scope; the emit rewrites
     # their bare `request` reads to `ActionController::Current.request`
@@ -441,9 +441,9 @@ module Main
     # never empty, so non-empty == present.
     inbound_flash = Tep.str_hash
     cin = req.cookies.fetch("flash_notice", "")
-    inbound_flash["notice"] = cin if cin.length > 0
+    inbound_flash["notice"] = cin if cin.length.positive?
     ain = req.cookies.fetch("flash_alert", "")
-    inbound_flash["alert"] = ain if ain.length > 0
+    inbound_flash["alert"] = ain if ain.length.positive?
     controller.flash = ActionDispatch::Flash.new(inbound_flash)
     controller.request_format = request_format
 
@@ -497,15 +497,15 @@ module Main
     # re-persisted so a consumed flash doesn't stick on the next nav.
     persisted = controller.flash.to_persisted
     pn = persisted.fetch("notice", "")
-    if pn.length > 0
+    if pn.length.positive?
       Main.set_flash_cookie(res, "flash_notice", pn)
-    elsif req.cookies.fetch("flash_notice", "").length > 0
+    elsif req.cookies.fetch("flash_notice", "").length.positive?
       Main.clear_flash_cookie(res, "flash_notice")
     end
     pa = persisted.fetch("alert", "")
-    if pa.length > 0
+    if pa.length.positive?
       Main.set_flash_cookie(res, "flash_alert", pa)
-    elsif req.cookies.fetch("flash_alert", "").length > 0
+    elsif req.cookies.fetch("flash_alert", "").length.positive?
       Main.clear_flash_cookie(res, "flash_alert")
     end
 

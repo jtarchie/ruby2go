@@ -140,7 +140,7 @@ end
 def count_until_neg(xs)
   count = 0
   xs.each do |x|
-    break if x < 0
+    break if x.negative?
 
     count += 1
   end
@@ -161,7 +161,7 @@ end
 
 #: (Integer) -> Integer
 def bugs_risky(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
 
   n
 end
@@ -169,9 +169,9 @@ end
 # Helpers for the checks that were control_conditionals.rb.
 #: (Integer) -> String
 def sign(n)
-  if n > 0
+  if n.positive?
     "positive"
-  elsif n < 0
+  elsif n.negative?
     "negative"
   else
     "zero"
@@ -180,7 +180,7 @@ end
 
 #: (Integer) -> String?
 def only_positive(n)
-  "yes #{n}" if n > 0
+  "yes #{n}" if n.positive?
 end
 
 #: (Integer) -> String?
@@ -199,7 +199,7 @@ end
 
 #: (Integer) -> String
 def bucket(n)
-  if n < 0 then "neg"
+  if n.negative? then "neg"
   elsif n < 10 then "digit"
   elsif n < 100 then "tens"
   elsif n < 100 then "never"
@@ -378,7 +378,7 @@ end
 
 #: (Integer) -> String
 def early(n)
-  return "neg" if n < 0
+  return "neg" if n.negative?
   return "zero" if n.zero?
   return "small" unless n > 10
 
@@ -386,12 +386,12 @@ def early(n)
 end
 
 #: (Integer) -> Integer
-def abs_val(n) = n < 0 ? -n : n
+def abs_val(n) = n.negative? ? -n : n
 
 # Helpers for the checks that were control_bug_empty_body.rb.
 #: (Integer) -> Integer
 def empty_risky(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
 
   n
 end
@@ -442,7 +442,7 @@ end
 
 #: (Integer) -> Integer
 def collide_risky(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
 
   n
 end
@@ -450,7 +450,7 @@ end
 #: (Integer) -> String
 def doubled(n)
   ret_ = n * 2
-  raise "x" if n < 0
+  raise "x" if n.negative?
 
   "v#{ret_}"
 rescue StandardError
@@ -520,7 +520,7 @@ end
 
 #: (Array[Integer], Integer) -> void
 def definite_guarded(out, n)
-  return unless n > 0
+  return unless n.positive?
 
   v = n
 
@@ -531,7 +531,7 @@ end
 
 #: (Integer) -> Integer
 def raised(n)
-  raise ArgumentError, "neg" unless n > 0
+  raise ArgumentError, "neg" unless n.positive?
 
   v = n
 
@@ -546,7 +546,7 @@ def definite_countdown
   while true
     last = i
     i -= 1
-    break if i == 0
+    break if i.zero?
   end
   twice(last)
 end
@@ -587,7 +587,7 @@ end
 # Helpers for the checks that were control_edges.rb.
 #: (Integer) -> Integer
 def edges_risky(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
 
   n
 end
@@ -731,7 +731,7 @@ end
 
 #: (Integer) -> String
 def two_bindings(k)
-  raise ArgumentError, "arg" if k == 0
+  raise ArgumentError, "arg" if k.zero?
   raise KeyError, "key" if k == 1
 
   "none"
@@ -747,7 +747,7 @@ end
 def sum_positive(xs)
   total = 0
   xs.each do |x|
-    raise ArgumentError, "negative #{x}" if x < 0
+    raise ArgumentError, "negative #{x}" if x.negative?
 
     total += x
   end
@@ -758,7 +758,7 @@ end
 
 #: (Integer) -> Integer
 def depth(n)
-  return depth(n - 1) + 1 if n > 0
+  return depth(n - 1) + 1 if n.positive?
 
   raise ArgumentError, "bottom"
 rescue ArgumentError
@@ -776,7 +776,7 @@ end
 
 #: (Array[String], Integer) -> String
 def rescue_then_ensure_return(out, n)
-  raise ArgumentError, "a" if n > 0
+  raise ArgumentError, "a" if n.positive?
 
   "body"
 rescue ArgumentError
@@ -791,7 +791,7 @@ end
 def progress(xs)
   done = 0
   xs.each do |x|
-    raise ArgumentError, "stop at #{x}" if x < 0
+    raise ArgumentError, "stop at #{x}" if x.negative?
 
     done += 1
   end
@@ -804,7 +804,7 @@ end
 def first_ok(out, xs)
   xs.each do |x|
 
-    raise "bad #{x}" if x < 0
+    raise "bad #{x}" if x.negative?
 
     return x * 10
   rescue StandardError => e
@@ -816,7 +816,7 @@ end
 
 #: (Integer) -> String
 def case_tail(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
 
   case n
   when 0 then "zero"
@@ -828,7 +828,7 @@ end
 
 #: (Integer) -> Integer
 def flow_risky(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
 
   n
 end
@@ -836,7 +836,7 @@ end
 #: (Array[Integer]) -> Array[String]
 def labels(xs)
   xs.map do |x|
-    x > 0 ? "p#{x}" : raise(ArgumentError, "bad #{x}")
+    x.positive? ? "p#{x}" : raise(ArgumentError, "bad #{x}")
   end
 end
 
@@ -929,7 +929,7 @@ end
 
 #: (Integer) -> String
 def value_if(n)
-  n > 0 ? "pos" : (raise ArgumentError, "nonpositive")
+  n.positive? ? "pos" : (raise ArgumentError, "nonpositive")
 rescue ArgumentError => e
   "rescued #{e.message}"
 end
@@ -950,7 +950,7 @@ end
 
 #: (Integer) -> String
 def ensure_after_rescue(n)
-  raise ArgumentError, "a" if n > 0
+  raise ArgumentError, "a" if n.positive?
 
   "body"
 rescue ArgumentError
@@ -965,7 +965,7 @@ def scan(out, list)
   while i < list.size
     begin
       begin
-        raise ArgumentError, "neg #{list[i]}" if (list[i] || 0) < 0
+        raise ArgumentError, "neg #{list[i]}" if (list[i] || 0).negative?
         return "found #{list[i]}" if list[i] == 7
       ensure
         out << "inner #{i}"
@@ -1030,7 +1030,7 @@ end
 
 #: (Integer) -> Integer
 def risky_int(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
   raise NotImplementedError, "nie" if n == 99
 
   n * 2
@@ -1088,7 +1088,7 @@ end
 
 #: (Integer) -> String
 def nil_first(n)
-  label = if n > 0
+  label = if n.positive?
             nil
           else
             "non-positive"
@@ -1232,7 +1232,7 @@ end
 
 #: (Integer) { (Integer) -> void } -> void
 def loops_countdown(from)
-  while from > 0
+  while from.positive?
     yield from
     from -= 1
   end
@@ -1296,13 +1296,13 @@ def joined(out, n)
   y = "a"
   y = nil if n > 5
   out << y.inspect
-  label = ("pos" if n > 0)
+  label = ("pos" if n.positive?)
   out << label.inspect
 end
 
 #: (Integer) -> Integer
 def mid_risky(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
 
   n
 end
@@ -1328,17 +1328,17 @@ end
 # Helpers for catch/throw (issue #4): throw from a typed method, in each tail form.
 #: (Integer) -> Integer
 def control_pos(x)
-  return x if x > 0
+  return x if x.positive?
 
   throw :neg, x
 end
 
 #: (Integer) -> Integer
-def control_pos_ternary(x) = x > 0 ? x : throw(:neg, x)
+def control_pos_ternary(x) = x.positive? ? x : throw(:neg, x)
 
 #: (Integer) -> Integer
 def control_pos_if(x)
-  if x > 0
+  if x.positive?
     x
   else
     throw :neg, x
@@ -1410,7 +1410,7 @@ module ControlTests
 
     #: () -> bool
     def ready
-      @ready ||= @hits > 0
+      @ready ||= @hits.positive?
     end
 
     private
@@ -1521,7 +1521,7 @@ module ControlTests
   module Util
     #: (Integer) -> String
     def self.check(n)
-      return "neg" if n < 0
+      return "neg" if n.negative?
       raise KeyError, "zero" if n.zero?
 
       "pos"
@@ -1621,7 +1621,7 @@ module ControlTests
 
     #: (Integer) -> void
     def initialize(n)
-      raise ArgumentError, "n must be positive, got #{n}" unless n > 0
+      raise ArgumentError, "n must be positive, got #{n}" unless n.positive?
 
       @n = n
     end
@@ -2489,7 +2489,7 @@ module ControlTests
       assert_equal "{\"a\" => 1}", nv_h.select { |k, v|
   next false if k == "b"
 
-  v > 0
+  v.positive?
 }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
@@ -2806,7 +2806,7 @@ end)
       assert_nil branch_local(false)
       assert_equal "v1", loop_local(2)
       assert_nil loop_local(0)
-      b = 5 if [].size > 0
+      b = 5 if [].size.positive?
       assert_nil b
       out = [] #: Array[String]
       control_half(out, 4)
@@ -2850,7 +2850,7 @@ end)
       zs = [] #: Array[Integer?]
       i = 0
       while i < 2
-        z = 1 if i == 0
+        z = 1 if i.zero?
         zs << z
         i += 1
       end
@@ -3074,7 +3074,7 @@ end)
       x = 3
       h = { "a" => 1, "b" => 5 } #: Hash[String, Integer]
       assert_equal ["x", "found 1", "missing"], [control_probe(h, "x"), control_probe(h, "a"), control_probe(h, "zz")]
-      assert_equal "zero", ((h["q"] || 0) > 0 ? "pos" : "zero")
+      assert_equal "zero", ((h["q"] || 0).positive? ? "pos" : "zero")
       out = [] #: Array[String]
       out << "unless lifted" unless (h["b"] || 0) > 100
       out << "lifted left" if (h["b"] || 0) > 1 && x > 2
@@ -3991,7 +3991,7 @@ end
       assert_equal 1, or_value(1)
       n = 13
       bits = [] #: Array[Integer]
-      while n > 0
+      while n.positive?
         n, bit = step(n)
         bits << bit
       end
@@ -4751,7 +4751,7 @@ end
       i = 0
       begin
         i += 1
-      end while i < 0
+      end while i.negative?
       j = 10
       begin
         j -= 1
@@ -5254,7 +5254,7 @@ end
     end
 
     #: (bool) ?{ (Integer) -> Integer } -> Integer
-    def control_unchecked_and(c) = c && yield(1) > 0 ? 2 : 3
+    def control_unchecked_and(c) = c && yield(1).positive? ? 2 : 3
 
     # MRI evaluates yield's arguments, then raises LocalJumpError (decision 132)
     def test_yield_without_block
@@ -5661,7 +5661,7 @@ end
 
     def test_local_and_write
       ok = true
-      [1, -2, 3].each { |x| ok &&= x > 0 }
+      [1, -2, 3].each { |x| ok &&= x.positive? }
       s = "a" #: String?
       s &&= "#{s}b"
       t = nil #: String?
@@ -5922,7 +5922,7 @@ module ControlTests
     end
 
     def test_yield_value_in_ternary
-      assert_equal true, control_yield_found(true) { 1 > 0 }
+      assert_equal true, control_yield_found(true) { 1.positive? }
       assert_equal true, control_yield_found(true)
       assert_nil control_yield_found(false) { false }
       assert_equal false, control_yield_found(true) { 1 > 2 }
@@ -6035,8 +6035,8 @@ module ControlTests
       case x
       when 1 then :one
       when (x > 5 ? control_note(log, 3) : control_note(log, 4)) then :ternary
-      when (control_note(log, 6) if x > 0) then :modifier
-      when (x > 7 || control_note(log, 7) > 0 ? 8 : 9) then :logic
+      when (control_note(log, 6) if x.positive?) then :modifier
+      when (x > 7 || control_note(log, 7).positive? ? 8 : 9) then :logic
       else :other
       end
     end

@@ -330,11 +330,11 @@ class Comment < ApplicationRecord
   def validate
     errors << "Commenter can't be blank" if @commenter.nil? || (@commenter || "").empty?
     errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
-    errors << "Article must exist" if @article_id.nil? || @article_id == 0 || !Article.exists?(@article_id)
+    errors << "Article must exist" if @article_id.nil? || @article_id.zero? || !Article.exists?(@article_id)
   end
 
   def article
-    if @article_id == 0
+    if @article_id.zero?
       nil
     else
       stmt = Db.prepare("SELECT id, title, body, created_at, updated_at FROM articles WHERE id = #{Db.escape_int(@article_id)} LIMIT 1")
@@ -350,7 +350,7 @@ class Comment < ApplicationRecord
       @article_id = 0
     else
       @article_id = value.id
-      if value.id == 0
+      if value.id.zero?
         @article_cache = value
         @article_loaded = true
       end
@@ -406,7 +406,7 @@ class Comment < ApplicationRecord
   end
 
   def _autosave_article
-    return unless @article_loaded && @article_id == 0 && !@article_cache.nil?
+    return unless @article_loaded && @article_id.zero? && !@article_cache.nil?
 
     @article_cache.save
     @article_id = @article_cache.id

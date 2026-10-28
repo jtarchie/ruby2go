@@ -461,13 +461,13 @@ end
 def infer_fact(n) = n <= 1 ? 1 : n * infer_fact(n - 1)
 
 def infer_even(n)
-  return true if n == 0
+  return true if n.zero?
 
   infer_odd(n - 1)
 end
 
 def infer_odd(n)
-  return false if n == 0
+  return false if n.zero?
 
   infer_even(n - 1)
 end
@@ -480,7 +480,7 @@ def infer_first_over(xs, i)
 end
 
 def infer_make_tree(depth)
-  return InferTests::RecNode.new(depth, nil, nil) if depth == 0
+  return InferTests::RecNode.new(depth, nil, nil) if depth.zero?
 
   InferTests::RecNode.new(depth, infer_make_tree(depth - 1), infer_make_tree(depth - 1))
 end

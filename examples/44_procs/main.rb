@@ -44,7 +44,7 @@ tick = -> { count += 1 }
 puts count
 
 clamp = lambda do |x|
-  return 0 if x < 0
+  return 0 if x.negative?
   next 100 if x > 100
 
   x

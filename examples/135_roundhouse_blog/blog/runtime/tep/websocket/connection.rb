@@ -67,7 +67,7 @@ module Tep
           end
 
           chunk = Sock.sp_net_recv_some(@fd, 65_536)
-          if chunk.bytesize == 0
+          if chunk.bytesize.zero?
             # EOF / peer gone: dispatch close without sending one back.
             Connection.dispatch_close(@driver, Tep::WebSocket::CLOSE_GOING_AWAY, "")
             return 0
@@ -125,7 +125,7 @@ module Tep
             reason = frame.payload.byteslice(2, frame.payload.bytesize - 2) if frame.payload.bytesize > 2
           end
           # Echo the close back (§5.5.1) then dispatch.
-          driver.close(code == 0 ? Tep::WebSocket::CLOSE_NORMAL : code, reason)
+          driver.close(code.zero? ? Tep::WebSocket::CLOSE_NORMAL : code, reason)
           Connection.dispatch_close(driver, code, reason)
         end
         0

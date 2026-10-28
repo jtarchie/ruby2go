@@ -1,6 +1,6 @@
 module Seeds
   def self.run
-    if Article.count > 0
+    if Article.count.positive?
       nil
     else
       article1 = Article.create!(title: "Getting Started with Rails", body: "Rails is a web application framework running on the Ruby programming language. It makes building web apps faster and easier with conventions over configuration.")

@@ -32,7 +32,7 @@ module Inflector
     return word if count == 1
 
     n = word.length
-    return "s" if n == 0
+    return "s" if n.zero?
 
     last = word[n - 1, 1]
     if last == "y" && n > 1

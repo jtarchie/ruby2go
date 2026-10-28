@@ -353,7 +353,7 @@ module ActiveRecord
       # (`Item.find_by(title: "B")`) lift to NamedTuple in Crystal,
       # but the adapter's `where` slot is typed `Hash(Symbol, _)`.
       rows = ActiveRecord.adapter.where(table_name, conditions.to_h)
-      return nil if rows.length == 0
+      return nil if rows.length.zero?
 
       instantiate(rows[0])
     end
@@ -392,11 +392,11 @@ module ActiveRecord
     # The scoped forms (`User.where(…).none?`) go through Relation#none?
     # beside it.
     def self.none?
-      count == 0
+      count.zero?
     end
 
     def self.any?
-      count > 0
+      count.positive?
     end
 
     # Bulk DELETE without instantiating records or running callbacks —

@@ -5,7 +5,7 @@ module Tep
   # the server; the binary's file name is the fallback.
   def self.display_name
     n = Tep::APP.name
-    n.length > 0 ? n : File.basename($PROGRAM_NAME)
+    n.length.positive? ? n : File.basename($PROGRAM_NAME)
   end
 
   # What the banner says about OS workers. The runtime reads
@@ -14,7 +14,7 @@ module Tep
   # reports the declaration, never a measurement.
   def self.os_workers_desc
     w = ENV["SPINEL_WORKERS"] || ""
-    if w.length == 0
+    if w.length.zero?
       "one per core (SPINEL_WORKERS=N to cap)"
     else
       "#{w} (SPINEL_WORKERS)"

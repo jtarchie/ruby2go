@@ -318,7 +318,7 @@ module ArrayTests
     #: () { (Integer) -> void } -> void
     def each
       n = @from
-      while n > 0
+      while n.positive?
         yield n
         n -= 1
       end
@@ -1387,27 +1387,27 @@ module ArrayTests
       assert_equal([4, 3, 5, 3, 4, 5, 6], words.map(&:size))
       assert_equal %w[PEAR FIG APPLE FIG KIWI ÄPFEL BANANA], words.map(&:upcase)
       assert_equal ["5", "-3", "0", "12", "-3", "7"], nums.map(&:to_s)
-      assert_equal([true, false, false, true, false, true], nums.map { |n| n > 0 })
+      assert_equal([true, false, false, true, false, true], nums.map { |n| n.positive? })
       assert_equal "[2.5, -1.5, 0.0, 6.0, -1.5, 3.5]", nums.map { |n| n.to_f / 2 }.inspect
-      assert_equal([5, 12, 7], nums.select { |n| n > 0 })
-      assert_equal([-3, 0, -3], nums.reject { |n| n > 0 })
+      assert_equal([5, 12, 7], nums.select { |n| n.positive? })
+      assert_equal([-3, 0, -3], nums.reject { |n| n.positive? })
       assert_equal [0], nums.select(&:zero?)
-      assert_equal([], none.select { |n| n > 0 })
-      assert_equal([], none.reject { |n| n > 0 })
+      assert_equal([], none.select { |n| n.positive? })
+      assert_equal([], none.reject { |n| n.positive? })
       assert_equal [5, 0, 12, 7], nums.reject(&:negative?)
       assert_equal(12, nums.find { |n| n > 6 })
       assert_nil(nums.find { |n| n > 100 })
       assert_equal(-3, nums.detect(&:negative?))
-      assert_nil(none.detect { |n| n > 0 })
+      assert_nil(none.detect { |n| n.positive? })
       assert_equal(true, nums.any? { |n| n > 10 })
       assert_equal(false, nums.any? { |n| n > 100 })
-      assert_equal(false, none.any? { |n| n > 0 })
+      assert_equal(false, none.any? { |n| n.positive? })
       assert_equal(true, nums.all? { |n| n > -5 })
-      assert_equal(false, nums.all? { |n| n > 0 })
-      assert_equal(true, none.all? { |n| n > 0 })
+      assert_equal(false, nums.all? { |n| n.positive? })
+      assert_equal(true, none.all? { |n| n.positive? })
       assert_equal(true, nums.none? { |n| n > 100 })
       assert_equal false, nums.none?(&:zero?)
-      assert_equal(true, none.none? { |n| n > 0 })
+      assert_equal(true, none.none? { |n| n.positive? })
       assert_equal 6, nums.count
       assert_equal 0, none.count
       assert_equal 7, words.count
@@ -1471,7 +1471,7 @@ module ArrayTests
       assert_equal(%w[pear PEAR fig FIG apple APPLE fig FIG kiwi KIWI Äpfel ÄPFEL banana BANANA], words.flat_map { |w| [w, w.upcase] })
       assert_equal([5, -3, 0, 12, -3, 7], nums.flat_map { |n| [n] })
       assert_equal([], none.flat_map { |n| [n, n] })
-      assert_equal([5, 5, 12, 12, 7, 7], nums.flat_map { |n| n > 0 ? [n, n] : none })
+      assert_equal([5, 5, 12, 12, 7, 7], nums.flat_map { |n| n.positive? ? [n, n] : none })
       assert_equal 218, nums.select(&:positive?).map { |n| n * n }.reduce(0) { |a, b| a + b }
       assert_equal %w[apple banana fig], words.map(&:downcase).uniq.sort.first(3)
       assert_equal [12, 7], nums.sort.reverse.take(2)
@@ -2943,7 +2943,7 @@ module ArrayTests
       until stack.empty?
         k, d = stack.pop
         out << "#{k}@#{d}"
-        stack.push([k - 1, d + 1]) if k > 0
+        stack.push([k - 1, d + 1]) if k.positive?
       end
       assert_equal ["3@0", "2@1", "1@2", "0@3"], out
     end
@@ -3198,13 +3198,13 @@ module ArrayTests
 
     def test_count
       none = [] #: Array[Integer]
-      assert_equal(0, none.count { |x| x > 0 })
+      assert_equal(0, none.count { |x| x.positive? })
       assert_equal(2, [1, 2, 3, 4].count(&:even?))
       odd = [1, 2, 3, 4].count do |x|
         next true if x.even?
         next if x == 3
 
-        x > 0
+        x.positive?
       end
       assert_equal 3, odd
       assert_equal(2, [5, 6, 7].count { _1 > 5 })

@@ -122,7 +122,7 @@ module ActiveStorage
   # names a variant "<base>.<format>".
   def self.filename_base(filename)
     dot = filename.rindex(".")
-    dot.nil? || dot == 0 ? filename : filename[0, dot].to_s
+    dot.nil? || dot.zero? ? filename : filename[0, dot].to_s
   end
 
   # Where the blob's file lives, keyed by the blob's `key` column.
@@ -335,7 +335,7 @@ module ActiveStorage
     end
 
     def resize?
-      @width > 0 || @height > 0
+      @width.positive? || @height.positive?
     end
 
     def output_format(source_content_type)
@@ -385,9 +385,9 @@ module ActiveStorage
 
     def [](key)
       if key == :width
-        @width == 0 ? nil : @width
+        @width.zero? ? nil : @width
       elsif key == :height
-        @height == 0 ? nil : @height
+        @height.zero? ? nil : @height
       end
     end
 
@@ -402,7 +402,7 @@ module ActiveStorage
     # The JSON Rails writes, so a database this tree and a Rails process
     # share reads the same numbers either way.
     def to_json
-      if @width == 0 || @height == 0
+      if @width.zero? || @height.zero?
         "{\"identified\":true,\"analyzed\":true}"
       else
         "{\"identified\":true,\"width\":#{@width.to_s},\"height\":#{@height.to_s},\"analyzed\":true}"
@@ -454,7 +454,7 @@ module ActiveStorage
     # `.jpg` — the delimiter and the extension, "" when there is none.
     def extension_with_delimiter
       i = @filename.rindex(".")
-      i.nil? || i == 0 ? "" : @filename[i..]
+      i.nil? || i.zero? ? "" : @filename[i..]
     end
 
     # `jpg` — the extension without its delimiter, "" when there is none.
@@ -541,14 +541,14 @@ module ActiveStorage
       rows = ActiveRecord.adapter.select_rows(
         "SELECT #{columns("b")} FROM active_storage_blobs b WHERE b.id = #{ActiveRecord.adapter.escape_value(id)} LIMIT 1"
       )
-      rows.length == 0 ? nil : from_row(rows[0])
+      rows.length.zero? ? nil : from_row(rows[0])
     end
 
     def self.find_by_key(key)
       rows = ActiveRecord.adapter.select_rows(
         "SELECT #{columns("b")} FROM active_storage_blobs b WHERE b.key = #{ActiveRecord.adapter.escape_value(key)} LIMIT 1"
       )
-      rows.length == 0 ? nil : from_row(rows[0])
+      rows.length.zero? ? nil : from_row(rows[0])
     end
 
     # Rails' `ActiveStorage.verifier` signs the blob id with purpose
@@ -780,7 +780,7 @@ module ActiveStorage
           "vr.blob_id = #{ActiveRecord.adapter.escape_value(b.id)} AND vr.variation_digest = #{ActiveRecord.adapter.escape_value(digest)} LIMIT 1"
         )
       )
-      if rows.length > 0
+      if rows.length.positive?
         @record_id = rows[0]["variant_record_id"].to_i
         @image_blob = Blob.from_row(rows[0])
         return nil
@@ -812,7 +812,7 @@ module ActiveStorage
     # (the identity variant, or nothing attached).
     def image
       process
-      @record_id == 0 ? nil : Attached.new("ActiveStorage::VariantRecord", @record_id, "image", [])
+      @record_id.zero? ? nil : Attached.new("ActiveStorage::VariantRecord", @record_id, "image", [])
     end
 
     # The transformed blob, once processed; the original for the
@@ -900,7 +900,7 @@ module ActiveStorage
             " AND a.record_id = " + ActiveRecord.adapter.escape_value(@record_id) +
             " AND a.name = " + ActiveRecord.adapter.escape_value(@name) + " LIMIT 1"
       rows = ActiveRecord.adapter.select_rows(sql)
-      if rows.length > 0
+      if rows.length.positive?
         @attachment_id = rows[0]["attachment_id"].to_i
         @blob = Blob.from_row(rows[0])
       end

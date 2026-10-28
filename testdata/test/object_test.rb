@@ -338,7 +338,7 @@ module ObjectTests
 
     #: (Integer) -> void
     def age=(v)
-      @age = v < 0 ? 0 : v
+      @age = v.negative? ? 0 : v
     end
   end
 
@@ -405,7 +405,7 @@ module ObjectTests
 
     def <=>(other)
       c = major <=> other.major
-      return c unless c == 0
+      return c unless c.zero?
 
       minor <=> other.minor
     end
@@ -2270,11 +2270,11 @@ module ObjectTests
     def ==(other) = x == other.x && y == other.y
 
     #: (Integer) -> Integer
-    def [](i) = i == 0 ? x : y
+    def [](i) = i.zero? ? x : y
 
     #: (Integer, Integer) -> void
     def []=(i, v)
-      if i == 0
+      if i.zero?
         @x = v
       else
         @y = v
@@ -2288,7 +2288,7 @@ module ObjectTests
     def inspect = "#<OpVec #{x},#{y}>"
 
     #: () -> bool
-    def zero? = x == 0 && y == 0
+    def zero? = x.zero? && y.zero?
 
     #: () -> OpVec
     def negate! = self * -1
@@ -2968,7 +2968,7 @@ module ObjectTests
       assert_equal "square:ObjectTests::CmSquare(1) sides=4", by_num(1).describe
       assert_equal "ObjectTests::Tri", by_num(2).class.to_s
       assert_equal "shape:ObjectTests::CmShape(0) sides=0", by_num(0).describe
-      flag = CmShape.sides == 0
+      flag = CmShape.sides.zero?
       kl = flag ? CmSquare : Tri
       assert_equal "square", kl.kind
       assert_equal "square:ObjectTests::CmSquare(5) sides=4", kl.new(5).describe
@@ -5133,7 +5133,7 @@ module ObjectTests
     end
 
     #: () -> self?
-    def me = @n > 0 ? self : nil
+    def me = @n.positive? ? self : nil
   end
 
   class SelfOptReturnTest < Minitest::Test
@@ -5496,7 +5496,7 @@ module ObjectTests
 
     def test_nilclass_method_on_optional_receiver
       none = [1].find { |v| v > 5 }
-      one = [1].find { |v| v > 0 }
+      one = [1].find { |v| v.positive? }
       assert_equal %i[nil int], [none.object_tests_kind, one.object_tests_kind]
     end
 

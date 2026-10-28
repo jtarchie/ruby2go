@@ -65,7 +65,7 @@ module TcpSocketStub
   # mocha's unexpected invocation, raised here so the test that made it
   # fails at the call.
   def self.check(host, port)
-    return nil if EXPECT_PREDS.length == 0
+    return nil if EXPECT_PREDS.length.zero?
 
     i = EXPECT_PREDS.length - 1
     while i >= 0

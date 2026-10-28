@@ -157,7 +157,7 @@ module ActiveSupport
     end
 
     def <(other)
-      (self <=> other) < 0
+      (self <=> other).negative?
     end
 
     def <=(other)
@@ -165,7 +165,7 @@ module ActiveSupport
     end
 
     def >(other)
-      (self <=> other) > 0
+      (self <=> other).positive?
     end
 
     def >=(other)

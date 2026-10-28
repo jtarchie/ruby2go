@@ -28,13 +28,13 @@ module NilCheckTests
 
   class OperatorTest < Minitest::Test
     #: (Integer) -> String?
-    def str(i) = i > 0 ? "s#{i}" : nil
+    def str(i) = i.positive? ? "s#{i}" : nil
 
     #: (Integer) -> Integer?
-    def int(i) = i > 0 ? i : nil
+    def int(i) = i.positive? ? i : nil
 
     #: (Integer) -> Float?
-    def flt(i) = i > 0 ? i.to_f : nil
+    def flt(i) = i.positive? ? i.to_f : nil
 
     #: () { () -> untyped } -> [untyped, String]?
     def error_of
@@ -50,7 +50,7 @@ module NilCheckTests
       assert_equal 2.5, 1.5 + flt(1)
       assert_equal 2.0, 1 + flt(1)
       assert_equal 2, [1, 2, 3][int(1)]
-      assert_equal true, 0 < int(1)
+      assert_equal true, int(1).positive?
     end
 
     def test_string
@@ -96,13 +96,13 @@ module NilCheckTests
 
   class BoundaryTest < Minitest::Test
     #: (Integer) -> Integer?
-    def int(i) = i > 0 ? i : nil
+    def int(i) = i.positive? ? i : nil
 
     #: (Integer) -> Leaf?
-    def leaf(i) = i > 0 ? Leaf.new(i) : nil
+    def leaf(i) = i.positive? ? Leaf.new(i) : nil
 
     #: (Integer) -> Base?
-    def base(i) = i > 0 ? Kid.new : nil
+    def base(i) = i.positive? ? Kid.new : nil
 
     #: (Integer) -> Integer
     def twice(x) = x * 2

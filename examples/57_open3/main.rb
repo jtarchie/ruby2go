@@ -26,7 +26,7 @@ data, err_data, code = Open3.popen3("cat") do |stdin, stdout, stderr, wait_thr|
   out4 = stdout.read
   puts stdout.eof?
   errd = stderr.read
-  puts wait_thr.pid > 0
+  puts wait_thr.pid.positive?
   [out4, errd, wait_thr.value.exitstatus]
 end
 puts data

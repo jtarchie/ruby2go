@@ -131,7 +131,7 @@ module Net
     def request(req, &blk)
       i = HttpStub.find_for(req.method, stub_url(req.path), req.body)
       res =
-        if i < 0
+        if i.negative?
           transport_request(req)
         else
           build_response("1.1", HttpStub::STUB_STATUSES[i].to_s, "", HttpStub.headers_at(i), HttpStub::STUB_BODIES[i])

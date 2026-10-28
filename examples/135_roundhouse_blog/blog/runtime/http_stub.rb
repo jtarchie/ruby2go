@@ -61,7 +61,7 @@ module HttpStub
     host = u.host.to_s.downcase
     port = u.port.to_i
     default = scheme == "https" ? 443 : 80
-    authority = port == default || port == 0 ? host : "#{host}:#{port}"
+    authority = port == default || port.zero? ? host : "#{host}:#{port}"
     "#{scheme}://#{authority}#{u.request_uri}"
   end
 

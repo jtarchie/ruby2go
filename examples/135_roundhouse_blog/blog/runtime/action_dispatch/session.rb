@@ -155,7 +155,7 @@ module ActionDispatch
       session = Session.new
       raw.to_s.split("&").each do |pair|
         parts = pair.to_s.split("=")
-        k = parts.length > 0 ? Session.cookie_decode(parts[0].to_s) : ""
+        k = parts.length.positive? ? Session.cookie_decode(parts[0].to_s) : ""
         v = parts.length > 1 ? Session.cookie_decode(parts[1].to_s) : ""
         session[k] = v unless k.empty?
       end

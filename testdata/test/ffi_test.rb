@@ -177,7 +177,7 @@ module FfiTests
       end
       Lib.qsort(mp, 5, 4, cmp)
       assert_equal [10, 20, 30, 40, 50], mp.read_array_of_int(5)
-      assert_equal true, calls > 0
+      assert_equal true, calls.positive?
     end
 
     def test_last_error

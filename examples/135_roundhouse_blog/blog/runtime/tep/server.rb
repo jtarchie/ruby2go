@@ -71,7 +71,7 @@ module Tep
 
       if workers <= 1
         sfd = Sock.sphttp_listen(port, 0)
-        if sfd < 0
+        if sfd.negative?
           warn "#{Tep.display_name}: cannot bind to port #{port.to_s} (already in use?)"
           exit(1)
         end
@@ -84,9 +84,9 @@ module Tep
       i = 0
       while i < workers
         pid = Sock.sphttp_fork
-        if pid == 0
+        if pid.zero?
           sfd = Sock.sphttp_listen(port, 1)
-          if sfd < 0
+          if sfd.negative?
             puts "#{Tep.display_name}: worker #{Sock.sphttp_getpid.to_s} bind failed"
             exit(1)
           end
@@ -98,14 +98,14 @@ module Tep
       # Parent: reap forever.
       loop do
         gone = Sock.sphttp_wait_any
-        break if gone < 0
+        break if gone.negative?
       end
     end
 
     def worker_loop(sfd)
       loop do
         client = Sock.sphttp_accept(sfd)
-        next if client < 0
+        next if client.negative?
 
         handle_connection(client)
       end
@@ -135,7 +135,7 @@ module Tep
       buf = +""
       while buf.length < 65_535
         chunk = Sock.sp_net_recv_some(client, 4096)
-        return "" if chunk.length == 0
+        return "" if chunk.length.zero?
 
         buf += chunk
         return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
@@ -145,7 +145,7 @@ module Tep
 
     def handle_one(client)
       blob = read_request_blocking(client)
-      return false if blob.length == 0
+      return false if blob.length.zero?
 
       req = Parser.parse(blob)
       if req.nil?
@@ -195,10 +195,10 @@ module Tep
         return
       end
 
-      if res.file_path.length > 0
+      if res.file_path.length.positive?
         # send_file path -- compute size, emit headers, then stream.
         sz = Sock.sphttp_filesize(res.file_path)
-        if sz < 0
+        if sz.negative?
           send_simple(client, 404, "file not found")
           return
         end
@@ -215,7 +215,7 @@ module Tep
         return
       end
 
-      res.headers["Content-Type"] = "text/html; charset=utf-8" if res.body.length > 0 && !res.headers.key?("Content-Type")
+      res.headers["Content-Type"] = "text/html; charset=utf-8" if res.body.length.positive? && !res.headers.key?("Content-Type")
       # BYTES, both times — `length` counts characters and `write_str`
       # stops at the first NUL. See the twin comment in
       # server_scheduled.rb#write_response for the failure this caused.
@@ -228,7 +228,7 @@ module Tep
 
       head = build_head(req, res)
       Sock.sphttp_write_str(client, head)
-      Sock.sphttp_write_bytes(client, res.body, res.body.bytesize) if res.body.bytesize > 0
+      Sock.sphttp_write_bytes(client, res.body, res.body.bytesize) if res.body.bytesize.positive?
     end
 
     def build_head(req, res)

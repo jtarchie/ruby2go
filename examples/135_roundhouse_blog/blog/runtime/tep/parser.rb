@@ -12,7 +12,7 @@ module Tep
 
       headers_blob = blob[0, end_of_headers]
       lines = headers_blob.split("\r\n")
-      return nil if lines.length == 0
+      return nil if lines.length.zero?
 
       first = lines[0]
       first_parts = first.split(" ")
@@ -53,10 +53,10 @@ module Tep
       # Parse Cookie header into req.cookies. Format: "k=v; k2=v2; ...".
       # Whitespace around `;` is allowed and stripped.
       cookie_blob = req.req_headers["cookie"]
-      if cookie_blob.length > 0
+      if cookie_blob.length.positive?
         cookie_blob.split(";").each do |pair|
           eq = pair.index("=")
-          next unless !eq.nil? && eq > 0
+          next unless !eq.nil? && eq.positive?
 
           cname  = pair[0, eq].strip
           cvalue = pair[eq + 1, pair.length - eq - 1].strip

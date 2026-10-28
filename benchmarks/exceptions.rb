@@ -37,7 +37,7 @@ puts ok, bad, ensured
 found = 0
 50_000.times do |i|
   found += catch(:done) do
-    10.times { |j| throw :done, j if (i + j) % 7 == 0 }
+    10.times { |j| throw :done, j if ((i + j) % 7).zero? }
     0
   end
 end

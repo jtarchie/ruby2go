@@ -767,7 +767,7 @@ class DbPool
   def lease
     idx = 0
     @lock.synchronize do
-      @cv.wait(@lock) while @free.length == 0
+      @cv.wait(@lock) while @free.length.zero?
       idx = @free.delete_at(@free.length - 1)
     end
     idx
@@ -1188,7 +1188,7 @@ module Db
       if p.nil?
         conn = current_conn
         k = conn.qc_kind(stmt, i)
-        return nil if k == 0
+        return nil if k.zero?
         return conn.qc_int(stmt, i) if k == 1
         return conn.qc_float(stmt, i) if k == 2
 
@@ -1223,7 +1223,7 @@ module Db
       p = Db.replay_ptr(stmt)
       if p.nil?
         conn = current_conn
-        return nil if conn.qc_kind(stmt, i) == 0
+        return nil if conn.qc_kind(stmt, i).zero?
 
         return conn.qc_int(stmt, i)
       end
@@ -1241,7 +1241,7 @@ module Db
       p = Db.replay_ptr(stmt)
       if p.nil?
         conn = current_conn
-        return nil if conn.qc_kind(stmt, i) == 0
+        return nil if conn.qc_kind(stmt, i).zero?
 
         return conn.qc_float(stmt, i)
       end
@@ -1259,7 +1259,7 @@ module Db
       p = Db.replay_ptr(stmt)
       if p.nil?
         conn = current_conn
-        return nil if conn.qc_kind(stmt, i) == 0
+        return nil if conn.qc_kind(stmt, i).zero?
 
         return conn.qc_text(stmt, i)
       end
@@ -1273,7 +1273,7 @@ module Db
       p = Db.replay_ptr(stmt)
       if p.nil?
         conn = current_conn
-        return nil if conn.qc_kind(stmt, i) == 0
+        return nil if conn.qc_kind(stmt, i).zero?
 
         return conn.qc_int(stmt, i) != 0
       end

@@ -78,8 +78,8 @@ module ActionController
     # declared READERS for the same reason — which is also how the gem
     # spells them (`number == recordset.page_count`).
     def initialize(scope, number, per_page)
-      n = number > 0 ? number : 1
-      per = per_page > 0 ? per_page : 1
+      n = number.positive? ? number : 1
+      per = per_page.positive? ? per_page : 1
       # BEFORE the window is applied, for readability — though not for
       # correctness: `Relation#count` renders `count_sql`, which drops
       # LIMIT and OFFSET, so it answers the unwindowed total whichever
@@ -169,7 +169,7 @@ module ActionController
     # what `"".to_i > 0 ? … : 1` gives the gem.
     def current_page_number
       n = Params.str(params, "page", "").to_i
-      n > 0 ? n : 1
+      n.positive? ? n : 1
     end
   end
 end

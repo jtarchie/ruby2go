@@ -80,7 +80,7 @@ module Sock
     out = +""
     while out.length < n
       chunk = Sock.sp_net_recv_some(fd, n - out.length)
-      if chunk.length == 0
+      if chunk.length.zero?
         break # peer closed mid-body
       end
 

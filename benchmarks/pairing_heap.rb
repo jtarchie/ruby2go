@@ -9,9 +9,9 @@ SIDE = 150
 def neighbors(cell)
   row, col = cell.divmod(SIDE)
   out = [] #: Array[Integer]
-  out << cell - SIDE if row > 0
+  out << cell - SIDE if row.positive?
   out << cell + SIDE if row < SIDE - 1
-  out << cell - 1 if col > 0
+  out << cell - 1 if col.positive?
   out << cell + 1 if col < SIDE - 1
   out
 end

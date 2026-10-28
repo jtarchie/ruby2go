@@ -265,7 +265,7 @@ module ActionView
       return s if s.length <= length
 
       cutoff = length - omission.length
-      cutoff = 0 if cutoff < 0
+      cutoff = 0 if cutoff.negative?
       "#{s[0, cutoff]}#{omission}"
     end
 

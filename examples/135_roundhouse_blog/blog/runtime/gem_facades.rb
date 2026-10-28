@@ -517,7 +517,7 @@ module WebPush
 
   def self.verify_payload_send_expectations
     expected = EXPECTED[0]
-    return nil if expected < 0
+    return nil if expected.negative?
 
     got = CALLS[0]
     EXPECTED[0] = -1

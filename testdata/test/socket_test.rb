@@ -94,7 +94,7 @@ module SocketTests
     def test_addresses
       server, client, peer = tcp_trio
       port = server.addr[1]
-      assert port > 0
+      assert port.positive?
       assert_equal ["AF_INET", "127.0.0.1", "127.0.0.1"], [server.addr[0], server.addr[2], server.addr[3]]
       assert client.peeraddr[1] == port
       assert peer.addr[1] == port
@@ -324,7 +324,7 @@ module SocketTests
       a, b = UNIXSocket.pair
       n = a.send("x" * 4_000_000, 0)
       a.close
-      assert n > 0
+      assert n.positive?
       assert_equal n, b.read.bytesize
       e = assert_raises(ArgumentError) { b.readpartial(-1) }
       assert_equal "negative length -1 given", e.message

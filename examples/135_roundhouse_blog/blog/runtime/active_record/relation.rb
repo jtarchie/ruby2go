@@ -115,9 +115,9 @@ module ActiveRecord
     # an always-true condition (matches Rails: no filter to OR against).
     def or(other)
       @records = nil
-      mine = @wheres.length > 0 ? @wheres.join(" AND ") : "1=1"
+      mine = @wheres.length.positive? ? @wheres.join(" AND ") : "1=1"
       other_wheres = other.where_clauses
-      theirs = other_wheres.length > 0 ? other_wheres.join(" AND ") : "1=1"
+      theirs = other_wheres.length.positive? ? other_wheres.join(" AND ") : "1=1"
       @wheres = ["((#{mine}) OR (#{theirs}))"]
       self
     end
@@ -234,7 +234,7 @@ module ActiveRecord
     # anything that is not one column with an optional ASC/DESC.
     def order_column(term)
       words = term.strip.split(/\s+/)
-      return nil if words.length == 0 || words.length > 2
+      return nil if words.length.zero? || words.length > 2
 
       col = words[0]
       dot = col.rindex(".")
@@ -501,7 +501,7 @@ module ActiveRecord
       return cached.dup unless cached.nil?
 
       records = load_records
-      @model.preload_associations(records, @includes) if @includes.length > 0
+      @model.preload_associations(records, @includes) if @includes.length.positive?
       @records = records
       records.dup
     end
@@ -722,7 +722,7 @@ module ActiveRecord
       # holding the single row `first` asked for would answer those with
       # one row out of many. Same terminal rule as `pluck`.
       @records = nil
-      rows.length == 0 ? nil : rows[0]
+      rows.length.zero? ? nil : rows[0]
     end
 
     # `take` — a row with no ordering imposed. Rails leaves the order
@@ -743,12 +743,12 @@ module ActiveRecord
 
     def last
       rows = to_a
-      rows.length == 0 ? nil : rows[rows.length - 1]
+      rows.length.zero? ? nil : rows[rows.length - 1]
     end
 
     def count
       rows = ActiveRecord.adapter.select_rows(count_sql)
-      rows.length == 0 ? 0 : rows[0]["n"].to_i
+      rows.length.zero? ? 0 : rows[0]["n"].to_i
     end
 
     # `sum(:col)` / `sum("<sql expr>")` — SQL SUM over the relation.
@@ -758,10 +758,10 @@ module ActiveRecord
     def sum(expr)
       term = expr.is_a?(Symbol) ? "#{@table}.#{expr}" : expr.to_s
       sql = "SELECT COALESCE(SUM(#{term}), 0) AS n FROM #{@table}"
-      sql = "#{sql} #{@joins.join(" ")}" if @joins.length > 0
-      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      sql = "#{sql} #{@joins.join(" ")}" if @joins.length.positive?
+      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length.positive?
       rows = ActiveRecord.adapter.select_rows(sql)
-      rows.length == 0 ? 0.0 : rows[0]["n"].to_f
+      rows.length.zero? ? 0.0 : rows[0]["n"].to_f
     end
 
     # `group(:col).count` — Rails hands back a Hash of group-key =>
@@ -773,8 +773,8 @@ module ActiveRecord
     def group_count
       key = @groups.join(", ")
       sql = "SELECT #{key} AS k, COUNT(*) AS n FROM #{@table}"
-      sql = "#{sql} #{@joins.join(" ")}" if @joins.length > 0
-      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      sql = "#{sql} #{@joins.join(" ")}" if @joins.length.positive?
+      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length.positive?
       sql = "#{sql} GROUP BY #{key}"
       h = {}
       rows = ActiveRecord.adapter.select_rows(sql)
@@ -786,14 +786,14 @@ module ActiveRecord
     # COUNT round-trip (Rails asks EXISTS here — one row either way).
     def empty?
       r = @records
-      r.nil? ? count == 0 : r.length == 0
+      r.nil? ? count.zero? : r.length.zero?
     end
 
     # Like `empty?`: a loaded relation answers from its records, an
     # unloaded one asks the database for a count.
     def any?
       r = @records
-      r.nil? ? count > 0 : r.length > 0
+      r.nil? ? count.positive? : r.length.positive?
     end
 
     # ActiveSupport's blank family on a relation. Rails answers `blank?`
@@ -855,13 +855,13 @@ module ActiveRecord
     # An `Integer?` param narrows by early return, not by a guard —
     # rust2 does not narrow an `Option` across `unless x.nil?`.
     def exists?(id = nil)
-      return count > 0 if id.nil?
+      return count.positive? if id.nil?
 
       # Popped for the same reason `find` and `find_by` pop: a terminal
       # that answered a question must not narrow the relation it was
       # asked on.
       @wheres << "#{@table}.id = #{ActiveRecord.adapter.escape_value(id)}"
-      found = count > 0
+      found = count.positive?
       @wheres.pop
       found
     end
@@ -950,12 +950,12 @@ module ActiveRecord
     # still emits a bare `DELETE FROM <table>` — Rails' truncate-shaped
     # statement, not a subquery over every row.
     def scoped_write_where
-      return "" if @wheres.length == 0 && @joins.length == 0
-      return " WHERE #{@wheres.join(" AND ")}" if @joins.length == 0
+      return "" if @wheres.length.zero? && @joins.length.zero?
+      return " WHERE #{@wheres.join(" AND ")}" if @joins.length.zero?
 
       key = "#{@table}.#{@model.primary_key}"
       inner = "SELECT #{key} FROM #{@table} #{@joins.join(" ")}"
-      inner = "#{inner} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      inner = "#{inner} WHERE #{@wheres.join(" AND ")}" if @wheres.length.positive?
       " WHERE #{@model.primary_key} IN (#{inner})"
     end
 
@@ -987,7 +987,7 @@ module ActiveRecord
       @limit = 1
       rows = pluck(col)
       @limit = prior
-      rows.length == 0 ? nil : rows[0]
+      rows.length.zero? ? nil : rows[0]
     end
 
     # `ids` — primary keys, as integers.
@@ -1119,11 +1119,11 @@ module ActiveRecord
       cols = @select_sql.nil? ? default_cols : @select_sql
       distinct = @distinct ? "DISTINCT " : ""
       sql = "SELECT #{distinct}#{cols} FROM #{@table}"
-      sql = "#{sql} #{@joins.join(" ")}" if @joins.length > 0
-      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
-      sql = "#{sql} GROUP BY #{@groups.join(", ")}" if @groups.length > 0
-      sql = "#{sql} HAVING #{@havings.join(" AND ")}" if @havings.length > 0
-      sql = "#{sql} ORDER BY #{@orders.join(", ")}" if @orders.length > 0
+      sql = "#{sql} #{@joins.join(" ")}" if @joins.length.positive?
+      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length.positive?
+      sql = "#{sql} GROUP BY #{@groups.join(", ")}" if @groups.length.positive?
+      sql = "#{sql} HAVING #{@havings.join(" AND ")}" if @havings.length.positive?
+      sql = "#{sql} ORDER BY #{@orders.join(", ")}" if @orders.length.positive?
       sql = "#{sql} LIMIT #{@limit}" unless @limit.nil?
       sql = "#{sql} OFFSET #{@offset}" unless @offset.nil?
       sql
@@ -1131,8 +1131,8 @@ module ActiveRecord
 
     def count_sql
       sql = "SELECT COUNT(*) AS n FROM #{@table}"
-      sql = "#{sql} #{@joins.join(" ")}" if @joins.length > 0
-      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length > 0
+      sql = "#{sql} #{@joins.join(" ")}" if @joins.length.positive?
+      sql = "#{sql} WHERE #{@wheres.join(" AND ")}" if @wheres.length.positive?
       sql
     end
 

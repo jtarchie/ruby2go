@@ -376,7 +376,7 @@ module ActionText
       n = @html.length
       while i < n
         open_at = Fragment.next_element(@html, i)
-        if open_at < 0
+        if open_at.negative?
           i = n
         else
           tag_end = Fragment.tag_end(@html, open_at)
@@ -410,7 +410,7 @@ module ActionText
       n = @html.length
       while i < n
         open_at = Fragment.next_element(@html, i)
-        if open_at < 0
+        if open_at.negative?
           out += @html[i, n - i].to_s
           i = n
         else
@@ -489,7 +489,7 @@ module ActionText
       i = tag_end + 1
       n = html.length
       stop = n
-      while i < n && depth > 0
+      while i < n && depth.positive?
         if html[i, 1].to_s == "<"
           close = html[i + 1, 1].to_s == "/"
           start = close ? i + 2 : i + 1
@@ -499,7 +499,7 @@ module ActionText
           if Content.tag_name_of(inner_raw) == name
             if close
               depth -= 1
-              stop = j + 1 if depth == 0
+              stop = j + 1 if depth.zero?
             elsif inner_raw[inner_raw.length - 1, 1].to_s != "/"
               depth += 1
             end
@@ -585,7 +585,7 @@ module ActionText
         out << parts[i].to_s.split(")")[0].to_s
         i += 1
       end
-      raise "ActionText::Fragment: unsupported selector #{text.inspect}" if out.length == 0
+      raise "ActionText::Fragment: unsupported selector #{text.inspect}" if out.length.zero?
 
       out
     end
@@ -821,7 +821,7 @@ module ActionText
             out += ActionText::Attachment.new(Content.parse_attributes(raw)).to_plain_text unless close
           elsif Content.scoped_element(name)
             if close
-              if names.length > 0 && names[names.length - 1] == name
+              if names.length.positive? && names[names.length - 1] == name
                 start = starts[starts.length - 1]
                 names.pop
                 starts.pop
@@ -834,7 +834,7 @@ module ActionText
                       Content.close_scoped(name, segment, list_names, list_counts)
               end
             elsif !void
-              list_counts[list_counts.length - 1] = list_counts[list_counts.length - 1] + 1 if name == "li" && list_counts.length > 0
+              list_counts[list_counts.length - 1] = list_counts[list_counts.length - 1] + 1 if name == "li" && list_counts.length.positive?
               if %w[ul ol].include?(name)
                 list_names << name
                 list_counts << 0
@@ -883,7 +883,7 @@ module ActionText
       if %w[ul ol].include?(name)
         # `break_if_nested_list` — a list inside another list starts on
         # its own line.
-        return list_names.length > 0 ? "\n#{inner}\n\n" : "#{inner}\n\n"
+        return list_names.length.positive? ? "\n#{inner}\n\n" : "#{inner}\n\n"
       end
 
       # `<li>`: indent by nesting depth, then the bullet its list type
@@ -891,7 +891,7 @@ module ActionText
       # top-level item and gets no indent.
       bullet = "•"
       depth = list_names.length
-      bullet = "#{list_counts[depth - 1].to_s}." if depth > 0 && list_names[depth - 1] == "ol"
+      bullet = "#{list_counts[depth - 1].to_s}." if depth.positive? && list_names[depth - 1] == "ol"
       "#{indent(depth)}#{bullet} #{inner}\n"
     end
 
@@ -900,7 +900,7 @@ module ActionText
     # surrounding whitespace it carries.
     def self.quote_wrap(text)
       first = first_non_space_index(text)
-      return "“”" if first < 0
+      return "“”" if first.negative?
 
       last = last_non_space_index(text)
       "#{text[0, first].to_s}“#{text[first, last - first + 1].to_s}”#{text[last + 1, text.length - last - 1].to_s}"
@@ -1133,14 +1133,14 @@ module ActionText
     end
 
     def self.ends_with_newline(text)
-      text.length > 0 && text[text.length - 1, 1].to_s == "\n"
+      text.length.positive? && text[text.length - 1, 1].to_s == "\n"
     end
 
     # Rails' `remove_trailing_newlines`, which is `chomp("")` — every
     # trailing newline, not just one.
     def self.chomp_newlines(text)
       stop = text.length
-      stop -= 1 while stop > 0 && text[stop - 1, 1].to_s == "\n"
+      stop -= 1 while stop.positive? && text[stop - 1, 1].to_s == "\n"
       text[0, stop].to_s
     end
   end

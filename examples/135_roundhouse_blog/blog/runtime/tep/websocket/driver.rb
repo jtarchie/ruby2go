@@ -150,7 +150,7 @@ module Tep
       # §5.5.1 the payload may be omitted (close with no body); if
       # `code == 0` we emit an empty payload.
       def self.encode_close_payload(code, reason)
-        return "" if code == 0
+        return "" if code.zero?
 
         out = Tep::WebSocket::Frame.byte_to_chr((code >> 8) & 0xff) +
               Tep::WebSocket::Frame.byte_to_chr(code & 0xff)

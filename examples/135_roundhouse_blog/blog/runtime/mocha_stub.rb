@@ -56,7 +56,7 @@ class MochaStub
   end
 
   def verify!
-    return nil if @expected < 0 || @seen == @expected
+    return nil if @expected.negative? || @seen == @expected
 
     raise "mocha: expected #{@name} #{@expected} time(s), got #{@seen}"
   end

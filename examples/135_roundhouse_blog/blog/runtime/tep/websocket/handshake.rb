@@ -49,7 +49,7 @@ module Tep
 
         # Sec-WebSocket-Key: 24-char base64 (16-byte nonce).
         key = req.req_headers["sec-websocket-key"]
-        if key.length == 0
+        if key.length.zero?
           out.valid = false
           out.reason = "missing Sec-WebSocket-Key"
           return out
@@ -73,7 +73,7 @@ module Tep
               "Upgrade: websocket\r\n" \
               "Connection: Upgrade\r\n" \
               "Sec-WebSocket-Accept: " + accept_key + "\r\n"
-        out << "Sec-WebSocket-Protocol: #{protocol}\r\n" if protocol.length > 0
+        out << "Sec-WebSocket-Protocol: #{protocol}\r\n" if protocol.length.positive?
         "#{out}\r\n"
       end
 
@@ -82,7 +82,7 @@ module Tep
       # leaves values as-is, and clients sometimes send
       # `Connection: keep-alive, Upgrade` capitalised.
       def self.icontains(hay, needle)
-        return false if hay.length == 0 || needle.length == 0
+        return false if hay.length.zero? || needle.length.zero?
 
         hl = Handshake.downcase(hay)
         nl = Handshake.downcase(needle)
@@ -109,12 +109,12 @@ module Tep
       def self.split_csv(s)
         out = [""]
         out.pop
-        return out if s.length == 0
+        return out if s.length.zero?
 
         pos = 0
         while pos < s.length
           comma = Tep.str_find(s, ",", pos)
-          if comma < 0
+          if comma.negative?
             out.push(Handshake.trim(s[pos, s.length - pos]))
             return out
           end

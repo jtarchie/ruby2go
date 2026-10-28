@@ -7,7 +7,7 @@ require "etc"
 login = Etc.getlogin
 puts "getlogin ok: #{login.nil? || login.is_a?(String)}"
 
-puts "nprocessors ok: #{Etc.nprocessors.is_a?(Integer) && Etc.nprocessors > 0}"
+puts "nprocessors ok: #{Etc.nprocessors.is_a?(Integer) && Etc.nprocessors.positive?}"
 
 tmpdir = Etc.systmpdir
 puts "systmpdir ok: #{tmpdir.is_a?(String) && !tmpdir.empty?}"

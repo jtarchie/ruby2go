@@ -36,7 +36,7 @@ ok_skip or puts "or skipped"
 
 #: (Integer) -> Integer
 def risky(n)
-  raise ArgumentError, "neg" if n < 0
+  raise ArgumentError, "neg" if n.negative?
 
   n
 end

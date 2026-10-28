@@ -138,7 +138,7 @@ end
 def sum_until_negative(h)
   total = 0
   h.each_value do |v|
-    break if v < 0
+    break if v.negative?
 
     total += v
   end
@@ -970,7 +970,7 @@ end
       assert_equal "{\"a\" => 1, \"ccc\" => 3}", h.reject { |_k, v| v == 2 }.inspect
       assert_equal "{}", h.select { |_k, _v| false }.inspect
       assert_equal "{\"a\" => 1, \"bb\" => 2, \"ccc\" => 3}", h.reject { |_k, _v| false }.inspect
-      sel = h.select { |_k, v| v > 0 }
+      sel = h.select { |_k, v| v.positive? }
       sel["new"] = 9
       assert_equal 3, h.size
       assert_equal 4, sel.size
@@ -982,7 +982,7 @@ end
       assert_nil(h.detect { |_k, v| v > 5 })
       assert_equal(true, h.any? { |_k, v| v > 2 })
       assert_equal(false, h.any? { |_k, v| v > 3 })
-      assert_equal(true, h.all? { |_k, v| v > 0 })
+      assert_equal(true, h.all? { |_k, v| v.positive? })
       assert_equal(false, h.all? { |k, _v| k.size < 3 })
       assert_equal(true, h.none? { |k, _v| k.empty? })
       assert_equal(false, h.none? { |k, _v| k == "a" })
@@ -1359,7 +1359,7 @@ end
       acc = 0
       h.each_with_index do |pair, i|
         acc += i * 10 + pair[1]
-        break if pair[1] < 0
+        break if (pair[1]).negative?
       end
       assert_equal 34, acc
       out = []
@@ -1642,7 +1642,7 @@ end
       assert_equal "{a: 101, b: 2, c: 3, d: 4, e: 5}", hs_h.merge({ a: 100, e: 5 }) { |_k, old, new| old + new }.to_s
       assert_equal(2, hs_h.count { |_k, v| v.odd? })
       assert_equal(true, hs_h.any? { |_k, v| v > 3 })
-      assert_equal(true, hs_h.all? { |_k, v| v > 0 })
+      assert_equal(true, hs_h.all? { |_k, v| v.positive? })
       assert_equal(true, hs_h.none? { |_k, v| v > 9 })
       hs_h2 = hs_h.merge({})
       hs_h2.delete_if { |_k, v| v.even? }
@@ -1912,7 +1912,7 @@ end
       lengths(%w[aa b]).each { |k, v| out << "#{k}=#{v}" }
       assert_equal ["aa=2", "b=1"], out
       assert_equal true, lengths([]).empty?
-      if (n = lengths(%w[q]).fetch("q", 0)) > 0
+      if (n = lengths(%w[q]).fetch("q", 0)).positive?
         out << "got #{n}"
       end
       assert_equal ["aa=2", "b=1", "got 1"], out
@@ -2427,10 +2427,10 @@ module HashTests
       h.each_key do |k|
         seen << k
         h.delete(k + 1) if k.even?
-        h.delete(k) if k % 3 == 0
+        h.delete(k) if (k % 3).zero?
       end
       assert_equal (0...40).step(2).to_a, seen
-      assert_equal (0...40).step(2).reject { |k| k % 3 == 0 }, h.keys
+      assert_equal (0...40).step(2).reject { |k| (k % 3).zero? }, h.keys
       h[100] = "x"
       assert_equal "x", h[100]
       assert_equal 100, h.keys.last
@@ -2480,7 +2480,7 @@ module HashTests
         h[i] = i
         h[i + 5000] = i
         pair = h.shift
-        out << pair[0] if pair && i % 100 == 0
+        out << pair[0] if pair && (i % 100).zero?
       end
       assert_equal 1000, h.size
       assert_equal [0, 50, 100, 150, 200, 250, 300, 350, 400, 450], out

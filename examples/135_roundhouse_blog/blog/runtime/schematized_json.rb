@@ -254,7 +254,7 @@ module SchematizedJson
     out = "{"
     i = 0
     while i < names.length
-      out += "," if i > 0
+      out += "," if i.positive?
       out = "#{out}\"#{JsonBuilder.encode_string(names[i].to_s)}\":#{read_raw(data, names[i].to_s)}"
       i += 1
     end

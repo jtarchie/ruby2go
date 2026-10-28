@@ -63,7 +63,7 @@ module Base64
     while i < n
       val = char_value(s[i])
       i += 1
-      if val < 0
+      if val.negative?
         next # padding "=" or stray byte
       end
 
@@ -136,7 +136,7 @@ module Base64
   def self.urlsafe_encode64_nopad(s)
     out = urlsafe_encode64(s)
     n = out.length
-    n -= 1 while n > 0 && out[n - 1] == "="
+    n -= 1 while n.positive? && out[n - 1] == "="
     out[0, n].to_s
   end
 

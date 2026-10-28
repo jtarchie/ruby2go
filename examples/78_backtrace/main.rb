@@ -30,7 +30,7 @@ rescue ArgumentError => e
 end
 
 puts "-- a lambda"
-check = ->(n) { raise "negative" if n < 0 } #: ^(Integer) -> void
+check = ->(n) { raise "negative" if n.negative? } #: ^(Integer) -> void
 begin
   check.call(-1)
 rescue RuntimeError => e

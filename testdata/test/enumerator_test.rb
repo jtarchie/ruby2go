@@ -249,7 +249,7 @@ end
 
   class LazyTest < Minitest::Test
     def test_pipelines
-      assert_equal [6, 12, 18], (1..).lazy.map { |x| x * 2 }.select { |x| x % 3 == 0 }.first(3)
+      assert_equal [6, 12, 18], (1..).lazy.map { |x| x * 2 }.select { |x| (x % 3).zero? }.first(3)
       assert_equal [2, 4, 6], (1..20).lazy.reject(&:odd?).take(3).to_a
       assert_equal [4, 5], (1..).lazy.drop(3).drop_while { |x| x < 4 }.first(2)
       assert_equal [1, -1, 2, -2], (1..).lazy.flat_map { |x| [x, -x] }.first(4)
@@ -513,7 +513,7 @@ end.grep(Integer).first(2)
 
     def test_chunk_while_and_slice_when
       inf = (1..Float::INFINITY).lazy
-      assert_equal [[1, 2], [3, 4, 5]], inf.slice_when { |_a, b| b % 3 == 0 }.first(2)
+      assert_equal [[1, 2], [3, 4, 5]], inf.slice_when { |_a, b| (b % 3).zero? }.first(2)
       assert_equal [[1, 2, 3], [4, 5, 6]], inf.chunk_while { |_a, b| b % 3 != 1 }.first(2)
       assert inf.chunk_while { |a, b| b == a + 1 }.is_a?(Enumerator::Lazy)
       assert_equal [[1, 2, 3], [5]], [1, 2, 3, 5].lazy.chunk_while { |a, b| b == a + 1 }.to_a
@@ -704,7 +704,7 @@ module EnumeratorTests
   class EnumWindowReuseTest < Minitest::Test
     def test_reading_blocks
       src = (1..10).to_a
-      assert_equal(1, src.each_cons(3).count { |w| w.sum % 5 == 0 })
+      assert_equal(1, src.each_cons(3).count { |w| (w.sum % 5).zero? })
       assert_equal(15, src.each_slice(4).sum { |s| s.first.to_i })
       assert_equal([3, 5, 7, 9, 11, 13, 15, 17, 19], src.each_cons(2).map(&:sum))
       assert_equal([10, 26, 19], src.each_slice(4).map(&:sum))

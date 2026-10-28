@@ -41,7 +41,7 @@ puts readings.compact.map { |r| Thermostat.new(r / 10).label }.inspect
 steps = 0
 begin
   steps += 1
-end while steps < 0
+end while steps.negative?
 puts "do-while ran #{steps} time"
 
 name = "rugaroo"

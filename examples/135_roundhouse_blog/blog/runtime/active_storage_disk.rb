@@ -32,9 +32,9 @@ module ActiveStorage
     def ensure_dir(path)
       built = +""
       path.split("/").each do |seg|
-        next if seg.length == 0
+        next if seg.length.zero?
 
-        built = built.length == 0 ? seg : "#{built}/#{seg}"
+        built = built.length.zero? ? seg : "#{built}/#{seg}"
         Dir.mkdir(built) unless Dir.exist?(built)
       end
       nil

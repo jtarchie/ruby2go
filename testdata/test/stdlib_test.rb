@@ -876,7 +876,7 @@ module StdlibTests
       # num_waiting: spin (no sleep in this subset) until the second push actually blocks.
       sq.push(1)
       filler = Thread.new { sq.push(2) }
-      until sq.num_waiting > 0
+      until sq.num_waiting.positive?
       end
       assert_equal 1, sq.num_waiting
       sq.pop
@@ -890,7 +890,7 @@ module StdlibTests
       sq << 1
       sq << 2
       pusher = Thread.new { sq.push(3) }
-      until sq.num_waiting > 0
+      until sq.num_waiting.positive?
       end
       sq.max = 4
       pusher.join
@@ -901,7 +901,7 @@ module StdlibTests
       assert_equal 0, sq.size
 
       waiter = Thread.new { sq.pop }
-      until sq.num_waiting > 0
+      until sq.num_waiting.positive?
       end
       sq.close
       assert_nil waiter.value
@@ -1115,7 +1115,7 @@ module StdlibTests
       assert_equal true, clk1 >= clk0
       assert_equal "Float", clk0.class.to_s
       assert_equal true, Process.clock_gettime(Process::CLOCK_REALTIME) > 1_700_000_000
-      assert_equal true, Process.pid > 0
+      assert_equal true, Process.pid.positive?
       assert_equal true, Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID) >= 0
       assert_equal [0, 6], [Process::CLOCK_REALTIME, Process::CLOCK_MONOTONIC]
       e = assert_raises(SystemCallError) { Process.clock_gettime(99) }
@@ -1605,8 +1605,8 @@ module StdlibTests
     end
 
     def test_process_signal_time_thread
-      assert_equal [true, true, true], [Process.ppid > 0, Process.uid == Process.euid, Process.gid == Process.egid]
-      assert_equal true, Process.getpgrp > 0
+      assert_equal [true, true, true], [Process.ppid.positive?, Process.uid == Process.euid, Process.gid == Process.egid]
+      assert_equal true, Process.getpgrp.positive?
       assert_equal [2, 0, 9], [Signal.list["INT"], Signal.list["EXIT"], Signal.list["KILL"]]
       assert_equal ["INT", "TERM", "EXIT", nil], [Signal.signame(2), Signal.signame(15), Signal.signame(0), Signal.signame(99)]
       t = Time.at(0).utc

@@ -53,9 +53,9 @@ module Tep
     # Empty `opts` is fine: just writes "name=value".
     def set_cookie(name, value, opts)
       line = "#{name}=#{Url.escape(value)}"
-      if opts.length > 0
+      if opts.length.positive?
         opts.each do |k, v|
-          line << if v.length == 0
+          line << if v.length.zero?
                     "; #{k}" # bare flag (HttpOnly, Secure)
                   else
                     "; #{k}=#{v}"
@@ -75,7 +75,7 @@ module Tep
     # value, so we force the assignment through this method (where
     # `self` is unambiguously Response).
     def set_body_if_empty(s)
-      @body = s if @body.length == 0 && s.length > 0
+      @body = s if @body.length.zero? && s.length.positive?
     end
 
     def set_status(n) = @status = n

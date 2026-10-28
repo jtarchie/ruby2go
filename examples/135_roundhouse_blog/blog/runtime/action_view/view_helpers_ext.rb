@@ -142,7 +142,7 @@ module ActionView
     # integer-only (no float/precision machinery) keeps every site typed.
     def self.number_to_human(value, format: "%n %u")
       units = ["", "Thousand", "Million", "Billion", "Trillion", "Quadrillion"]
-      neg = value < 0
+      neg = value.negative?
       n = neg ? -value : value
       idx = 0
       while n >= 1000 && idx < units.length - 1
@@ -208,7 +208,7 @@ module ActionView
       case distance_in_minutes
       when 0..1
         unless include_seconds
-          return distance_in_minutes == 0 ? "less than a minute" : "1 minute"
+          return distance_in_minutes.zero? ? "less than a minute" : "1 minute"
         end
 
         case distance_in_seconds
@@ -319,7 +319,7 @@ module ActionView
           i += 1
         when "&"
           len = entity_reference_length(s, i)
-          if len == 0
+          if len.zero?
             out += "&amp;"
             i += 1
           else
@@ -542,7 +542,7 @@ module ActionView
                   # stays well-formed when the input interleaved tags.
                   # A close that nothing opened falls through and is
                   # dropped, which is the gem's answer as well.
-                  while open_stack.length > 0
+                  while open_stack.length.positive?
                     top = open_stack.pop.to_s
                     out = "#{out}</#{top}>"
                     break if top == name
@@ -592,7 +592,7 @@ module ActionView
           i += 1
         when "&"
           len = entity_reference_length(s, i)
-          if len == 0
+          if len.zero?
             out += "&amp;"
             i += 1
           else
@@ -606,7 +606,7 @@ module ActionView
       end
       # Close anything the input left open, innermost first — measured:
       # the gem answers "<b>unclosed</b>" for "<b>unclosed".
-      out = "#{out}</#{open_stack.pop.to_s}>" while open_stack.length > 0
+      out = "#{out}</#{open_stack.pop.to_s}>" while open_stack.length.positive?
       out
     end
 
@@ -618,7 +618,7 @@ module ActionView
       depth = 1
       j = from
       n = s.length
-      while j < n && depth > 0
+      while j < n && depth.positive?
         lt = s.index("<", j)
         return n if lt.nil?
 
@@ -640,7 +640,7 @@ module ActionView
           j = lt + 1
         end
       end
-      depth > 0 ? n : j
+      depth.positive? ? n : j
     end
 
     # Index of the `</name` (case-insensitive, followed by a delimiter)
@@ -753,7 +753,7 @@ module ActionView
           i += 1
         when "&"
           len = entity_reference_length(t, i)
-          if len == 0
+          if len.zero?
             out += "&amp;"
             i += 1
           else
@@ -782,7 +782,7 @@ module ActionView
           i += 1
         elsif c == "&"
           len = entity_reference_length(value, i)
-          if len == 0
+          if len.zero?
             out += "&amp;"
             i += 1
           else
@@ -828,7 +828,7 @@ module ActionView
         i += 1
       end
       sep = sanitize_uri_separator_length(t, i)
-      return true if sep == 0
+      return true if sep.zero?
 
       protocol = t[0, i].to_s
       return false unless sanitize_allowed_protocols.include?(protocol)
@@ -927,7 +927,7 @@ module ActionView
               len = 6
             end
           end
-          if len == 0 && value[i + 1, 1].to_s == "#"
+          if len.zero? && value[i + 1, 1].to_s == "#"
             j = i + 2
             hex = false
             marker = value[j, 1].to_s
@@ -956,7 +956,7 @@ module ActionView
               end
             end
           end
-          if len == 0
+          if len.zero?
             out += "&"
             i += 1
           else
@@ -1180,12 +1180,12 @@ module ActionView
           i += 1
         else
           len = do_urls ? auto_link_url_length(s, i) : 0
-          if len > 0
+          if len.positive?
             out += auto_link_url(s[i, len].to_s, html)
             i += len
           else
             len = do_emails ? auto_link_email_length(s, i) : 0
-            if len > 0
+            if len.positive?
               out += mail_to(s[i, len].to_s, "", html)
               i += len
             else
@@ -1220,7 +1220,7 @@ module ActionView
     def self.auto_link_url_length(s, i)
       n = s.length
       j = auto_link_url_prefix_end(s, i)
-      return 0 if j == 0
+      return 0 if j.zero?
 
       k = j
       k += 1 while k < n && auto_link_url_char?(s[k, 1].to_s)
@@ -1295,7 +1295,7 @@ module ActionView
     def self.auto_link_url(matched, html)
       href = matched
       punctuation = []
-      while href.length > 0 && !auto_link_url_tail_char?(href[href.length - 1, 1].to_s)
+      while href.length.positive? && !auto_link_url_tail_char?(href[href.length - 1, 1].to_s)
         last = href[href.length - 1, 1].to_s
         href = href[0, href.length - 1].to_s
         punctuation.push(last)
@@ -1400,7 +1400,7 @@ module ActionView
     # domain of two or more `[\w-]` labels.
     def self.auto_link_email_length(s, i)
       n = s.length
-      return 0 if i > 0 && auto_link_email_local_char?(s[i - 1, 1].to_s)
+      return 0 if i.positive? && auto_link_email_local_char?(s[i - 1, 1].to_s)
       return 0 unless auto_link_email_start_char?(s[i, 1].to_s)
 
       j = i + 1
@@ -1428,7 +1428,7 @@ module ActionView
         labels += 1
         more = true
       end
-      return 0 if labels == 0
+      return 0 if labels.zero?
 
       k - i
     end

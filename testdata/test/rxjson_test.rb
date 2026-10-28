@@ -52,7 +52,7 @@ def md_dump(m)
 
   out = [m.inspect, m.to_s.inspect, m.pre_match.inspect, m.post_match.inspect, m.captures.size.to_s]
   out << "[0]=#{m[0].inspect} [1]=#{m[1].inspect} [9]=#{m[9].inspect} [-9]=#{m[-9].inspect}"
-  out << "[-1]=#{m[-1].inspect}" if m.captures.size > 0
+  out << "[-1]=#{m[-1].inspect}" if m.captures.size.positive?
   out
 end
 
