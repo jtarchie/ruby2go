@@ -407,7 +407,6 @@ module ActiveRecord
     # carries no state; accept and ignore it so marker-bearing chains
     # stay chainable (lobsters' filters page).
     def references(*names)
-      names
       self
     end
 

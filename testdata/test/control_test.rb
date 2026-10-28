@@ -910,7 +910,6 @@ end
 def ensure_value
   "body value"
 ensure
-  "ensure value"
 end
 
 #: (Integer) -> String
@@ -5105,11 +5104,9 @@ module ControlTests
       n = 0
       [1, 2].each { |x| x }
       (1..2).each do |y|
-        y
         n += 1
       end
       z = 5
-      z
       assert_equal 2, n
     end
   end
@@ -5384,7 +5381,6 @@ module ControlTests
     #: () -> Integer
     def counted
       @calls += 1
-      self
       @calls
     end
 
