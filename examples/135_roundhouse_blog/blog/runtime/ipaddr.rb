@@ -281,8 +281,8 @@ class IPAddr
     fill = 16 - left.length - right.length
     if elided
       raise InvalidAddressError, "invalid address: #{text}" if fill < 0
-    else
-      raise InvalidAddressError, "invalid address: #{text}" if fill != 0
+    elsif fill != 0
+      raise InvalidAddressError, "invalid address: #{text}"
     end
 
     out = []

@@ -137,8 +137,8 @@ class DemoBottle
   def initialize(formula, name: nil)
     if formula
       name = formula.upcase
-    else
-      raise ArgumentError, "Bottle name is required" if name.nil?
+    elsif name.nil?
+      raise ArgumentError, "Bottle name is required"
     end
     @name = T.let(name, String)
   end
