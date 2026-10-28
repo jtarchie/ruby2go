@@ -96,7 +96,7 @@ module Tep
             pid = Sock.sphttp_fork
             if pid == 0
               Tep::Server::Threaded.run_worker(sfd)
-              Sock.sphttp_exit(0)   # same reason as the single-process exit below
+              Sock.sphttp_exit(0) # same reason as the single-process exit below
             end
             i += 1
           end

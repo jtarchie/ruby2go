@@ -22,7 +22,7 @@ module Tep
       # points (main.rb / bin/blog.rb); clear and delete_at each have
       # an unarmed cell.
       @set_cookies.pop
-      @streamer    = Streamer.new   # default no-op; only used when @streaming
+      @streamer    = Streamer.new # default no-op; only used when @streaming
       @streaming   = false
       # WebSocket upgrade slots. When @upgrading_ws is set (by
       # start_websocket, from the /cable handler), Tep::Server::Threaded's
@@ -56,7 +56,7 @@ module Tep
       if opts.length > 0
         opts.each do |k, v|
           line << if v.length == 0
-                    "; " + k          # bare flag (HttpOnly, Secure)
+                    "; " + k # bare flag (HttpOnly, Secure)
                   else
             "; " + k + "=" + v
                   end

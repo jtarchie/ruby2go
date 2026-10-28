@@ -197,7 +197,7 @@ module Tep
         end
         payload = bytes.pack("C*")
 
-        out.outcome   = "ok"
+        out.outcome = "ok"
         out.frame    = Tep::WebSocket::Frame.new(fin, opcode, payload)
         out.consumed = pos + plen - start
         out

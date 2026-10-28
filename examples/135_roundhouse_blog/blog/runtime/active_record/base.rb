@@ -678,21 +678,21 @@ module ActiveRecord
     # ---- Lifecycle hooks (no-ops; subclasses override) --------------
 
     def before_validation; end
-    def after_validation;  end
-    def before_save;       end
-    def after_save;        end
-    def before_create;     end
-    def after_create;      end
-    def before_update;     end
-    def after_update;      end
-    def before_destroy;    end
-    def after_destroy;     end
-    def after_commit;      end
-    def after_create_commit;  end
-    def after_update_commit;  end
+    def after_validation; end
+    def before_save; end
+    def after_save; end
+    def before_create; end
+    def after_create; end
+    def before_update; end
+    def after_update; end
+    def before_destroy; end
+    def after_destroy; end
+    def after_commit; end
+    def after_create_commit; end
+    def after_update_commit; end
     def after_destroy_commit; end
-    def after_save_commit;    end
-    def after_touch;          end
+    def after_save_commit; end
+    def after_touch; end
 
     # Subclasses define their own `validate` if they need any.
     def validate; end

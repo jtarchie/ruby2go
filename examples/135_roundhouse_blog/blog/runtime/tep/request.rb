@@ -15,7 +15,7 @@ module Tep
       @path         = +""
       @raw_path     = +""
       @http_version = "HTTP/1.0"
-      @req_params       = Tep.str_hash   # path captures + query + form merged
+      @req_params = Tep.str_hash # path captures + query + form merged
       @query        = Tep.str_hash   # raw query string only
       @req_headers  = Tep.str_hash   # downcased header names; renamed
       # from `headers` to avoid sharing
@@ -23,10 +23,10 @@ module Tep
       # mis-codegens polymorphic ivar
       # writes when two classes share an
       # ivar name).
-      @cookies      = Tep.str_hash   # parsed from Cookie: header
+      @cookies      = Tep.str_hash # parsed from Cookie: header
       # @session dropped: collides with controllers' :session via
       # poly-receiver dispatch. Roundhouse uses ActionDispatch::Session.
-      @raw_body     = +""             # same reasoning as req_headers
+      @raw_body     = +"" # same reasoning as req_headers
       @remote_host  = +""
       @passed       = false          # `pass` flag: skip to the next matching route
       @ivars        = Tep.str_hash   # per-request bag for `@name = ...`
@@ -88,7 +88,7 @@ module Tep
     def host() = @req_headers.[]("host")
     def user_agent() = @req_headers.[]("user-agent")
     def referer() = @req_headers.[]("referer")
-    def referrer() = @req_headers.[]("referer")   # spelling alias
+    def referrer() = @req_headers.[]("referer") # spelling alias
     def accept() = @req_headers.[]("accept")
     def content_type() = @req_headers.[]("content-type")
 

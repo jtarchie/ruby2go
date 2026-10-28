@@ -39,7 +39,7 @@
 require "sqlite3"
 
 module Db
-  @pool    = nil
+  @pool = nil
   # WHAT PROCESS THIS POOL BELONGS TO, and what it would take to build
   # another one. Both exist for `fork`: see `adopt_after_fork`.
   @owner_pid = nil

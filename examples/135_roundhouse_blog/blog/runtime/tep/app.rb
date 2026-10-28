@@ -73,14 +73,14 @@ module Tep
 
       # Scheduler arrays (fiber lane). FiberSlot array -- seed with a
       # noop-bodied slot to pin the element type, then drop it.
-      @sched_fibers   = [Tep::FiberSlot.new(Fiber.new { Tep.seed_fiber_noop })]
+      @sched_fibers = [Tep::FiberSlot.new(Fiber.new { Tep.seed_fiber_noop })]
       @sched_fibers.pop
-      @sched_wake_at  = [0]
+      @sched_wake_at = [0]
       @sched_wake_at.pop
-      @sched_current  = -1               # currently-running fiber idx
+      @sched_current  = -1 # currently-running fiber idx
       @sched_io_fd    = [0]
       @sched_io_fd.pop
-      @sched_io_mode  = [0]
+      @sched_io_mode = [0]
       @sched_io_mode.pop
       @sched_io_ready = [0]
       @sched_io_ready.pop

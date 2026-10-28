@@ -64,7 +64,7 @@ module Base64
       val = char_value(s[i])
       i = i + 1
       if val < 0
-        next   # padding "=" or stray byte
+        next # padding "=" or stray byte
       end
       # Masked: only the low `nbits + 6` bits (at most 13) are ever
       # read, and an unmasked accumulator grows without bound — a

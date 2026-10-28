@@ -101,10 +101,10 @@ module Surfguard
   # NAT64 embeds an IPv4 target that must be re-checked as IPv4. The
   # well-known prefix is a fixed /96, so the embedded octets are always
   # the low four.
-  NAT64_WELL_KNOWN = IPAddr.new("64:ff9b::/96")    # RFC 6052
+  NAT64_WELL_KNOWN = IPAddr.new("64:ff9b::/96") # RFC 6052
 
   # Refused whole, not decoded — see the header.
-  NAT64_LOCAL_USE = IPAddr.new("64:ff9b:1::/48")   # RFC 8215
+  NAT64_LOCAL_USE = IPAddr.new("64:ff9b:1::/48") # RFC 8215
 
   # SIIT IPv4-translated. A fixed /96 like the well-known prefix, so the
   # low four octets are the embedded address.

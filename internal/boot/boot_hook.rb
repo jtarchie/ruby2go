@@ -7,7 +7,7 @@
 # state. The manifest is written as JSON to the file named by RUGAROO_BOOT_OUT.
 
 module RugarooBoot
-  @classes = {}       # name => { name:, super:, path:, line: }
+  @classes = {} # name => { name:, super:, path:, line: }
   @define_methods = [] # { owner:, name:, file:, line:, source: }
   @aliases = []        # { owner:, singleton:, name:, old:, file:, line: }
   @includes = []       # { owner:, site:, module:, file:, line: }

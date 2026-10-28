@@ -38,7 +38,7 @@ module Cable
   # verbatim in confirm_subscription + every broadcast message so Turbo
   # routes the frame to the right stream-source.
 
-  PING_INTERVAL = 3   # seconds — matches Action Cable's default
+  PING_INTERVAL = 3 # seconds — matches Action Cable's default
 
   # How many pieces one interval's beats are sent in. See `beat_cycle`:
   # every connection is still pinged once per interval, but N frames do
@@ -657,7 +657,7 @@ module Cable
     def broadcast(stream, fragment)
       id = Cable.identifier_for(stream)
       if id.length == 0
-        return nil   # no subscriber has named this stream yet
+        return nil # no subscriber has named this stream yet
       end
       envelope = "{\"identifier\":" + JSON.generate(id) +
                  ",\"message\":" + JSON.generate(fragment) + "}"

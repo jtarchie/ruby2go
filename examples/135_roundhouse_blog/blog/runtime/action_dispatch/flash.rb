@@ -203,7 +203,7 @@ module ActionDispatch
       n = @notice
       result["notice"] = n if !n.nil? && n != @notice_was
       a = @alert
-      result["alert"]  = a if !a.nil? && a != @alert_was
+      result["alert"] = a if !a.nil? && a != @alert_was
       result
     end
 

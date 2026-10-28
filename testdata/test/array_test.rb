@@ -1468,7 +1468,7 @@ module ArrayTests
       assert_equal [5, -3, 0, 12, -3, 7], (nums.inject(acc0) { |acc, n| acc << n })
       assert_equal [5, -3, 0, 12, -3, 7], acc0
       h0 = {} #: Hash[Integer, String]
-      assert_equal "{5 => \"55\", -3 => \"-3-3\", 0 => \"00\", 12 => \"1212\", 7 => \"77\"}", ((nums.each_with_object(h0) { |n, h| h[n] = n.to_s * 2;  })).inspect
+      assert_equal "{5 => \"55\", -3 => \"-3-3\", 0 => \"00\", 12 => \"1212\", 7 => \"77\"}", ((nums.each_with_object(h0) { |n, h| h[n] = n.to_s * 2; })).inspect
       assert_equal "bb", (["bb", "aa", "c"].max_by(&:size))
       assert_equal "x", (["x", "yy", "z"].min_by(&:size))
       assert_equal "b", (["b", "a"].max_by { |_s| 0 })
