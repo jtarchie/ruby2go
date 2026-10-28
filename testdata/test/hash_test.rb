@@ -496,7 +496,7 @@ module HashTests
       assert_equal "none", opt_nil(nil)
       assert_equal "{\"a\" => 1, b: 2}", (mixed("a" => 1, b: 2))
       assert_equal 10, (with_blk(n: 5) { |x| x * 2 })
-      assert_equal 7, (with_blk(n: 6) do |x| x + 1 end)
+      assert_equal 7, (with_blk(n: 6) { |x| x + 1 })
       assert_equal "1 {} {}", two_opts(1)
       assert_equal "1 {x: 1} {}", (two_opts(1, x: 1))
       assert_equal "1 {x: 1} {y: 2}", (two_opts(1, { x: 1 }, y: 2))

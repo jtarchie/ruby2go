@@ -312,9 +312,9 @@ EOS
 EOS
       assert_equal "\na\n\n  b\n\ttab\n    val\n", dedent
       m = <<~EOS
-  x #{[1, 2].map { |i|
+  x #{[1, 2].map do |i|
     i * 2
-  }.join(",")} y
+  end.join(",")} y
 EOS
       assert_equal "x 2,4 y\n", m
       a, b = <<~A, <<~B

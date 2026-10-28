@@ -812,10 +812,10 @@ class DemoStanzaDSL
     @version = T.let(nil, T.nilable(DemoStanzaVersion))
   end
 
-  T::Sig::WithoutRuntime.sig {
+  T::Sig::WithoutRuntime.sig do
     type_parameters(:U).params(stanza: Symbol, should_return: T::Boolean, _block: T.proc.returns(T.type_parameter(:U)))
                        .returns(T.type_parameter(:U))
-  }
+  end
   def set_unique_stanza(stanza, should_return, &_block)
     return instance_variable_get(:"@#{stanza}") if should_return
 
@@ -947,11 +947,11 @@ end
 module DemoRead
   extend T::Sig
 
-  sig {
+  sig do
     type_parameters(:U)
       .params(cmd: String, block: T.nilable(T.proc.params(arg0: String).returns(T.type_parameter(:U))))
       .returns(T.any(T.type_parameter(:U), String))
-  }
+  end
   def self.read(cmd, &block)
     text = "out of #{cmd}"
     return yield(text) if block

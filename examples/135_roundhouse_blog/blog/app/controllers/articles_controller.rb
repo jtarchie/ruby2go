@@ -36,11 +36,11 @@ class ArticlesController < ApplicationController
       __comments_loaded << Comment.from_stmt(__comments_stmt)
     end
     Db.finalize(__comments_stmt)
-    results.each { |a| 
+    results.each do |a| 
       __comments_group = []
     __comments_loaded.each { |r| __comments_group << r if r.article_id == a.id }
     a._preload_comments(__comments_group)
-}
+end
     @articles = results
     if self.request_format == :json
       render(Views::Articles.index_json(@articles), content_type: "application/json")
