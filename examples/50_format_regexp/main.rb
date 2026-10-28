@@ -42,6 +42,6 @@ puts "2024-03-05".sub(/(\d+)-(\d+)-(\d+)/, "\\3/\\2/\\1")
 puts "snake_case_name".gsub(/_(\w)/) { |m| m[1].to_s.upcase }
 puts "The year 1999 and 2024".scan(/\d{4}/).inspect
 puts "a, b;c  d".split(/[,;\s]+/).inspect
-puts "%s scored %05.1f%% (%+d)" % ["ann", 93.456, 7]
+puts format("%s scored %05.1f%% (%+d)", "ann", 93.456, 7)
 puts format("%<name>s is %<age>d", name: "Bo", age: 3), format("%x %o %b %e", 255, 8, 5, 1234.5)
 printf("%3d|%-3d|\n", 7, 7)

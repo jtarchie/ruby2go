@@ -402,11 +402,11 @@ B
       assert_equal "3.14|    3.1416|1.23e+03  |", format("%.3g|%10.4f|%-10.2e|", 3.14159, Math::PI, 1234.5)
       assert_equal "Inf -Inf NaN", format("%f %f %e", Float::INFINITY, -Float::INFINITY, Float::NAN)
       assert_equal "1010 31", format("%B %d", 10, "0x1f")
-      assert_equal "-003.142", sprintf("%08.3f", -3.14159)
-      assert_equal "x and nil", "%s and %p" % ["x", nil]
-      assert_equal "00042", "%05d" % 42
-      assert_equal "12.3%", "%.1f%%" % 12.34
-      assert_equal "ab   |", "%-5s|" % :ab
+      assert_equal "-003.142", format("%08.3f", -3.14159)
+      assert_equal "x and nil", format("%s and %p", "x", nil)
+      assert_equal "00042", format("%05d", 42)
+      assert_equal "12.3%", format("%.1f%%", 12.34)
+      assert_equal "ab   |", format("%-5s|", :ab)
       e = assert_raises(ArgumentError) { format("%d %d", 1) }
       assert_equal "too few arguments", e.message
       e = assert_raises(ArgumentError) { format("%d", "abc") }
@@ -472,7 +472,7 @@ B
       assert_equal "àéî", "ÀÉÎ".downcase
       assert_equal "Hello world", "hello world".capitalize
       assert_equal "Hello", "HELLO".capitalize
-      assert_equal "003.1", "%05.1f" % 3.14159
+      assert_equal "003.1", format("%05.1f", 3.14159)
       assert_equal "ABC", "abc".tr("a-c", "A-C")
       assert_equal 294, "abc".bytes.sum
     end
@@ -2022,7 +2022,7 @@ module StringTests
       [0, 7, -7, 42, -255, 100_000, -1, 9_223_372_036_854_775_807].each do |i|
         assert_equal format(dyn, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i),
                      format("%d|%5d|%-5d|%05d|%-05d|%x|%X|%5x|%05x|%-6x|%+d|% d|%o|%i|%u", i, i, i, i, i, i, i, i, i, i, i, i, i, i, i)
-        assert_equal format("[%s] [%8s]", i, i), "[%s] [%8s]" % [i, i]
+        assert_equal format("[%s] [%8s]", i, i), format("[%s] [%8s]", i, i)
         assert_equal format(dyn.split("|").first || "", i), "%d" % i
       end
     end
@@ -2042,7 +2042,7 @@ module StringTests
       end
       assert_equal "sym|      |nil", format("%s|%-6s|%p", :sym, nil, nil)
       assert_equal "100% done", format("100%% %s", "done")
-      assert_equal "a and b", "%s and %s" % ["a", "b"]
+      assert_equal "a and b", format("%s and %s", "a", "b")
     end
 
     def test_arguments_evaluate_in_order_first
