@@ -2949,7 +2949,7 @@ module ArrayTests
     def test_guarded_takes_fill_a_typed_array
       src = (1..5).to_a
       dst = Array.new
-      while (not src.empty?)
+      while not src.empty?
         dst.push(src.shift)
       end
       back = []
