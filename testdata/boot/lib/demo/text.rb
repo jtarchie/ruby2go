@@ -12,7 +12,7 @@ module Demo
       params = {}
 
       # Parse parameter list
-      while i = header.index("=")
+      while (i = header.index("="))
         # Only parse up to max parameters, to avoid potential denial of service
         num_params += 1
         return if num_params > max_params
@@ -24,14 +24,14 @@ module Demo
         param.chomp!("=")
         param.strip!
         param.downcase!
-        return unless param = ALLOWED_FORWARDED_PARAMS[param]
+        return unless (param = ALLOWED_FORWARDED_PARAMS[param])
 
         if header[0] == '"'
           # Parameter value is quoted, parse it, handling backslash escapes
           header.slice!(0, 1)
           value = String.new
 
-          while i = header.index(/(["\\])/)
+          while (i = header.index(/(["\\])/))
             c = ::Regexp.last_match(1)
 
             # Append all content until ending quote or escape
@@ -52,7 +52,7 @@ module Demo
             value << escaped_char
           end
         else
-          if i = header.index(/[;,]/)
+          if (i = header.index(/[;,]/))
             # Parameter value unquoted (which may be invalid), value ends at comma or semicolon
             value = header.slice!(0, i)
             value.sub!(/[\s;,]+\z/, "")
@@ -79,7 +79,7 @@ module Demo
     def self.first_param(header)
       param = header.slice!(0, 3)
       param.strip!
-      return unless param = ALLOWED_FORWARDED_PARAMS[param]
+      return unless (param = ALLOWED_FORWARDED_PARAMS[param])
 
       [param, header]
     end

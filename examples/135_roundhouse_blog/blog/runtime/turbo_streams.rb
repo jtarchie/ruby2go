@@ -125,7 +125,7 @@ module Turbo
     include Turbo::Streams::StreamName::ClassMethods
 
     def subscribed
-      if stream_name = verified_stream_name_from_params
+      if (stream_name = verified_stream_name_from_params)
         stream_from stream_name
       else
         reject
