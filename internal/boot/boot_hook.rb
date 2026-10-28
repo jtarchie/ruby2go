@@ -223,7 +223,7 @@ module RugarooBoot
                         "Float::NAN"
                       else
                         x.infinite? ? "#{"-" if x < 0}Float::INFINITY" : x.inspect
-                      end # NaN/Infinity inspect as bare words
+                      end
       when nil, true, false, Integer, Symbol then x.inspect
       when Module then if (n = MOD_NAME.bind_call(x)) && begin
                                                         Object.const_get(n)

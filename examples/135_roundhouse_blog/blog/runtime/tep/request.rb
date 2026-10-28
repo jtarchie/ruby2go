@@ -85,7 +85,8 @@ module Tep
     def host() = @req_headers.[]("host")
     def user_agent() = @req_headers.[]("user-agent")
     def referer() = @req_headers.[]("referer")
-    def referrer() = @req_headers.[]("referer") # spelling alias
+# spelling alias
+    def referrer() = @req_headers.[]("referer")
     def accept() = @req_headers.[]("accept")
     def content_type() = @req_headers.[]("content-type")
 

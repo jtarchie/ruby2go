@@ -9,7 +9,8 @@ def globals_bump(n)
   $globals_names << "b#{n}"
 end
 
-def globals_big = 0x1_0000_0000_0000_0000 # never called: a literal past 64 bits compiles, raising only when run (decision 361)
+# never called: a literal past 64 bits compiles, raising only when run (decision 361)
+def globals_big = 0x1_0000_0000_0000_0000
 
 module GlobalsTests
   class Opts

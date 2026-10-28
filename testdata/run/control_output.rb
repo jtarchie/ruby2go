@@ -159,7 +159,8 @@ begin
 rescue NameError => e
   puts e.message
 end
-def ctrl_dead_lit = [CtrlMissing2, 1] # inside a literal too: it raises where it is read
+# inside a literal too: it raises where it is read
+def ctrl_dead_lit = [CtrlMissing2, 1]
 begin
   ctrl_dead_lit
 rescue NameError => e
