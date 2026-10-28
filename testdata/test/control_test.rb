@@ -1375,7 +1375,7 @@ def control_block_local_first
   [1].each do |i|
   item = ControlTests::Counter.new
   item.n += i
-end
+  end
   item = nil #: ControlTests::Counter?
   item = ControlTests::Counter.new
   item.n += 2 if item.n.positive?
@@ -2479,14 +2479,14 @@ module ControlTests
   next false if k == "b"
 
   v.positive?
-}.inspect
+      }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
       assert_equal([1], nv_xs.select do |n|
   next false if n > 1
 
   true
-end)
+      end)
     end
   end
 
@@ -3767,7 +3767,7 @@ end)
   rescue StandardError
     100
       end
-end)
+      end)
       assert_equal 1, control_safe_fetch("a")
       assert_equal(-1, control_safe_fetch("b"))
     end
@@ -3837,7 +3837,7 @@ end)
       doubled = [1, 2, 3].map do |x|
   sum += x
   x * 2
-end
+      end
       assert_equal 6, sum
       assert_equal [2, 4, 6], doubled
       seen = 0
@@ -4437,11 +4437,11 @@ end
       names.each do |n|
   s = n.upcase
   got << s
-end
+      end
       [4, 5].each do |c|
   s = c * 2
   got << s.to_s
-end
+      end
       assert_equal %w[2 4 s3 ANN BO 8 10], got
       out = [] #: Array[String]
       later_outer(out)
@@ -6213,7 +6213,7 @@ module ControlTests
       lim = lambda {
   calls += 1
   3
-}
+      }
       1.upto(lim.call) { |i| calls += i * 0 }
       lim.call.times { calls += 0 }
       assert_equal 2, calls

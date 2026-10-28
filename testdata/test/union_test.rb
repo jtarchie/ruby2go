@@ -400,7 +400,7 @@ module UnionTests
       pick = lambda { |s|
   order << s
   s
-}
+      }
       assert_equal "xy", pick.call("x") + pick.call("y")
       assert_equal %w[x y], order
     end

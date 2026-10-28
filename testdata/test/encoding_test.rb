@@ -340,7 +340,7 @@ module EncodingTests
         File.open(path, "w:UTF-16") do |f|
   f.write("é")
   f.write("a")
-end
+        end
         assert_equal [254, 255, 0, 233, 0, 97], File.binread(path).bytes
         e = assert_raises(ArgumentError) { File.open(path, "r:UTF-16LE", &:gets) }
         assert_equal "ASCII incompatible encoding needs binmode", e.message

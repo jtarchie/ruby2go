@@ -1791,7 +1791,7 @@ module StdlibTests
       t = Thread.new do
   q.pop
   Thread.new { 1 }.group.equal?(g)
-end
+      end
       g.add(t)
       q << 1
       assert_equal true, t.value
@@ -1952,7 +1952,7 @@ end
   io.write("b\na\n")
   io.close_write
   io.read
-}
+      }
       got = IO.popen(["sh", "-c", "read x; echo got $x"], "w+") do |io|
         io.puts "hi"
         io.close_write

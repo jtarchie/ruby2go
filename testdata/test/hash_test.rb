@@ -912,15 +912,15 @@ module HashTests
       sel_h.select do |x|
   got << x.inspect
   true
-end
+      end
       sel_h.filter do |x|
   got << x.inspect
   false
-end
+      end
       sel_h.reject do |x|
   got << x.inspect
   false
-end
+      end
       assert_equal ["\"a\"", "\"bb\"", "\"a\"", "\"bb\"", "\"a\"", "\"bb\""], got
     end
 
@@ -1463,7 +1463,7 @@ end
       snap = w.map do |k, v|
   w[k] = v + 1
   k
-end
+      end
       assert_equal ["z"], snap
       assert_equal "{\"z\" => 2}", w.inspect
     end
@@ -2504,7 +2504,7 @@ module HashTests
         h.delete_if do |_k, _v|
   h[99] = 9
   false
-end
+        end
       rescue RuntimeError
         raised = true
       end

@@ -94,7 +94,7 @@ module FiberTests
         f = Fiber.new do
   Fiber.yield Fiber.current.alive?
   :done
-end
+        end
         [f.resume, f.resume, f.alive?]
       end
       assert_equal [true, :done, false], in_thread.value

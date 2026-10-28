@@ -639,7 +639,7 @@ class DemoFallbackExec
   def go = ns_execute(5) do |x|
   @log << x
   x * 2
-end
+  end
 end
 
 # concurrent-ruby's IVar#add_observer(&block) over Concern::Observable's: the override takes the module slot's untyped

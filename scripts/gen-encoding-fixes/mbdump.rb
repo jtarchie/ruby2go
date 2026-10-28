@@ -43,9 +43,9 @@ elsif form == "4"
   [0x20, 0x7f, 0xff].each do |c|
         s = [a, b, c].pack("CCC")
         out.puts "s #{hex(s)} #{st(s, e)}"
-      end
-     end
-   end
+  end
+    end
+  end
 end
 (0..0x10FFFF).each do |cp|
   next if cp.between?(0xD800, 0xDFFF)
