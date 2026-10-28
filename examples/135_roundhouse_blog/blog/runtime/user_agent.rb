@@ -516,10 +516,10 @@ else
     # itself the proof that the pattern hit.
     unless os[/(?:Intel|PPC) Mac OS X\s*([0-9_\.]+)?/, 0].to_s.empty?
       v = os[/(?:Intel|PPC) Mac OS X\s*([0-9_\.]+)?/, 1].to_s
-      return v.empty? ? "OS X" : "OS X #{v.tr('_', '.')}"
+      return v.empty? ? "OS X" : "OS X #{v.tr("_", ".")}"
     end
     v = os[IOS_VERSION_REGEX, 1].to_s
-    return "iOS #{v.tr('_', '.')}" unless v.empty?
+    return "iOS #{v.tr("_", ".")}" unless v.empty?
     v = os[/CrOS\s([^\s]+)\s(\d+(\.\d+)*)/, 2].to_s
     return "ChromeOS #{v}" unless v.empty?
     os

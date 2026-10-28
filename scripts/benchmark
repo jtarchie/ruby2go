@@ -41,7 +41,7 @@ def time_once(cmd)
   pid = Process.spawn(*cmd, out: File::NULL, err: File::NULL, chdir: ROOT)
   _, status = Process.wait2(pid)
   elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
-  abort "#{cmd.join(' ')}: #{status.inspect}; a crash is not a fast run" unless status.success?
+  abort "#{cmd.join(" ")}: #{status.inspect}; a crash is not a fast run" unless status.success?
 
   elapsed
 end
@@ -123,7 +123,7 @@ wanted = if ARGV.empty?
            Dir[File.join(bench, '*.rb')]
          else
            ARGV.map do |n|
-             File.join(bench, "#{File.basename(n, '.rb')}.rb")
+             File.join(bench, "#{File.basename(n, ".rb")}.rb")
            end
          end
 
@@ -172,11 +172,11 @@ vs = cols.to_h do |c|
 end
 
 if ENV['MARKDOWN']
-  puts "| workload | #{cols.map { |c| LABELS[c] }.join(' | ')} |"
-  puts "|---|#{cols.map { '---:' }.join('|')}|"
-  rows.each { |name, r| puts "| #{name} | #{cols.map { |c| fmt[r[c]] }.join(' | ')} |" }
-  puts "| total (rows run) | #{cols.map { |c| fmt[totals[c]] }.join(' | ')} |"
-  puts "| vs MRI | #{cols.map { |c| vs[c] ? format('%.1fx', vs[c]) : '-' }.join(' | ')} |"
+  puts "| workload | #{cols.map { |c| LABELS[c] }.join(" | ")} |"
+  puts "|---|#{cols.map { "---:" }.join("|")}|"
+  rows.each { |name, r| puts "| #{name} | #{cols.map { |c| fmt[r[c]] }.join(" | ")} |" }
+  puts "| total (rows run) | #{cols.map { |c| fmt[totals[c]] }.join(" | ")} |"
+  puts "| vs MRI | #{cols.map { |c| vs[c] ? format("%.1fx", vs[c]) : "-" }.join(" | ")} |"
 else
   width = [rows.keys.map(&:length).max, 16].max
   puts format("%-#{width}s %s", '', cols.map { |c| format('%9s', LABELS[c]) }.join(' '))

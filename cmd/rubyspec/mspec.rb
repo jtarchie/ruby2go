@@ -18,7 +18,7 @@ class SpecExpectation
   def check(ok, what)
     return true if ok == @positive
 
-    mspec_fail "Expected #{@actual.inspect} #{@positive ? '' : 'not '}#{what}"
+    mspec_fail "Expected #{@actual.inspect} #{@positive ? "" : "not "}#{what}"
   end
 
   #: (untyped) -> bool
@@ -143,7 +143,7 @@ class ProcExpectation
     blk.call(got) if ok && @positive && blk && got
     return true if ok == @positive
 
-    mspec_fail "Expected #{@positive ? '' : 'no '}#{klass.inspect}#{message.nil? ? '' : " #{message.inspect}"}, got #{got.inspect}"
+    mspec_fail "Expected #{@positive ? "" : "no "}#{klass.inspect}#{message.nil? ? "" : " #{message.inspect}"}, got #{got.inspect}"
   end
 
   # mspec's complain: the block's warnings ($stderr) match a String exactly, a Regexp, or for nil are any at all
@@ -164,7 +164,7 @@ class ProcExpectation
     ok = expected.nil? ? !got.empty? : mspec_match(got, expected)
     return true if ok == @positive
 
-    mspec_fail "Expected warning #{@positive ? '' : 'not '}#{expected.nil? ? '' : expected.inspect}, got #{got.inspect}"
+    mspec_fail "Expected warning #{@positive ? "" : "not "}#{expected.nil? ? "" : expected.inspect}, got #{got.inspect}"
   end
 
   # mspec's output: what the block prints to $stdout and $stderr; nil checks nothing

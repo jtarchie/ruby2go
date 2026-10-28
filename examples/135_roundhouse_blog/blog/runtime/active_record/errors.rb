@@ -48,7 +48,7 @@ module ActiveRecord
 
     def initialize(record)
       @record = record
-      super("Validation failed: #{record.errors.join(', ')}")
+      super("Validation failed: #{record.errors.join(", ")}")
     end
   end
 end

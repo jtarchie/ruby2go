@@ -44,7 +44,7 @@ buffered = Logger.new(plain)
 buffered.datetime_format = "%Y-%m-%d"
 buffered.info("to buffer")
 line = plain.string
-puts line.start_with?("I, [#{Time.now.strftime('%Y-%m-%d')} #")
+puts line.start_with?("I, [#{Time.now.strftime("%Y-%m-%d")} #")
 puts line.end_with?("INFO -- : to buffer\n")
 
 Dir.mktmpdir do |dir|

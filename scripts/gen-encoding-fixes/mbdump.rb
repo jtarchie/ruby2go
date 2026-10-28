@@ -55,7 +55,7 @@ end
   next if cp.between?(0xD800, 0xDFFF)
 
   begin
-    out.puts "e #{cp.to_s(16)} #{hex([cp].pack('U').encode(e))}"
+    out.puts "e #{cp.to_s(16)} #{hex([cp].pack("U").encode(e))}"
   rescue EncodingError
   end
 end
