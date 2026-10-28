@@ -261,7 +261,7 @@ module FileUtilsTests
 
     #: (String) { () -> void } -> String
     def fu_err(dir)
-      out, _ = capture_io { yield }
+      out, = capture_io { yield }
       out.gsub(dir, "D")
     end
 
@@ -724,7 +724,7 @@ module FileUtilsTests
     end
 
     def test_remove_destination_verbose_message
-      out, _ = capture_io { FileUtils.cp_r("a", "b", noop: true, verbose: true, remove_destination: true) }
+      out, = capture_io { FileUtils.cp_r("a", "b", noop: true, verbose: true, remove_destination: true) }
       assert_equal "cp -r --remove-destination a b\n", out
     end
 
