@@ -250,9 +250,9 @@ module TypedStore
     while i < lines.length
       line = lines[i].to_s
       i += 1
-      next if line == "---" || line == ""
+      next if ["---", ""].include?(line)
       c0 = line[0, 1].to_s
-      next if c0 == " " || c0 == "-" || c0 == "#"
+      next if [" ", "-", "#"].include?(c0)
       sep = line.index(": ")
       if sep.nil?
         if line.end_with?(":")

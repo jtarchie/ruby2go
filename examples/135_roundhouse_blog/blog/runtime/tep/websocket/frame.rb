@@ -226,9 +226,7 @@ module Tep
       end
 
       def self.control_opcode?(op)
-        op == Tep::WebSocket::OPCODE_CLOSE ||
-          op == Tep::WebSocket::OPCODE_PING ||
-          op == Tep::WebSocket::OPCODE_PONG
+        [Tep::WebSocket::OPCODE_CLOSE, Tep::WebSocket::OPCODE_PING, Tep::WebSocket::OPCODE_PONG].include?(op)
       end
     end
 

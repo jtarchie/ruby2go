@@ -337,7 +337,7 @@ class UserAgent
     when "gecko"
       return "" if app.comment.empty?
       first = app.comment[0]
-      return "" if first == "compatible" || first == "Mobile"
+      return "" if ["compatible", "Mobile"].include?(first)
       return "Windows" if !first.nil? && first.match?(/\AWindows /)
       first.nil? ? "" : first
     else

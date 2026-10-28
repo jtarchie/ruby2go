@@ -464,7 +464,7 @@ module ActionText
         c = html[i, 1].to_s
         if quote != ""
           quote = "" if c == quote
-        elsif c == "\"" || c == "'"
+        elsif ["\"", "'"].include?(c)
           quote = c
         elsif c == ">"
           break
@@ -515,10 +515,7 @@ module ActionText
     end
 
     def self.void_element(name)
-      name == "area" || name == "base" || name == "br" || name == "col" ||
-        name == "embed" || name == "hr" || name == "img" || name == "input" ||
-        name == "link" || name == "meta" || name == "param" ||
-        name == "source" || name == "track" || name == "wbr"
+      ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"].include?(name)
     end
 
     # ---- selectors ----------------------------------------------------
@@ -812,7 +809,7 @@ module ActionText
             elsif !close && name == skipping
               skip_depth = skip_depth + 1
             end
-          elsif name == "script" || name == "style"
+          elsif ["script", "style"].include?(name)
             unless close || void
               skipping = name
               skip_depth = 1
@@ -830,7 +827,7 @@ module ActionText
                 names.pop
                 starts.pop
                 segment = out[start, out.length - start].to_s
-                if name == "ul" || name == "ol"
+                if ["ul", "ol"].include?(name)
                   list_names.pop
                   list_counts.pop
                 end
@@ -841,7 +838,7 @@ module ActionText
               if name == "li" && list_counts.length > 0
                 list_counts[list_counts.length - 1] = list_counts[list_counts.length - 1] + 1
               end
-              if name == "ul" || name == "ol"
+              if ["ul", "ol"].include?(name)
                 list_names << name
                 list_counts << 0
               end
@@ -873,8 +870,7 @@ module ActionText
     # not an omission: PlainTextConversion aliases the block rule to
     # `h1` and `p` ONLY, and defines separate rules for the five below.
     def self.scoped_element(name)
-      name == "p" || name == "h1" || name == "div" || name == "blockquote" ||
-        name == "figcaption" || name == "li" || name == "ul" || name == "ol"
+      ["p", "h1", "div", "blockquote", "figcaption", "li", "ul", "ol"].include?(name)
     end
 
     # `segment` is the element's own accumulated text; the return value
@@ -883,11 +879,11 @@ module ActionText
     # off them, for `<li>` its own list is still on top.
     def self.close_scoped(name, segment, list_names, list_counts)
       inner = chomp_newlines(segment)
-      return inner + "\n\n" if name == "p" || name == "h1"
+      return inner + "\n\n" if ["p", "h1"].include?(name)
       return inner + "\n" if name == "div"
       return "[" + inner + "]" if name == "figcaption"
       return quote_wrap(inner + "\n\n") if name == "blockquote"
-      if name == "ul" || name == "ol"
+      if ["ul", "ol"].include?(name)
         # `break_if_nested_list` — a list inside another list starts on
         # its own line.
         return list_names.length > 0 ? "\n" + inner + "\n\n" : inner + "\n\n"
@@ -969,7 +965,7 @@ module ActionText
       n = text.length
       while i < n
         c = text[i, 1].to_s
-        break if c == " " || c == "\t" || c == "\n" || c == "\r" || c == "/"
+        break if [" ", "\t", "\n", "\r", "/"].include?(c)
         i = i + 1
       end
       text[0, i].to_s.downcase
@@ -1000,7 +996,7 @@ module ActionText
         if raw[i, 1].to_s == "="
           i = i + 1
           quote = raw[i, 1].to_s
-          if quote == "\"" || quote == "'"
+          if ["\"", "'"].include?(quote)
             i = i + 1
             value_start = i
             while i < n && raw[i, 1].to_s != quote
@@ -1023,7 +1019,7 @@ module ActionText
 
     def self.space_at(text, index)
       c = text[index, 1].to_s
-      c == " " || c == "\t" || c == "\n" || c == "\r"
+      [" ", "\t", "\n", "\r"].include?(c)
     end
 
     # Index of the ";" closing an entity that starts at `start`, or
@@ -1038,7 +1034,7 @@ module ActionText
       while i <= limit
         c = html[i, 1].to_s
         return i if c == ";"
-        return start if c == " " || c == "<" || c == "&"
+        return start if [" ", "<", "&"].include?(c)
         i = i + 1
       end
       start

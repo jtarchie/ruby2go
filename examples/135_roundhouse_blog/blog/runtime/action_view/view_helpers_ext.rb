@@ -549,7 +549,7 @@ module ActionView
                 i = after
               else
                 name = sanitize_tag_name(raw)
-                if name == "svg" || name == "math"
+                if ["svg", "math"].include?(name)
                   # Foreign content is PRUNED whole — children, text and
                   # all — matching the gem's namespace rule. A
                   # self-closing root (`<svg/>`) contains nothing.
@@ -700,7 +700,7 @@ module ActionView
               i = i + 1
             end
             q = raw[i, 1].to_s
-            if q == "\"" || q == "'"
+            if ["\"", "'"].include?(q)
               i = i + 1
               vstart = i
               while i < n && raw[i, 1].to_s != q
@@ -841,7 +841,7 @@ module ActionView
         j = i + sep
         while j < n
           c = t[j, 1].to_s
-          break if c == ";" || c == ","
+          break if [";", ","].include?(c)
           m = m + c
           j = j + 1
         end
@@ -998,7 +998,7 @@ module ActionView
     # which end at the next `>` and vanish like a tag.
     def self.tag_open_at?(s, i)
       c = s[i + 1, 1].to_s
-      return true if c == "!" || c == "?"
+      return true if ["!", "?"].include?(c)
       c = s[i + 2, 1].to_s if c == "/"
       # Inline literal, not a module const: a module-const receiver
       # reads as an unresolved class in the strict typer (same reason
@@ -1019,7 +1019,7 @@ module ActionView
         c = s[j, 1].to_s
         if quote != ""
           quote = "" if c == quote
-        elsif c == "\"" || c == "'"
+        elsif ["\"", "'"].include?(c)
           quote = c
         elsif c == ">"
           out = j + 1
@@ -1040,7 +1040,7 @@ module ActionView
       digits = ""
       if s[j, 1].to_s == "#"
         j = j + 1
-        if s[j, 1].to_s == "x" || s[j, 1].to_s == "X"
+        if ["x", "X"].include?(s[j, 1].to_s)
           j = j + 1
           digits = "0123456789abcdefABCDEF"
         else
@@ -1263,8 +1263,8 @@ module ActionView
     # `[^\s< "]` — Ruby's `\s` is exactly `[ \t\r\n\f\v]` here.
     def self.auto_link_url_char?(c)
       return false if c == ""
-      return false if c == " " || c == "\t" || c == "\r" || c == "\n"
-      return false if c == "\f" || c == "\v"
+      return false if [" ", "\t", "\r", "\n"].include?(c)
+      return false if ["\f", "\v"].include?(c)
       c != "<" && c != "\""
     end
 

@@ -116,7 +116,7 @@ module Resty
            rescue StandardError
              nil
            end
-      id = nil if id == "edit" || id == "new" # rugaroo: was ["edit", "new"].include?(id)
+      id = nil if ["edit", "new"].include?(id) # rugaroo: was ["edit", "new"].include?(id)
       new(id)
     end
   end #: [String?]

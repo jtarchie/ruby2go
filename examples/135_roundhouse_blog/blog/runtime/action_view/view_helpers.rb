@@ -767,7 +767,7 @@ module ActionView
     # no-op concat.
     def self.method_override_input(method)
       method_str = method.to_s
-      if method_str == "get" || method_str == "post"
+      if ["get", "post"].include?(method_str)
         ""
       else
         %(<input type="hidden" name="_method" value="#{method_str}">)
@@ -943,22 +943,7 @@ module ActionView
     # equality against a literal is the one comparison every lane
     # already spells.
     def self.boolean_attr?(name)
-      name == "allowfullscreen" || name == "allowpaymentrequest" ||
-        name == "async" || name == "autofocus" || name == "autoplay" ||
-        name == "checked" || name == "compact" || name == "controls" ||
-        name == "declare" || name == "default" || name == "defaultchecked" ||
-        name == "defaultmuted" || name == "defaultselected" || name == "defer" ||
-        name == "disabled" || name == "enabled" || name == "formnovalidate" ||
-        name == "hidden" || name == "indeterminate" || name == "inert" ||
-        name == "ismap" || name == "itemscope" || name == "loop" ||
-        name == "multiple" || name == "muted" || name == "nohref" ||
-        name == "nomodule" || name == "noresize" || name == "noshade" ||
-        name == "novalidate" || name == "nowrap" || name == "open" ||
-        name == "pauseonexit" || name == "playsinline" || name == "pubdate" ||
-        name == "readonly" || name == "required" || name == "reversed" ||
-        name == "scoped" || name == "seamless" || name == "selected" ||
-        name == "sortable" || name == "truespeed" || name == "typemustmatch" ||
-        name == "visible"
+      ["allowfullscreen", "allowpaymentrequest", "async", "autofocus", "autoplay", "checked", "compact", "controls", "declare", "default", "defaultchecked", "defaultmuted", "defaultselected", "defer", "disabled", "enabled", "formnovalidate", "hidden", "indeterminate", "inert", "ismap", "itemscope", "loop", "multiple", "muted", "nohref", "nomodule", "noresize", "noshade", "novalidate", "nowrap", "open", "pauseonexit", "playsinline", "pubdate", "readonly", "required", "reversed", "scoped", "seamless", "selected", "sortable", "truespeed", "typemustmatch", "visible"].include?(name)
     end
   end
 end

@@ -48,7 +48,7 @@ module CgiIo
     params = {}
     parse_form_into(query, params) unless query.empty?
 
-    if method == "POST" || method == "PATCH" || method == "PUT"
+    if ["POST", "PATCH", "PUT"].include?(method)
       length = (env["CONTENT_LENGTH"] || "0").to_i
       ctype  = env["CONTENT_TYPE"] || ""
       if length > 0 && ctype.start_with?("application/x-www-form-urlencoded")
@@ -75,7 +75,7 @@ module CgiIo
       override = params.delete("_method")
       if !override.nil?
         upcased = override.to_s.upcase
-        method = upcased if upcased == "PATCH" || upcased == "PUT" || upcased == "DELETE"
+        method = upcased if ["PATCH", "PUT", "DELETE"].include?(upcased)
       end
     end
 

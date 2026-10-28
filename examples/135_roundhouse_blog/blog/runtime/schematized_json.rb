@@ -79,7 +79,7 @@ module SchematizedJson
   # Whitespace or a structural comma — everything that may sit between a
   # flat object's tokens.
   def self.separator?(c)
-    c == " " || c == "\n" || c == "\t" || c == "\r" || c == ","
+    [" ", "\n", "\t", "\r", ","].include?(c)
   end
 
   # Index just PAST the closing quote of the string starting at `start`
@@ -112,9 +112,9 @@ module SchematizedJson
     done = false
     while i < n && !done
       c = s[i, 1].to_s
-      if c == "," || c == "}" || c == "{" || c == "["
+      if [",", "}", "{", "["].include?(c)
         done = true
-      elsif c == " " || c == "\n" || c == "\t" || c == "\r"
+      elsif [" ", "\n", "\t", "\r"].include?(c)
         done = true
       else
         i = i + 1
@@ -172,19 +172,19 @@ module SchematizedJson
   # default over missing data before anything reads it.
   def self.read_boolean(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
-    return fallback if raw == "" || raw == "null"
+    return fallback if ["", "null"].include?(raw)
     raw == "true"
   end
 
   def self.read_integer(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
-    return fallback if raw == "" || raw == "null"
+    return fallback if ["", "null"].include?(raw)
     raw.to_i
   end
 
   def self.read_string(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
-    return fallback if raw == "" || raw == "null"
+    return fallback if ["", "null"].include?(raw)
     decode_string(raw)
   end
 

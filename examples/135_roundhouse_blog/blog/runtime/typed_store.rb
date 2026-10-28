@@ -30,10 +30,10 @@ module TypedStore
     while i < lines.length
       line = lines[i].to_s
       i += 1
-      next if line == "---" || line == ""
+      next if ["---", ""].include?(line)
       # Indented / list / comment lines: structured values, skipped.
       c0 = line[0, 1].to_s
-      next if c0 == " " || c0 == "-" || c0 == "#"
+      next if [" ", "-", "#"].include?(c0)
       sep = line.index(": ")
       if sep.nil?
         # `key:` with no value — an explicit empty scalar (nil).

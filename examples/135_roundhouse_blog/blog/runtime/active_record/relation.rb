@@ -236,7 +236,7 @@ module ActiveRecord
       return nil unless col.match?(/\A[A-Za-z_][A-Za-z0-9_]*\z/)
       if words.length == 2
         dir = words[1].upcase
-        return nil unless dir == "ASC" || dir == "DESC"
+        return nil unless ["ASC", "DESC"].include?(dir)
       end
       col
     end

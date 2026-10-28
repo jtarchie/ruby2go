@@ -324,7 +324,7 @@ module Main
     verb = req.verb
     if verb == "POST"
       override = req.req_params.fetch("_method", "").upcase
-      if override == "PATCH" || override == "PUT" || override == "DELETE"
+      if ["PATCH", "PUT", "DELETE"].include?(override)
         verb = override
       end
     end
@@ -610,7 +610,7 @@ workers = (ENV["WORKERS"] || "1").to_i
 i = 0
 while i < ARGV.length
   arg = ARGV[i]
-  if arg == "--help" || arg == "-h"
+  if ["--help", "-h"].include?(arg)
     puts "usage: " + $PROGRAM_NAME + " [options]"
     puts ""
     puts "  -p, --port N     listen port (default 3000; PORT env)"
@@ -622,10 +622,10 @@ while i < ARGV.length
     puts "    (HTTP only, one thread; the measurement lane, matz/spinel#4306)"
     puts "  SQLite file: BLOG_DB env (default storage/development.sqlite3)"
     exit(0)
-  elsif (arg == "--port" || arg == "-p") && i + 1 < ARGV.length
+  elsif (["--port", "-p"].include?(arg)) && i + 1 < ARGV.length
     port = ARGV[i + 1].to_i
     i += 2
-  elsif (arg == "--workers" || arg == "-w") && i + 1 < ARGV.length
+  elsif (["--workers", "-w"].include?(arg)) && i + 1 < ARGV.length
     workers = ARGV[i + 1].to_i
     i += 2
   else
