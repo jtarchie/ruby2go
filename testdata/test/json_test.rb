@@ -85,9 +85,9 @@ module JsonTests
     end
 
     def test_load_is_limited_like_parse
-      assert_equal(JSON::NestingError, JsonTests.raised { JSON.load(JsonTests.parse_text(101)) })
-      assert_nil(JsonTests.raised { JSON.load(JsonTests.parse_text(101), max_nesting: false) })
-      assert_equal(JSON::NestingError, JsonTests.raised { JSON.load(JsonTests.parse_text(101), max_nesting: 5) })
+      assert_equal(JSON::NestingError, JsonTests.raised { JSON.parse(JsonTests.parse_text(101)) })
+      assert_nil(JsonTests.raised { JSON.parse(JsonTests.parse_text(101), max_nesting: false) })
+      assert_equal(JSON::NestingError, JsonTests.raised { JSON.parse(JsonTests.parse_text(101), max_nesting: 5) })
     end
 
     # the gem hits end of input (ParserError), rugaroo its internal cap (NestingError); Go's own decoder also stops at 10000, so this guards the class, not a crash

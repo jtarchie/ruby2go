@@ -346,7 +346,7 @@ module StdlibTests
       data = { "x" => 1, "y" => [1, 2, 3] }
       dumped = JSON.dump(data)
       assert_equal "{\"x\":1,\"y\":[1,2,3]}", dumped
-      loaded = JSON.load(dumped)
+      loaded = JSON.parse(dumped)
       assert_equal "{\"x\" => 1, \"y\" => [1, 2, 3]}", loaded.to_s
       assert_equal true, loaded == data
     end
