@@ -2,13 +2,13 @@
 
 # Shelling out: Kernel#system, backticks and $?.
 
-files = `printf 'b.txt\na.rb\nc.rb\n'`.lines.map(&:chomp)
+files = %x(printf 'b.txt\na.rb\nc.rb\n').lines.map(&:chomp)
 puts "listed #{files.size} names, status #{$?&.exitstatus}"
 
 rubies = files.select { |f| f.end_with?(".rb") }.sort
 puts "ruby files: #{rubies.join(", ")}"
 
-count = `printf '%s\n' #{rubies.join(" ")} | wc -l`.strip
+count = %x(printf '%s\n' #{rubies.join(" ")} | wc -l).strip
 puts "wc counts #{count}"
 
 puts "system says:"
