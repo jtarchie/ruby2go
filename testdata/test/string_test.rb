@@ -2057,7 +2057,10 @@ module StringTests
   class StringConcatChainTest < Minitest::Test
     def test_order_and_identity
       log = [] #: Array[String]
-      r = (log << "1"; "x") + (log << "2"; "y") + (log << "3"; "z")
+      r = (log << "1"
+ "x") + (log << "2"
+ "y") + (log << "3"
+ "z")
       assert_equal "xyz", r
       assert_equal %w[1 2 3], log
       a = "a"

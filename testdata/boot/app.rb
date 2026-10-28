@@ -161,7 +161,10 @@ dus = DemoUrlStruct.deserialize('{"desc":"d","url_args":["https://x",{"tag":"v1"
 p dus.url_args, DemoUrlStruct.deserialize('{"desc":"e"}').url_args
 p DemoRebind.version_rebuild("1.0", 2, "arm"), DemoRebind.version_rebuild("1.0", 0), DemoRebind.version_rebuild("1.0", 3)
 p DemoClassS.class_s("wget"), DemoClassS.class_s("foo-bar@2"), DemoClassS.class_s("a+b")
-dcv = DemoCvCollector.new; dcv1 = dcv.building?; dcv.building!; p dcv1, dcv.building?, DemoCvCollector.new.building?
+dcv = DemoCvCollector.new
+ dcv1 = dcv.building?
+ dcv.building!
+ p dcv1, dcv.building?, DemoCvCollector.new.building?
 p DemoDlg.go
 p DemoCmp.go
 p DemoFreshBang.go

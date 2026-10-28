@@ -909,9 +909,12 @@ module HashTests
     def test_select_filter_reject_with_one
       sel_h = { "a" => 1, "bb" => 2 } #: Hash[String, Integer]
       got = [] #: Array[String]
-      sel_h.select { |x| got << x.inspect; true }
-      sel_h.filter { |x| got << x.inspect; false }
-      sel_h.reject { |x| got << x.inspect; false }
+      sel_h.select { |x| got << x.inspect
+ true }
+      sel_h.filter { |x| got << x.inspect
+ false }
+      sel_h.reject { |x| got << x.inspect
+ false }
       assert_equal ["\"a\"", "\"bb\"", "\"a\"", "\"bb\"", "\"a\"", "\"bb\""], got
     end
 
@@ -1453,7 +1456,8 @@ module HashTests
       w["z"] = 1
       w.each_pair { |k, v| out << "#{k}#{v}" }
       assert_equal ["z1"], out
-      snap = w.map { |k, v| w[k] = v + 1; k }
+      snap = w.map { |k, v| w[k] = v + 1
+ k }
       assert_equal ["z"], snap
       assert_equal "{\"z\" => 2}", w.inspect
     end
@@ -2153,7 +2157,7 @@ module HashTests
       nums.each { |x| h[x % 2] += 1 }
       g = nums.each_with_object(Hash.new(0)) { |n, acc| acc[n % 3] += 1 }
       e = nums.each_with_object({}) { |n, acc| acc[n] ||= n.to_s }
-      t = nums.each_with_object(Hash.new(0)) { |n, acc| acc[n.even?] += 1; }
+      t = nums.each_with_object(Hash.new(0)) { |n, acc| acc[n.even?] += 1 }
       assert_equal [{ 1 => 3, 0 => 2 }, { 1 => 2, 2 => 2, 0 => 1 }, 5, "3", { false => 3, true => 2 }, 7],
                    [h, g, e.size, e.fetch(3), t, h.fetch(1) + g.fetch(2) + 2]
     end
@@ -2491,7 +2495,8 @@ module HashTests
       assert_equal [25, 35, 40, 45, 1], h.keys
       raised = false
       begin
-        h.delete_if { |_k, _v| h[99] = 9; false }
+        h.delete_if { |_k, _v| h[99] = 9
+ false }
       rescue RuntimeError
         raised = true
       end
@@ -2696,7 +2701,8 @@ module HashTests
       d[:x] -= 1
       assert_equal [[:x, 3], [:y, 6]], d.to_a
       calls = [] #: Array[Symbol]
-      pr = Hash.new { |hash, k| calls << k; hash[k] = 10 } #: Hash[Symbol, Integer]
+      pr = Hash.new { |hash, k| calls << k
+ hash[k] = 10 } #: Hash[Symbol, Integer]
       pr[:a] += 1
       pr[:a] += 1
       pr[:b] += 2

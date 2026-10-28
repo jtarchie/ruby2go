@@ -638,7 +638,8 @@ class DemoFallbackExec
     fallback_action(*args, &task)
   end
 
-  def go = ns_execute(5) { |x| @log << x; x * 2 }
+  def go = ns_execute(5) { |x| @log << x
+ x * 2 }
 end
 
 # concurrent-ruby's IVar#add_observer(&block) over Concern::Observable's: the override takes the module slot's untyped

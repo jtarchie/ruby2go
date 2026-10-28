@@ -58,7 +58,8 @@ end
 # A database file.
 path = File.join(Dir.tmpdir, "rugaroo-example-122.db")
 File.delete(path) if File.exist?(path)
-SQLite3::Database.open(path) { |d| d.execute("create table kv (k text primary key, v text)"); d.execute("insert into kv values ('a', '1')") }
+SQLite3::Database.open(path) { |d| d.execute("create table kv (k text primary key, v text)")
+ d.execute("insert into kv values ('a', '1')") }
 ro = SQLite3::Database.new(path, readonly: true)
 p ro.execute("select * from kv"), ro.readonly?
 begin

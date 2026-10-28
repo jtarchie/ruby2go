@@ -2639,7 +2639,12 @@ module ArrayTests
   class ArrayRubySpec102Test < Minitest::Test
     def test_frozen_shuffle_and_noop_delete
       a = [1, 2].freeze
-      got = begin; a.shuffle!; :none; rescue FrozenError => e; e.class; end
+      got = begin
+ a.shuffle!
+ :none
+ rescue FrozenError => e
+ e.class
+ end
       assert_equal [FrozenError, nil, []], [got, a.delete(5), [].insert(10)]
     end
 
@@ -2844,9 +2849,19 @@ module ArrayTests
       o[0] = nil
       assert_nil o[0]
       frozen = [1, 2].freeze
-      err = begin; frozen[0] = 5; ""; rescue FrozenError => e; e.message; end
+      err = begin
+ frozen[0] = 5
+ ""
+ rescue FrozenError => e
+ e.message
+ end
       assert_equal "can't modify frozen Array: [1, 2]", err
-      low = begin; a[-99] = 1; ""; rescue IndexError => e; e.message; end
+      low = begin
+ a[-99] = 1
+ ""
+ rescue IndexError => e
+ e.message
+ end
       assert_equal "index -99 too small for array; minimum: -6", low
     end
 

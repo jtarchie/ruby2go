@@ -33,7 +33,8 @@ workers.each { |w| puts w.value }
 
 # Arguments are deep copies: the worker's changes never reach the caller.
 list = [1, 2, 3]
-grown = Ractor.new(list) { |xs| xs << 4; xs.sum }
+grown = Ractor.new(list) { |xs| xs << 4
+ xs.sum }
 puts grown.value, list.inspect
 
 # A frozen object is shareable, so it is passed as is.
