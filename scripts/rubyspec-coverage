@@ -12,7 +12,7 @@
 #
 # Without --spec, the checkout is cmd/rubyspec's (pinned commit, user cache dir; decision 272).
 
-require 'English'
+require "English"
 require "prism"
 
 ROOT = File.expand_path("..", __dir__)

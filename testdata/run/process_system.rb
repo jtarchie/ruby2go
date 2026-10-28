@@ -1,7 +1,7 @@
 # rbs_inline: enabled
 
 # Kernel#system, backticks, %x() and $? (decision 97). stdout is flushed before each spawn, as MRI does.
-require 'English'
+require "English"
 print "a"
 system("echo b")
 r = system("true")

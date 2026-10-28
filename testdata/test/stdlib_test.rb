@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-require 'English'
+require "English"
 require "minitest/autorun"
 require "find"
 require "pathname"
