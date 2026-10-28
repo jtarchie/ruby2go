@@ -4536,9 +4536,9 @@ module ControlTests
     end
 
     def test_fail
-      e = assert_raises(RuntimeError) { fail "boom" }
+      e = assert_raises(RuntimeError) { raise "boom" }
       assert_equal "boom", e.message
-      e2 = assert_raises(ArgumentError) { fail ArgumentError, "bad" }
+      e2 = assert_raises(ArgumentError) { raise ArgumentError, "bad" }
       assert_equal "bad", e2.message
     end
 
