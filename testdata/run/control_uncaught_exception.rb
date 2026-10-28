@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-class Fatal < Exception; end
+class Fatal < StandardError; end
 
 [1, 2, 3].each do |i|
   puts "item #{i}"
