@@ -219,13 +219,13 @@ module ActionController
       comma = envelope.index(",", rest)
       brace = envelope.index("}", rest)
       close = if comma.nil?
-brace
+                brace
 else
-(if brace.nil?
-comma
-else
-(comma < brace ? comma : brace)
- end)
+  (if brace.nil?
+     comma
+  else
+    (comma < brace ? comma : brace)
+   end)
               end
       return "" if close.nil?
       envelope[rest, close - rest]

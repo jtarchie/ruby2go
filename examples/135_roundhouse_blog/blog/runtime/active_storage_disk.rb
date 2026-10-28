@@ -294,7 +294,7 @@ module ActiveStorage
           # (a video) answers its poster's variant, drawn on demand;
           # any other its own.
           image = if blob.previewable?
-            ActiveStorage::Preview.new(blob, variation).variant.image_blob
+                    ActiveStorage::Preview.new(blob, variation).variant.image_blob
           else
             ActiveStorage::VariantWithRecord.new(blob, variation).image_blob
                   end

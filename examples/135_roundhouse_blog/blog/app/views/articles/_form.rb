@@ -6,12 +6,12 @@ module Views
   module Articles
     def self.form_into(io, article, notice, alert)
       form_method = if article.persisted?
-        :patch
+                      :patch
       else
         :post
                     end
       io << "<form action=\"#{ActionView::ViewHelpers.html_escape(if article.persisted?
-        RouteHelpers.article_path(article.id)
+                                                                    RouteHelpers.article_path(article.id)
       else
         RouteHelpers.articles_path
                                                                   end)}\" accept-charset=\"UTF-8\" method=\"post\" class=\"#{"contents"}\">"
@@ -39,11 +39,11 @@ module Views
       io << "<textarea name=\"article[body]\" id=\"article_body\" rows=\"#{ActionView::ViewHelpers.html_escape(4.to_s)}\" class=\"#{"block shadow-sm rounded-md border px-3 py-2 mt-2 w-full border-gray-400 focus:outline-blue-600"}\">\n#{ActionView::ViewHelpers.escape_or_empty(article[:body])}</textarea>"
       io << "\n  </div>\n\n  <div class=\"inline\">\n    "
       io << "<input type=\"submit\" name=\"commit\" value=\"#{ActionView::ViewHelpers.html_escape(if form_method == :patch
-        "Update Article"
+                                                                                                    "Update Article"
       else
         "Create Article"
                                                                                                   end)}\" data-disable-with=\"#{ActionView::ViewHelpers.html_escape(if form_method == :patch
-        "Update Article"
+                                                                                                                                                                      "Update Article"
       else
         "Create Article"
                                                                                                                                                                     end)}\" class=\"#{"w-full sm:w-auto rounded-md px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white inline-block font-medium cursor-pointer"}\">"

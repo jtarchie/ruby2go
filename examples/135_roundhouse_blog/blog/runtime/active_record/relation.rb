@@ -130,7 +130,7 @@ module ActiveRecord
       @records = nil
       return false if condition.nil?
       sql = if condition.is_a?(Hash)
-        hash_conditions(condition)
+              hash_conditions(condition)
       else
         substitute_binds(condition.to_s, args)
             end
@@ -903,7 +903,7 @@ module ActiveRecord
     # Rails. Returns the affected-row count.
     def update_all(updates)
       set_sql = if updates.is_a?(Hash)
-        parts = []
+                  parts = []
         updates.each do |key, val|
           parts.push("#{key} = #{ActiveRecord.adapter.escape_value(val)}")
         end

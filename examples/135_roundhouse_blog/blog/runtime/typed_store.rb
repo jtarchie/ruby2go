@@ -45,7 +45,7 @@ module TypedStore
       key = line[0, sep].to_s
       raw = line[sep + 2, line.length].to_s
       h[key] = if raw == "true"
-        true
+                 true
       elsif raw == "false"
         false
       elsif raw == raw.to_i.to_s

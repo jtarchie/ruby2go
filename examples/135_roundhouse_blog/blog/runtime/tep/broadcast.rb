@@ -79,7 +79,7 @@ module Tep
         i = subs.length - 1
         while i >= 0
           if (subs[i].fd == fd) && (subs[i].topic == topic)
-              subs.delete_at(i)
+            subs.delete_at(i)
               dropped += 1
           end
           i -= 1

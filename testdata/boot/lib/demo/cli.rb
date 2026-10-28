@@ -280,13 +280,13 @@ module DemoDeep
   def self.deep(value)
     value = case value
             when Hash
-      value.transform_values { |v| deep(v) }
+              value.transform_values { |v| deep(v) }
             when Array
-      value.map { |v| deep(v) }
+              value.map { |v| deep(v) }
             when String
-      value.upcase
+              value.upcase
     else
-      value
+              value
             end
     value
   end
@@ -382,11 +382,11 @@ module DemoRebind
     bottle_tag = (".#{bottle_tag}" if bottle_tag)
 
     rebuild = if rebuild.positive?
-      if bottle_tag
-        ".#{rebuild}"
-      else
-        "-#{rebuild}"
-      end
+                if bottle_tag
+                  ".#{rebuild}"
+                else
+                  "-#{rebuild}"
+                end
               end
 
     "#{version}#{bottle_tag}#{rebuild}"

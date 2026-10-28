@@ -46,7 +46,7 @@ module Zlib
         j = 0
         while j < 8
           crc = if (crc & 1) == 1
-            (crc >> 1) ^ 0xEDB88320
+                  (crc >> 1) ^ 0xEDB88320
           else
             crc >> 1
                 end

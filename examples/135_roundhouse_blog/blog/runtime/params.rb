@@ -98,7 +98,7 @@ module Params
     return false unless sub.key?(key)
     value = sub.fetch(key, "")
     narrowed = if value.is_a?(String)
-      value
+                 value
                end
     !narrowed.nil?
   end

@@ -368,9 +368,9 @@ module UnionTests
 
     #: (Integer) -> (Integer | String | nil)
     def maybe(i) = if i > 1
-i
+                     i
 else
-(i.zero? ? nil : "s")
+  (i.zero? ? nil : "s")
                    end
 
     def test_or_and_on_unions

@@ -242,9 +242,9 @@ class UserAgent
     when "gecko"
       named = gecko_browser
       if named.empty?
-app.nil? ? "" : app.product
+        app.nil? ? "" : app.product
 else
-named
+  named
       end
     else
       app.nil? ? "" : app.product
@@ -278,9 +278,9 @@ named
       t = named.empty? ? nil : UserAgent.find_product(@tokens, named)
       v = t.nil? ? "" : t.version
       if v.empty?
-app.nil? ? "" : app.version
+        app.nil? ? "" : app.version
 else
-v
+  v
       end
     else
       app.nil? ? "" : app.version
@@ -399,7 +399,7 @@ v
     second = app.comment[1]
     lead = first.nil? ? "" : first
     index = if second == "U"
-      2
+              2
     elsif lead.match?(/\AWindows /) || lead.match?(/\AAndroid/)
       0
     elsif lead == "Mobile"

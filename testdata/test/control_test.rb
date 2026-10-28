@@ -2475,9 +2475,9 @@ module ControlTests
       v2 = x < 100 ? nil : x * 2
       assert_nil v2
       nested = if x > 1
-x > 2 ? "gt2" : "eq2"
+                 x > 2 ? "gt2" : "eq2"
 else
-"le1"
+  "le1"
                end
       assert_equal "gt2", nested
       assert_equal "arg if", (x > 1 ? "arg if" : "arg else")
@@ -2601,14 +2601,14 @@ else
     def test_nested_ternaries_associate_right
       x = 4
       assert_equal "b", (if x > 5
-"a"
+                           "a"
 else
-x > 3 ? "b" : "c"
+  x > 3 ? "b" : "c"
                          end)
       assert_equal "c", (if x > 5
-"a"
+                           "a"
 else
-x > 4 ? "b" : "c"
+  x > 4 ? "b" : "c"
                          end)
       assert_equal "even big", (x.even? && x > 2 ? "even big" : "other")
     end
@@ -4564,9 +4564,9 @@ x > 4 ? "b" : "c"
     #: (Integer) -> String
     def control_size_of(x)
       if x > 100 || x < -100
- "huge"
+        "huge"
       elsif x > 10
- "big"
+        "big"
       else "small"
       end
     end
@@ -4575,7 +4575,7 @@ x > 4 ? "b" : "c"
       assert_equal %w[huge huge big small], [control_size_of(500), control_size_of(-500), control_size_of(50), control_size_of(1)]
       y = nil #: Integer?
       r = if y.nil?
- "none"
+            "none"
           end
       assert_equal "none", r
     end
@@ -5364,7 +5364,7 @@ x > 4 ? "b" : "c"
 
   # a local assigned in a condition of a constant's initializer (`X = if (p = a).empty? || (p = b).empty?`)
   CONTROL_PICKED = if (control_pick = "").empty? && (control_pick = "/tmp").empty?
-    control_pick.upcase
+                     control_pick.upcase
   else
     control_pick
                    end.freeze
@@ -5802,7 +5802,7 @@ module ControlTests
     def test_and_or_jumps
       assert_equal [:pos, :zero, :neg], [control_sign(3), control_sign(0), control_sign(-2)]
       assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i| 
-                                     i.even? and next i * 10
+  i.even? and next i * 10
                                      i
 }
       seen = [] #: Array[Integer]

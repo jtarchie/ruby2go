@@ -100,7 +100,7 @@ module Tep
       n = Tep::APP.sched_fibers.length
       while i < n
         if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now && (best < 0 || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best])
-            best = i
+          best = i
         end
         i += 1
       end
@@ -211,7 +211,7 @@ module Tep
       n = Tep::APP.sched_fibers.length
       while i < n
         if Tep::APP.sched_fibers[i].f.alive? && (best < 0 || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best])
-            best = i
+          best = i
         end
         i += 1
       end
