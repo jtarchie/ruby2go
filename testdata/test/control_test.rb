@@ -4054,8 +4054,8 @@ module ControlTests
       rune = "r"
       float64 = 2.5
       assert_equal "[\"t\", 1, :d, 2, \"s\", \"e\", 5, 6, 9, 2, true, \"go\", 1, 1, \"nil\", 3, \"st\", \"pkg\", \"imp\", 1, 2, 3, 4, \"main\", \"init\", \"out\", false, false, 7, \"[1, 2]\", \"p\", \"r\", 1.5, 0, \"b\", \"r\", 2.5]", [type, range, default, len, string, error.message, new, copy, max, min, func, go, var,
-                                                                                                                                                                                                                                              map.size, interface.inspect, chan, struct, package, import, fallthrough, defer, goto, const,
-                                                                                                                                                                                                                                              main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64].inspect
+                                                                                                                                                                                                                                            map.size, interface.inspect, chan, struct, package, import, fallthrough, defer, goto, const,
+                                                                                                                                                                                                                                            main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64].inspect
       assert_equal "a1", kw("a", 1)
       msg = "" #: String
       begin

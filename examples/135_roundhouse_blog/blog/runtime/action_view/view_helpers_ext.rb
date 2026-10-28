@@ -412,10 +412,10 @@ module ActionView
     # Rails::HTML5::SafeListSanitizer.allowed_tags, 1.7.1.
     def self.sanitize_default_tags
       %w[a abbr acronym address b big blockquote
-       br cite code dd del dfn div dl dt
-       em h1 h2 h3 h4 h5 h6 hr i img
-       ins kbd li mark ol p pre samp small
-       span strong sub sup time tt ul var]
+         br cite code dd del dfn div dl dt
+         em h1 h2 h3 h4 h5 h6 hr i img
+         ins kbd li mark ol p pre samp small
+         span strong sub sup time tt ul var]
     end
 
     # Rails::HTML5::SafeListSanitizer.allowed_attributes, 1.7.1.
@@ -434,9 +434,9 @@ module ActionView
     # Loofah::HTML5::SafeList::ALLOWED_PROTOCOLS.
     def self.sanitize_allowed_protocols
       %w[afs aim callto data ed2k fax ftp gopher
-       http https irc line mailto modem news
-       nntp rsync rtsp sftp sms ssh tag tel
-       telnet urn webcal xmpp]
+         http https irc line mailto modem news
+         nntp rsync rtsp sftp sms ssh tag tel
+         telnet urn webcal xmpp]
     end
 
     # Loofah::HTML5::SafeList::ALLOWED_URI_DATA_MEDIATYPES.
@@ -458,7 +458,7 @@ module ActionView
     # how the gem's parser runs, its children parse as markup.
     def self.sanitize_rawtext_elements
       %w[iframe noembed noframes plaintext script style
-       textarea title xmp]
+         textarea title xmp]
     end
 
     # Allow-list entries this port refuses to serve (see the header).
