@@ -695,7 +695,7 @@ module HashTests
       assert_equal 2, ov.fetch("b")
       assert_nil(ov.fetch("a", 9))
       ov["a"] = 5
-      assert_equal %w[a b], ov.select { |_k, v| !v.nil? }.keys
+      assert_equal %w[a b], ov.reject { |_k, v| v.nil? }.keys
       assert_equal(%w[a b], ov.map { |k, v| v ? k : "-" })
     end
 

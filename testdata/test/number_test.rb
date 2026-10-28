@@ -554,12 +554,12 @@ module NumberTests
       assert_equal "off", describe_bool(1 > 2)
       assert_equal true, (1 < 2 && 2 < 3)
       assert_equal true, (1 > 2 || 3 > 2)
-      assert_equal false, (!(1 < 2))
+      assert_equal false, (1 >= 2)
       flag = false
       3.times { |i| flag = !flag if i.even? }
       assert_equal false, flag
       count = 0
-      count += 1 while count < 4 && !(count == 3)
+      count += 1 while count < 4 && count != 3
       assert_equal 3, count
 
       # Kernel and BasicObject methods on bool

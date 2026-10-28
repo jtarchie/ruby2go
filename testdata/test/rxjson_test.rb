@@ -928,7 +928,7 @@ b/
       assert_equal "a", "a-b".match(/-/)&.pre_match
       assert_equal 13, ("ab12cd".match(/\d+/).to_s.to_i + 1)
       assert_equal "", "ab".match(/\d+/).to_s
-      assert_equal true, (!("abc" =~ /z/))
+      assert_equal true, ("abc" !~ /z/)
       assert_equal true, ("abc" =~ /z/).nil?
       assert_equal 2, (("abc" =~ /c/) || -1)
       assert_equal(-1, ("abc" =~ /z/) || -1)

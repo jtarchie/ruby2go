@@ -155,7 +155,7 @@ end
 def shape_of(v)
   case v
   when Array
-    v.select { |e| !e.nil? }.map { |e| e.to_s }.join(",")
+    v.reject { |e| e.nil? }.map { |e| e.to_s }.join(",")
   when Hash
     v.keys.map { |k| k.to_s }.sort.join("/")
   else

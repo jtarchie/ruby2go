@@ -1625,7 +1625,7 @@ module StdlibTests
       assert_equal [{ "SPECENV_A" => "1" }, ["2", nil]], [ENV.slice("SPECENV_A", "SPECENV_NOPE"), ENV.values_at("SPECENV_B", "SPECENV_NOPE")]
       assert_equal [true, false, true, "SPECENV_D", %w[SPECENV_A 1]], [ENV.key?("SPECENV_C"), ENV.key?("SPECENV_Z"), ENV.value?("4"), ENV.key("4"), ENV.assoc("SPECENV_A")]
       assert_equal [["4"], true, false], [ENV.filter_map { |k, v| v if k == "SPECENV_D" }, ENV.map { |k, _v| k }.include?("SPECENV_A"), ENV.empty?]
-      assert_equal [%w[SPECENV_A SPECENV_B SPECENV_C SPECENV_D], false, true], [ENV.reject { |k, _v| !k.start_with?("SPECENV_") }.keys.sort, ENV.except("SPECENV_A").key?("SPECENV_A"), ENV.to_a.size == ENV.size]
+      assert_equal [%w[SPECENV_A SPECENV_B SPECENV_C SPECENV_D], false, true], [ENV.select { |k, _v| k.start_with?("SPECENV_") }.keys.sort, ENV.except("SPECENV_A").key?("SPECENV_A"), ENV.to_a.size == ENV.size]
       ENV.delete_if { |k, _v| k == "SPECENV_A" }
       ENV.keep_if { |k, _v| k != "SPECENV_B" }
       assert_equal [nil, nil, true, "SPECENV_D"], [ENV["SPECENV_A"], ENV["SPECENV_B"], ENV.any? { |k, _v| k == "SPECENV_C" }, ENV.invert["4"]]
