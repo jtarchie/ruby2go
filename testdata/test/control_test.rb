@@ -5801,7 +5801,7 @@ end
 
     #: (untyped) -> Integer
     def control_size(o)
-      return o.size if Array === o
+      return o.size if o.is_a?(Array)
 
       -1
     end

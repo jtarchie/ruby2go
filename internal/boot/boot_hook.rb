@@ -125,7 +125,7 @@ module RugarooBoot
     # becomes the alias it made (decision 330). The old name is the alias's original_name, read after the call.
     def install_alias_method
       @alias_tp = TracePoint.new(:c_return) do |tp|
-        next unless tp.method_id == :alias_method && Module === tp.self && tp.return_value.is_a?(Symbol)
+        next unless tp.method_id == :alias_method && tp.self.is_a?(Module) && tp.return_value.is_a?(Symbol)
 
         owner = tp.self
         m = begin
@@ -152,7 +152,7 @@ module RugarooBoot
 
           @anon_sites[tp.return_value] ||= "#{tp.path}:#{tp.lineno}"
         when :include
-          next unless Module === tp.self
+          next unless tp.self.is_a?(Module)
 
           if tp.event == :c_call
             stack << MOD_ANCESTORS.bind_call(tp.self)
@@ -306,7 +306,7 @@ module RugarooBoot
 
     def safe_name(obj)
       return nil if obj.nil?
-      Module === obj ? MOD_NAME.bind_call(obj) : obj.to_s # not obj.name: a module may define its own (REXML::Functions.name)
+      obj.is_a?(Module) ? MOD_NAME.bind_call(obj) : obj.to_s # not obj.name: a module may define its own (REXML::Functions.name)
     rescue StandardError
       nil
     end
@@ -392,7 +392,7 @@ module RugarooBoot
       out = {}
       @classes.each_key do |name|
         owner = RugarooBoot.const_at(name)
-        next unless Module === owner
+        next unless owner.is_a?(Module)
 
         # Module's own methods: a module can make them private for itself (brew's Cask::Quarantine, `extend self`).
         (MOD_CONSTANTS.bind_call(owner, false) | @private_constants[owner]).each do |c|
@@ -403,7 +403,7 @@ module RugarooBoot
               rescue StandardError
                 next
               end
-          next unless Module === v # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
+          next unless v.is_a?(Module) # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
 
           vn = MOD_NAME.bind_call(v)
           out["#{name}::#{c}"] = vn if vn && vn != "#{name}::#{c}"

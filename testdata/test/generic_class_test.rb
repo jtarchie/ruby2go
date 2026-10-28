@@ -329,7 +329,7 @@ module GenericClassTests
       assert_equal 10, h.total
       assert_equal [IntHeap, Heap, Object], IntHeap.ancestors.take(3)
       held = h #: untyped
-      assert Heap === held
+      assert held.is_a?(Heap)
     end
 
     def test_untyped_receiver
@@ -348,8 +348,8 @@ module GenericClassTests
              else :other
              end
       assert_equal :box, kind
-      assert Box === v
-      refute Stack === v
+      assert v.is_a?(Box)
+      refute v.is_a?(Stack)
     end
   end
 

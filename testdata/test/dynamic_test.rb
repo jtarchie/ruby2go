@@ -1015,10 +1015,10 @@ module DynamicTests
     # Class values (decision 76).
     def test_module_case_equality_and_class_values
       cv_k = Car #: singleton(Vehicle)
-      assert_equal [true, false, true, true, false], [cv_k === Car.new, cv_k === Truck.new, Vehicle === Car.new, Named === Car.new, Named === Truck.new]
-      assert_equal [true, true, false, true, true, false], [Integer === 3, Comparable === "s", String === :s, NilClass === nil, TrueClass === true, FalseClass === true]
+      assert_equal [true, false, true, true, false], [cv_k === Car.new, cv_k === Truck.new, Car.new.is_a?(Vehicle), Car.new.is_a?(Named), Truck.new.is_a?(Named)]
+      assert_equal [true, true, false, true, true, false], [3.is_a?(Integer), "s".is_a?(Comparable), :s.is_a?(String), nil.is_a?(NilClass), true.is_a?(TrueClass), true.is_a?(FalseClass)]
       cv_e = KeyError.new("x")
-      assert_equal [true, true, true, false], [Exception === cv_e, StandardError === cv_e, IndexError === cv_e, ArgumentError === cv_e]
+      assert_equal [true, true, true, false], [cv_e.is_a?(Exception), cv_e.is_a?(StandardError), cv_e.is_a?(IndexError), cv_e.is_a?(ArgumentError)]
       cv_kinds = [KeyError, ArgumentError, IndexError] #: Array[singleton(StandardError)]
       assert_equal [true, false, true], cv_kinds.map { |c| cv_e.is_a?(c) }
       assert_equal [true, false, true], cv_kinds.map { |c| c === cv_e }
