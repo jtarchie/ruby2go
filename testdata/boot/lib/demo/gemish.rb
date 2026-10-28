@@ -636,7 +636,8 @@ class DemoFallbackExec
     fallback_action(*args, &task)
   end
 
-  def go = ns_execute(5) do |x| @log << x
+  def go = ns_execute(5) do |x| 
+             @log << x
  x * 2 end
 end
 

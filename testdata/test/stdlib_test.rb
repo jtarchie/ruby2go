@@ -1787,7 +1787,8 @@ module StdlibTests
     def test_new_thread_joins_creators_group
       g = ThreadGroup.new
       q = Queue.new #: Queue[Integer]
-      t = Thread.new do q.pop
+      t = Thread.new do 
+            q.pop
  Thread.new { 1 }.group.equal?(g) end
       g.add(t)
       q << 1
@@ -1945,7 +1946,8 @@ module StdlibTests
     end
 
     def test_popen_write
-      assert_equal "a\nb\n", IO.popen("sort", "r+") { |io| io.write("b\na\n")
+      assert_equal "a\nb\n", IO.popen("sort", "r+") { |io| 
+                               io.write("b\na\n")
  io.close_write
  io.read }
       got = IO.popen(["sh", "-c", "read x; echo got $x"], "w+") do |io|

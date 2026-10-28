@@ -909,11 +909,14 @@ module HashTests
     def test_select_filter_reject_with_one
       sel_h = { "a" => 1, "bb" => 2 } #: Hash[String, Integer]
       got = [] #: Array[String]
-      sel_h.select do |x| got << x.inspect
+      sel_h.select do |x| 
+        got << x.inspect
  true end
-      sel_h.filter do |x| got << x.inspect
+      sel_h.filter do |x| 
+        got << x.inspect
  false end
-      sel_h.reject do |x| got << x.inspect
+      sel_h.reject do |x| 
+        got << x.inspect
  false end
       assert_equal ["\"a\"", "\"bb\"", "\"a\"", "\"bb\"", "\"a\"", "\"bb\""], got
     end
@@ -1456,7 +1459,8 @@ module HashTests
       w["z"] = 1
       w.each_pair { |k, v| out << "#{k}#{v}" }
       assert_equal ["z1"], out
-      snap = w.map do |k, v| w[k] = v + 1
+      snap = w.map do |k, v| 
+               w[k] = v + 1
  k end
       assert_equal ["z"], snap
       assert_equal "{\"z\" => 2}", w.inspect
@@ -2495,7 +2499,8 @@ module HashTests
       assert_equal [25, 35, 40, 45, 1], h.keys
       raised = false
       begin
-        h.delete_if do |_k, _v| h[99] = 9
+        h.delete_if do |_k, _v| 
+          h[99] = 9
  false end
       rescue RuntimeError
         raised = true
@@ -2702,7 +2707,8 @@ module HashTests
       assert_equal [[:x, 3], [:y, 6]], d.to_a
       calls = [] #: Array[Symbol]
       pr = #: Hash[Symbol, Integer]
-Hash.new do |hash, k| calls << k
+Hash.new do |hash, k| 
+  calls << k
  hash[k] = 10 end
       pr[:a] += 1
       pr[:a] += 1

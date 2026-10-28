@@ -1376,7 +1376,8 @@ end
 # A block's `item` before the method's own is block-local, so it does not stop narrowing the later one.
 #: () -> Integer
 def control_block_local_first
-  [1].each do |i| item = ControlTests::Counter.new
+  [1].each do |i| 
+    item = ControlTests::Counter.new
  item.n += i end
   item = nil #: ControlTests::Counter?
   item = ControlTests::Counter.new
@@ -2482,11 +2483,13 @@ module ControlTests
     # next with a value gives the block's value
     def test_next_with_value
       nv_h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
-      assert_equal "{\"a\" => 1}", nv_h.select { |k, v| next false if k == "b"
+      assert_equal "{\"a\" => 1}", nv_h.select { |k, v| 
+                                     next false if k == "b"
  v > 0 }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
-      assert_equal([1], nv_xs.select do |n| next false if n > 1
+      assert_equal([1], nv_xs.select do |n| 
+                          next false if n > 1
  true end)
     end
   end
@@ -3786,7 +3789,8 @@ module ControlTests
       end
       assert_equal "nie", ex.message
       list = [1, 2, 3] #: Array[Integer]
-      assert_equal([100, 0, 2], list.map do |v| begin
+      assert_equal([100, 0, 2], list.map do |v| 
+                                  begin
                                                  risky_int(v - 2)
                                                rescue StandardError
                                                  100
@@ -3857,7 +3861,8 @@ module ControlTests
       count = -1
       assert_equal(-1, count)
       sum = 0
-      doubled = [1, 2, 3].map do |x| sum += x
+      doubled = [1, 2, 3].map do |x| 
+                  sum += x
  x * 2 end
       assert_equal 6, sum
       assert_equal [2, 4, 6], doubled
@@ -4455,9 +4460,11 @@ module ControlTests
         got << w
       end
       names = %w[ann bo] #: Array[String]
-      names.each do |n| s = n.upcase
+      names.each do |n| 
+        s = n.upcase
  got << s end
-      [4, 5].each do |c| s = c * 2
+      [4, 5].each do |c| 
+        s = c * 2
  got << s.to_s end
       assert_equal %w[2 4 s3 ANN BO 8 10], got
       out = [] #: Array[String]
@@ -6235,7 +6242,8 @@ module ControlTests
       ((big - 1)..big).each { |i| got << i - big }
       assert_equal [-1, 0, -1, -1, 0], got
       calls = 0
-      lim = lambda { calls += 1
+      lim = lambda { 
+              calls += 1
  3 }
       1.upto(lim.call) { |i| calls += i * 0 }
       lim.call.times { calls += 0 }

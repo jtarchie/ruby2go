@@ -65,7 +65,8 @@ rescue ThreadError => e
   puts "exit without enter: #{e.message}"
 end
 
-t = Thread.new do Thread.current[:name] = "worker"
+t = Thread.new do 
+      Thread.current[:name] = "worker"
  Thread.current[:name] end
 puts "thread-local in the thread: #{t.value.inspect}, in main: #{Thread.current[:name].inspect}"
 Thread.current[:count] = 2
