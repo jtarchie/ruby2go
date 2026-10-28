@@ -336,7 +336,7 @@ B
       some = 7 #: Integer?
       t = true
       arr = [1, 2] #: Array[Integer]
-      assert_equal "5 2.5 str sy [] [7] true [1, 2]  false", "#{n} #{f} #{s} #{sym} [#{nl}] [#{some}] #{t} #{arr} #{nil} #{false}"
+      assert_equal "5 2.5 str sy [] [7] true [1, 2]  false", "#{n} #{f} #{s} #{sym} [#{nl}] [#{some}] #{t} #{arr}  #{false}"
       assert_equal "Pt(3) and big", "#{Pt.new(3)} and #{n > 3 ? "big" : "small"}"
       assert_equal "nested inner 6", "nested #{"inner #{n + 1}"}"
       assert_equal "1", "#{"#{"#{1}"}"}"

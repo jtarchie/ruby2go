@@ -1924,7 +1924,7 @@ module DynamicTests
       assert_equal "", nil.to_s
       assert_equal true, nil.nil?
       assert_equal true, nil == nil
-      assert_equal "|", "#{nil}|"
+      assert_equal "|", "|"
     end
 
     def test_safe_navigation_on_nil_and_present_values

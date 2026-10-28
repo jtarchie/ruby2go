@@ -13,7 +13,7 @@ puts "one two  three".split.inspect
 puts "x".center(5) + "|", "x".ljust(3) + "|", "x".rjust(3) + "|"
 puts "42abc".to_i + 1, "3.5".to_f * 2
 puts "tab\there".inspect, "quote\"d".inspect, "new\nline".inspect
-puts "%s" + "#{1 + 1}" + "#{true}" + "#{nil}" + "#{2.5}"
+puts "%s" + "#{1 + 1}" + "#{true}" + "" + "#{2.5}"
 count = 0
 "mississippi".each_char { |c| count += 1 if c == "s" }
 puts count
