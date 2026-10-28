@@ -102,9 +102,9 @@ module StringFrozenTests
       assert_equal false, (!"a")
       assert_equal false, (!"")
       u = "a" #: untyped
-      assert_equal true, ("a" == u)
-      assert_equal false, (:a == u)
-      assert_equal false, ("b" == u)
+      assert_equal true, (u == "a")
+      assert_equal false, (u == :a)
+      assert_equal false, (u == "b")
     end
 
     # + and *
@@ -423,11 +423,11 @@ module StringFrozenTests
 
     # String == against String? values from [] and Hash#[], and on strings built in a block.
     def test_string_against_string_values_from
-      assert_equal true, ("a" == "abc"[0])
-      assert_equal false, ("a" == "abc"[9])
-      assert_equal true, (:a == [:a][0])
+      assert_equal true, ("abc"[0] == "a")
+      assert_equal false, ("abc"[9] == "a")
+      assert_equal true, ([:a][0] == :a)
       kv = { "k" => "v" } #: Hash[String, String]
-      assert_equal true, ("v" == kv["k"])
+      assert_equal true, (kv["k"] == "v")
       assert_equal true, (kv["k"] == "v")
       assert_equal false, (kv["zz"] == "v")
       built = %w[a b].map { |ch| ch + "" }

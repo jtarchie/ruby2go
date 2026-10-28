@@ -740,7 +740,7 @@ b/
       assert_equal true, ur === "cat"
       assert_equal false, ur === 5
       assert_equal true, ur == /a/
-      assert_equal true, /a/ == ur
+      assert_equal true, ur == /a/
       assert_equal true, ur != /b/
     end
   end

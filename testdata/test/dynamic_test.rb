@@ -1986,7 +1986,7 @@ module DynamicTests
       assert_equal false, dynamic_maybe(1) == dynamic_maybe(-1)
       assert_equal true, dynamic_maybe(2) != dynamic_maybe(3)
       assert_equal false, !dynamic_maybe(-1).nil?
-      assert_equal true, nil == dynamic_maybe(-1)
+      assert_equal true, dynamic_maybe(-1) == nil
       assert_equal true, dynamic_maybe(7) == 7
       assert_equal false, dynamic_maybe(7) != 7.0
     end
@@ -2796,8 +2796,8 @@ module DynamicTests
       assert_equal true, dynamic_ident(nil).nil?
       assert_equal false, dynamic_ident(false).nil?
       assert_equal false, dynamic_ident(0).nil?
-      assert_equal true, 1 == dynamic_ident(1)
-      assert_equal false, "b" == dynamic_ident("a")
+      assert_equal true, dynamic_ident(1) == 1
+      assert_equal false, dynamic_ident("a") == "b"
       assert_equal true, dynamic_ident(:a).equal?(:a)
       assert_equal true, dynamic_ident(1).equal?(1)
       assert_equal true, dynamic_ident(nil).equal?(nil)

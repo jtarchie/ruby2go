@@ -767,9 +767,9 @@ module NumberTests
     # Integer == falls back to the other side's == for a user object
     def test_integer_eq_falls_back_to_user_eq
       one = One.new
-      assert_equal true, (1 == one)
-      assert_equal true, (1.0 == one)
-      assert_equal false, (2 == one)
+      assert_equal true, (one == 1)
+      assert_equal true, (one == 1.0)
+      assert_equal false, (one == 2)
       assert_equal true, (one == 1)
     end
 
@@ -1261,7 +1261,7 @@ module NumberTests
       assert_equal true, (x != 3.0)
       assert_equal true, (nan != nan)
       w = 7 #: Integer
-      assert_equal true, (7.0 == w)
+      assert_equal true, (w == 7.0)
       assert_equal true, (w.to_f == 7.0)
       assert_equal "3.5", (w.to_f / 2.0).inspect
 
@@ -2010,12 +2010,12 @@ module NumberTests
 
       # == across the boundary
       one = 1.0 #: untyped
-      assert_equal true, (1 == one)
       assert_equal true, (one == 1)
-      assert_equal false, (2 == one)
-      assert_equal true, (1.0 == number_ident(1))
-      assert_equal true, (true == number_ident(true))
-      assert_equal false, (false == number_ident(nil))
+      assert_equal true, (one == 1)
+      assert_equal false, (one == 2)
+      assert_equal true, (number_ident(1) == 1.0)
+      assert_equal true, (number_ident(true) == true)
+      assert_equal false, (number_ident(nil) == false)
 
       # is_a? and class
       assert_equal true, 1.is_a?(Integer)

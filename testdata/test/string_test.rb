@@ -222,7 +222,7 @@ module StringTests
     def test_inspect_output_is_itself_a
       src = "x\ty\n\"z\""
       assert_equal "\"x\\ty\\n\\\"z\\\"\"", src.inspect
-      assert_equal true, ("x\ty\n\"z\"" == src)
+      assert_equal true, (src == "x\ty\n\"z\"")
     end
   end
 
@@ -567,7 +567,7 @@ continued"
       assert_equal true, (a == :apple)
       assert_equal false, (a == "apple")
       assert_equal true, (a != :x)
-      assert_equal false, ("apple" == a)
+      assert_equal false, (a == "apple")
       assert_equal true, (a.to_s == "apple")
       assert_equal true, (a == "apple".to_sym)
       assert_equal "apple", a.to_s
@@ -912,7 +912,7 @@ continued"
       assert_equal "Hello!", "#{d.strip}!"
       assert_equal true, (d == " Hello\n")
       assert_equal false, (d != " Hello\n")
-      assert_equal true, (" Hello\n" == d)
+      assert_equal true, (d == " Hello\n")
       num = string_ident("42")
       assert_equal 43, num.to_i + 1
       assert_equal 42.0, num.to_f
@@ -1027,7 +1027,7 @@ continued"
       ne_count = 0
       "abc".each_char { |c| ne_count += 1 if c != "b" }
       assert_equal 2, ne_count
-      assert_equal false, ("b" != "abc"[1])
+      assert_equal false, ("abc"[1] != "b")
       assert_equal "String", string_kind("a")
       assert_equal "Symbol", string_kind(:a)
       assert_equal "a|\"a\"|true|false", desc("a")
