@@ -59,9 +59,9 @@ rescue KeyError => e
 end
 
 $stdout.puts "via $stdout"
-STDOUT.print "via ", "STDOUT\n"
+$stdout.print "via ", "STDOUT\n"
 warn "to stderr"
-STDERR.print "also ", "stderr\n"
+$stderr.print "also ", "stderr\n"
 warn "warned", "twice"
 $stdout << "chained" << " <<\n"
 puts "tty? #{$stdout.tty?}"

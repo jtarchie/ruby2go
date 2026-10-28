@@ -25,7 +25,7 @@ Dir.mktmpdir do |dir|
   end
 end
 
-p $stdout.sync, STDERR.sync, $stdin.sync
+p $stdout.sync, $stderr.sync, $stdin.sync
 $stdout.sync = true
 p $stdout.sync
 warn "after sync"

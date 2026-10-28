@@ -25,4 +25,4 @@ begin
 rescue IOError => e
   p e.class
 end
-p STDIN.readline(chomp: true)
+p $stdin.readline(chomp: true)
