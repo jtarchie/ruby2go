@@ -5654,7 +5654,7 @@ def secret = "s3cret"
   end
 
   module ObjUtil
-    extend self
+    module_function
 
     #: () -> Integer
     def one = 1
