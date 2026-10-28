@@ -5225,7 +5225,7 @@ end
     def test_lone_local_read
       n = 0
       [1, 2].each { |x| x }
-      (1..2).each do |y|
+      (1..2).each do |_y|
         n += 1
       end
       z = 5

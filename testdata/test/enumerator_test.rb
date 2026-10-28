@@ -504,8 +504,8 @@ module EnumeratorTests
 
     def test_chunk_while_and_slice_when
       inf = (1..Float::INFINITY).lazy
-      assert_equal [[1, 2], [3, 4, 5]], inf.slice_when { |a, b| b % 3 == 0 }.first(2)
-      assert_equal [[1, 2, 3], [4, 5, 6]], inf.chunk_while { |a, b| b % 3 != 1 }.first(2)
+      assert_equal [[1, 2], [3, 4, 5]], inf.slice_when { |_a, b| b % 3 == 0 }.first(2)
+      assert_equal [[1, 2, 3], [4, 5, 6]], inf.chunk_while { |_a, b| b % 3 != 1 }.first(2)
       assert inf.chunk_while { |a, b| b == a + 1 }.is_a?(Enumerator::Lazy)
       assert_equal [[1, 2, 3], [5]], [1, 2, 3, 5].lazy.chunk_while { |a, b| b == a + 1 }.to_a
       assert_equal [[1, 2, 3], [5]], [1, 2, 3, 5].lazy.slice_when { |a, b| b != a + 1 }.to_a
@@ -686,7 +686,7 @@ module EnumeratorTests
       a = [1, 2, 3]
       pairs = a.zip([10, 20])
       assert_equal [[1, 10], [2, 20], [3, nil]], pairs
-      assert_equal 50, (1..2_000).to_a.zip((1..1_500).to_a).sum { |x, y| y ? 0 : 1 } - 450
+      assert_equal 50, (1..2_000).to_a.zip((1..1_500).to_a).sum { |_x, y| y ? 0 : 1 } - 450
     end
   end
 
@@ -717,7 +717,7 @@ module EnumeratorTests
       assert_equal [2, 3, 4, 5, 6], kept
       assert_equal({ 1 => 2, 2 => 3, 3 => 4, 4 => 5, 5 => 6 }, pairs)
       tails = [] #: Array[Integer?]
-      (1..7).to_a.each_slice(3) { |a, b, c| tails << c }
+      (1..7).to_a.each_slice(3) { |_a, _b, c| tails << c }
       assert_equal [3, 6, nil], tails
       sums = (1..5).to_a.each_cons(3).map { |a, b, c| a.to_i + b.to_i + c.to_i }
       assert_equal [6, 9, 12], sums

@@ -80,20 +80,20 @@ module Demo
       dyn(h, :each_value) { |v| out << v }
       dyn(h, :each_with_index) { |pair, i| out << [pair[0], pair[1], i] }
       dyn(h, :each_slice, 2) { |s| out << s }
-      dyn(h, :cycle, 1) { |k, v| out << k }
-      [out, dyn(h, :select) { |k, v| v.to_s > "1" }, dyn(h, :filter) { |k| k.to_s == "a" }, dyn(h, :reject) { |_, v| v.nil? },
-       dyn(h, :count) { |k, v| v }, dyn(h, :count), dyn(h, :find) { |k, v| v.to_s == "2" }, dyn(h, :detect) { |k, _| k == "z" },
+      dyn(h, :cycle, 1) { |k, _v| out << k }
+      [out, dyn(h, :select) { |_k, v| v.to_s > "1" }, dyn(h, :filter) { |k| k.to_s == "a" }, dyn(h, :reject) { |_, v| v.nil? },
+       dyn(h, :count) { |_k, v| v }, dyn(h, :count), dyn(h, :find) { |_k, v| v.to_s == "2" }, dyn(h, :detect) { |k, _| k == "z" },
        dyn(h, :inject, 0) { |a, pair| a + pair[1].to_s.size }, dyn(h, :each_with_object, []) { |pair, a| a << pair[0] },
-       dyn(h, :any?) { |k, v| v.nil? }, dyn(h, :all?) { |pair| pair.size == 2 }, dyn(h, :none?), dyn(h, :one?, Array),
+       dyn(h, :any?) { |_k, v| v.nil? }, dyn(h, :all?) { |pair| pair.size == 2 }, dyn(h, :none?), dyn(h, :one?, Array),
        dyn(h, :any?, ["a", 1])]
     end
 
     #: (untyped) -> untyped
     def self.hash_mutate(h)
       out = [] #: Array[untyped]
-      out << dyn(h, :select!) { |k, v| v } << h.dup << dyn(h, :reject!) { |k, v| k == "q" } << dyn(h, :keep_if) { |k, v| true }.dup
-      out << dyn(h, :transform_values!) { |v| v.to_s * 2 }.dup << dyn(h, :delete_if) { |k, v| k == "a" }.dup
-      out << dyn(h, :filter!) { |k, v| false } << h
+      out << dyn(h, :select!) { |_k, v| v } << h.dup << dyn(h, :reject!) { |k, _v| k == "q" } << dyn(h, :keep_if) { |_k, _v| true }.dup
+      out << dyn(h, :transform_values!) { |v| v.to_s * 2 }.dup << dyn(h, :delete_if) { |k, _v| k == "a" }.dup
+      out << dyn(h, :filter!) { |_k, _v| false } << h
       out
     end
 

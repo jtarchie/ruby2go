@@ -208,7 +208,7 @@ module Sqlite3Tests
       assert_equal [[nil]], db.execute("select nada()")
       db.create_function("blobby", 1) { |fn, s| fn.result = SQLite3::Blob.new(s.to_s) }
       assert_equal [["blob"]], db.execute("select typeof(blobby('x'))")
-      db.create_function("boom", 0) { |fn| raise "kaboom" }
+      db.create_function("boom", 0) { |_fn| raise "kaboom" }
       e = assert_raises(RuntimeError) { db.execute("select boom()") }
       assert_equal "kaboom", e.message
       db.define_function("add3") { |a, b, c| a + b + c }

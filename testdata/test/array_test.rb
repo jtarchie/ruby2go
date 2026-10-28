@@ -999,13 +999,13 @@ module ArrayTests
       bp_nums = [1, 2] #: Array[Integer]
       seen = [] #: Array[Integer]
       bp_nums.each { |n| seen << n }
-      bp_nums.each_with_index { |n, i| seen << i }
+      bp_nums.each_with_index { |_n, i| seen << i }
       assert_equal [1, 2, 0, 1], seen
       pairs = [[1, "a"]] #: Array[[Integer, String]]
       got = [] #: Array[untyped]
       pairs.each { |k, s| got << k << s }
       assert_equal [1, "a"], got
-      assert_equal [1], (pairs.map { |k, s| k })
+      assert_equal [1], (pairs.map { |k, _s| k })
       # `_` in a param splatting an Array was emitted as `_ :=`
       rows = [["b", "2"], ["a", "1"]] #: Array[Array[String]]
       assert_equal ["2", "1"], (rows.map { |_, v| v })
@@ -1716,12 +1716,12 @@ module ArrayTests
       en_h = {a: 1, b: 2, c: 3}
       assert_equal [:a, :c], (en_h.filter_map { |k, v| k if v.odd? })
       assert_equal "{1 => :a, 2 => :b, 3 => :c}", ((en_h.each_with_object({}) { |(k, v), acc| acc[v] = k })).to_s
-      assert_equal [[[:b, 2], [:c, 3]], [[:a, 1]]], (en_h.partition { |k, v| v > 1 })
-      assert_equal [:c, 3], (en_h.min_by { |k, v| -v })
-      assert_equal 2, (en_h.count { |k, v| v > 1 })
-      assert_equal 6, (en_h.sum { |k, v| v })
+      assert_equal [[[:b, 2], [:c, 3]], [[:a, 1]]], (en_h.partition { |_k, v| v > 1 })
+      assert_equal [:c, 3], (en_h.min_by { |_k, v| -v })
+      assert_equal 2, (en_h.count { |_k, v| v > 1 })
+      assert_equal 6, (en_h.sum { |_k, v| v })
       assert_equal [[[:a, 1], [:b, 2]], [[:c, 3]]], en_h.each_slice(2).to_a
-      assert_equal [[:c, 3], [:b, 2], [:a, 1]], (en_h.sort_by { |k, v| -v })
+      assert_equal [[:c, 3], [:b, 2], [:a, 1]], (en_h.sort_by { |_k, v| -v })
       ar_a = [1, 2, 3, 4, 2]
       ar_b = [2, 4, 6]
       assert_equal [1, 3], (ar_a - ar_b)
@@ -1770,8 +1770,8 @@ module ArrayTests
       assert_equal [[1, 1], [2, 2], [3, 3]], ar_e.each.with_index(1).to_a
       assert_equal [0, 2, 6], (ar_e.map.with_index { |x, i| x * i })
       assert_equal [[1, 1], [2, 2], [3, 3]], (ar_e.map.with_index(1) { |x, i| [i, x] })
-      assert_equal [1, 3], (ar_e.select.with_index { |x, i| i.even? })
-      assert_equal [2, 3], (ar_e.reject.with_index { |x, i| i.zero? })
+      assert_equal [1, 3], (ar_e.select.with_index { |_x, i| i.even? })
+      assert_equal [2, 3], (ar_e.reject.with_index { |_x, i| i.zero? })
       got = [] #: Array[String]
       ar_e.each.with_index(1) { |x, i| got << "#{x}#{i}" }
       ar_e.each_index { |i| got << i.to_s }

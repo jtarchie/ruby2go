@@ -947,10 +947,10 @@ module HashTests
     # unused block params
     def test_unused_block_params
       ub_h = { "a" => 1, "bb" => 2 } #: Hash[String, Integer]
-      assert_equal "{\"bb\" => 2}", ((ub_h.select { |k, v| v > 1 })).inspect
+      assert_equal "{\"bb\" => 2}", ((ub_h.select { |_k, v| v > 1 })).inspect
       assert_equal ["a=1", "bb=2"], (ub_h.map { |k, v| "#{k}=#{v}" })
-      assert_equal ["bb", 2], (ub_h.find { |k, v| v > 1 })
-      assert_equal ["a", 1], (ub_h.min_by { |k, v| k.size })
+      assert_equal ["bb", 2], (ub_h.find { |_k, v| v > 1 })
+      assert_equal ["a", 1], (ub_h.min_by { |k, _v| k.size })
       assert_equal "hash", (hash_kind({ "a" => 1 }))
       assert_equal "other", hash_kind(1)
     end
@@ -1627,28 +1627,28 @@ module HashTests
       assert_equal "{a: 1, c: 3}", (hs_h.except(:b)).to_s
       assert_equal 4, (hs_h.store(:d, 4))
       assert_equal "{a: 1, b: 2, c: 3, d: 4}", (hs_h).to_s
-      assert_equal "{a: 101, b: 2, c: 3, d: 4, e: 5}", ((hs_h.merge({a: 100, e: 5}) { |k, old, new| old + new })).to_s
-      assert_equal 2, (hs_h.count { |k, v| v.odd? })
-      assert_equal true, (hs_h.any? { |k, v| v > 3 })
-      assert_equal true, (hs_h.all? { |k, v| v > 0 })
-      assert_equal true, (hs_h.none? { |k, v| v > 9 })
+      assert_equal "{a: 101, b: 2, c: 3, d: 4, e: 5}", ((hs_h.merge({a: 100, e: 5}) { |_k, old, new| old + new })).to_s
+      assert_equal 2, (hs_h.count { |_k, v| v.odd? })
+      assert_equal true, (hs_h.any? { |_k, v| v > 3 })
+      assert_equal true, (hs_h.all? { |_k, v| v > 0 })
+      assert_equal true, (hs_h.none? { |_k, v| v > 9 })
       hs_h2 = hs_h.merge({})
-      hs_h2.delete_if { |k, v| v.even? }
+      hs_h2.delete_if { |_k, v| v.even? }
       assert_equal "{a: 1, c: 3}", (hs_h2).to_s
-      assert_equal "{a: 1, b: 2}", ((hs_h.reject { |k, v| v > 2 })).to_s
-      assert_equal "{c: 3, d: 4}", ((hs_h.select { |k, v| v > 2 })).to_s
+      assert_equal "{a: 1, b: 2}", ((hs_h.reject { |_k, v| v > 2 })).to_s
+      assert_equal "{c: 3, d: 4}", ((hs_h.select { |_k, v| v > 2 })).to_s
       hs_h.update({z: 26})
-      hs_h.keep_if { |k, v| v != 1 }
+      hs_h.keep_if { |_k, v| v != 1 }
       assert_equal "{b: 2, c: 3, d: 4, z: 26}", (hs_h).to_s
-      assert_equal [[:z, 26], [:d, 4]], (hs_h.sort_by { |k, v| -v }.first(2))
-      assert_equal [:b, 2], (hs_h.min_by { |k, v| v })
-      assert_equal 35, (hs_h.sum { |k, v| v })
+      assert_equal [[:z, 26], [:d, 4]], (hs_h.sort_by { |_k, v| -v }.first(2))
+      assert_equal [:b, 2], (hs_h.min_by { |_k, v| v })
+      assert_equal 35, (hs_h.sum { |_k, v| v })
       assert_equal "b=2&c=3&d=4&z=26", (hs_h.map { |k, v| "#{k}=#{v}" }.join("&"))
-      assert_equal [:d, 4], (hs_h.find { |k, v| v > 3 })
+      assert_equal [:d, 4], (hs_h.find { |_k, v| v > 3 })
       assert_equal [[:b, 2], [:c, 3], [:d, 4], [:z, 26]], hs_h.sort
-      assert_equal [:z, 26], (hs_h.max_by { |k, v| v })
+      assert_equal [:z, 26], (hs_h.max_by { |_k, v| v })
       assert_equal [:z, 26], hs_h.to_a.last
-      assert_equal ["0:b", "1:c", "2:d", "3:z"], (hs_h.each_with_index.map { |(k, v), i| "#{i}:#{k}" })
+      assert_equal ["0:b", "1:c", "2:d", "3:z"], (hs_h.each_with_index.map { |(k, _v), i| "#{i}:#{k}" })
     end
   end
 
