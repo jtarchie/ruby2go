@@ -1111,9 +1111,8 @@ module HashTests
     def test_building_hashes_with_reduce_each
       fruit = %w[pear apple fig apple pear pear]
       init = {} #: Hash[String, Integer]
-      fc = fruit.reduce(init) do |acc, w|
+      fc = fruit.each_with_object(init) do |w, acc|
         acc[w] = acc.fetch(w, 0) + 1
-        acc
       end
       assert_equal "{\"pear\" => 3, \"apple\" => 2, \"fig\" => 1}", (fc).inspect
       assert_equal true, init.equal?(fc)
@@ -2149,7 +2148,7 @@ module HashTests
       nums.each { |x| h[x % 2] += 1 }
       g = nums.each_with_object(Hash.new(0)) { |n, acc| acc[n % 3] += 1 }
       e = nums.each_with_object({}) { |n, acc| acc[n] ||= n.to_s }
-      t = nums.inject(Hash.new(0)) { |acc, n| acc[n.even?] += 1; acc }
+      t = nums.each_with_object(Hash.new(0)) { |n, acc| acc[n.even?] += 1;  }
       assert_equal [{1 => 3, 0 => 2}, {1 => 2, 2 => 2, 0 => 1}, 5, "3", {false => 3, true => 2}, 7],
                    [h, g, e.size, e.fetch(3), t, h.fetch(1) + g.fetch(2) + 2]
     end
