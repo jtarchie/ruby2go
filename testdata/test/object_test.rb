@@ -2916,12 +2916,12 @@ def secret = "s3cret"
       assert_equal "ObjectTests::CmSquare", s.class.to_s
       assert_equal "ObjectTests::CmSquare", s.class.name
       assert_equal "square", s.class.kind
-      assert_equal true, (s.class == CmSquare)
-      assert_equal false, (s.class == CmShape)
+      assert_equal true, (s.instance_of?(CmSquare))
+      assert_equal false, (s.instance_of?(CmShape))
       shapes = [CmShape.new(1), CmSquare.new(2), Tri.new(3), Tiny.new] #: Array[CmShape]
       assert_equal(["ObjectTests::CmShape", "ObjectTests::CmSquare", "ObjectTests::Tri", "ObjectTests::Tiny"], shapes.map { |x| x.class.name })
       assert_equal([0, 4, 3, 4], shapes.map { |x| x.class.sides })
-      assert_equal([false, true, false, false], shapes.map { |x| x.class == CmSquare })
+      assert_equal([false, true, false, false], shapes.map { |x| x.instance_of?(CmSquare) })
       assert_equal "Class", CmShape.class.to_s
       assert_equal "Class", CmSquare.class.to_s
       assert_equal "Class", CmShape.class.class.to_s
@@ -2939,8 +2939,8 @@ def secret = "s3cret"
       assert_equal "Class", Integer.class.to_s
       assert_equal "Integer", Integer.name
       assert_equal "String", String.inspect
-      assert_equal true, (1.class == Integer)
-      assert_equal false, ("s".class == Symbol)
+      assert_equal true, (1.instance_of?(Integer))
+      assert_equal false, ("s".instance_of?(Symbol))
       CmRegistry.bump
       CmRegistry.bump
       SubRegistry.bump

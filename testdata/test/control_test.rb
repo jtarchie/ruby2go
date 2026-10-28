@@ -3363,7 +3363,7 @@ module ControlTests
       e2 = assert_raises(RuntimeError) { raise "Mixed Case" }
       assert_equal "MIXED CASE", e2.message.upcase
       assert_equal 10, e2.message.size
-      assert_equal true, ArgumentError.new("x").class == ArgumentError
+      assert_equal true, ArgumentError.new("x").instance_of?(ArgumentError)
       assert_equal "KeyError", KeyError.name
     end
 

@@ -668,7 +668,7 @@ module NumberTests
       bc_b = true #: bool?
       assert_equal true, bc_b.is_a?(TrueClass)
       assert_equal false, 1.is_a?(TrueClass)
-      assert_equal true, (true.class == TrueClass)
+      assert_equal true, (true.instance_of?(TrueClass))
       assert_equal "TrueClass", TrueClass.to_s
       assert_equal "NilClass", NilClass.to_s
     end
