@@ -36,11 +36,11 @@ module ClassMethodTests
   def self.copy(h)
     out = {} #: Hash[String, untyped]
     h.each do |k, v|
-      if v.is_a?(Hash)
-        out[k] = ClassMethodTests.copy(v)
+      out[k] = if v.is_a?(Hash)
+        ClassMethodTests.copy(v)
       else
-        out[k] = v
-      end
+        v
+               end
     end
     out
   end
@@ -49,11 +49,11 @@ module ClassMethodTests
   def self.copy_strings(h)
     out = {} #: Hash[String, String]
     h.each do |k, v|
-      if v.is_a?(Integer)
-        out[k] = (v + 1).to_s
+      out[k] = if v.is_a?(Integer)
+        (v + 1).to_s
       else
-        out[k] = v
-      end
+        v
+               end
     end
     out
   end

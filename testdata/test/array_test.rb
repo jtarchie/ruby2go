@@ -1087,11 +1087,11 @@ module ArrayTests
       assert_equal false, idx_opt[0].nil?
       assert_equal true, idx_opt[9].nil?
       branch = ""
-      if (hole = idx_opt[1])
-        branch = "truthy #{hole.inspect}"
+      branch = if (hole = idx_opt[1])
+        "truthy #{hole.inspect}"
       else
-        branch = "falsy"
-      end
+        "falsy"
+               end
       assert_equal "falsy", branch
       assert_nil idx_opt[1]
     end
@@ -2971,12 +2971,12 @@ module ArrayTests
       if !a.empty?
         out << a.pop
       end
-      if a.empty?
-        out << 0
+      out << if a.empty?
+        0
       else
-        out << a.shift
-      end
-      a.empty? ? out << -1 : out << a.shift
+        a.shift
+             end
+      out << (a.empty? ? -1 : a.shift)
       assert_equal [1, 3, 2, -1], out
     end
 

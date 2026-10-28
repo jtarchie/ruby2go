@@ -1543,11 +1543,11 @@ module HashTests
       assert_equal true, look_h["zz"].nil?
       assert_equal false, look_h["b"].nil?
       branch = ""
-      if look_h["a"]
-        branch = "truthy"
+      branch = if look_h["a"]
+        "truthy"
       else
-        branch = "falsy"
-      end
+        "falsy"
+               end
       assert_equal "falsy", branch
       assert_equal "7", (look_h["a"] || 7).to_s
       look_inferred = { "x" => nil, "y" => 1 }

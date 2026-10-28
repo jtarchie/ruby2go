@@ -287,13 +287,13 @@ module Tep
       Tep::APP.sched_io_fd[idx]    = fd
       Tep::APP.sched_io_mode[idx]  = mode
       Tep::APP.sched_io_ready[idx] = 0
-      if timeout_seconds < 0
+      Tep::APP.sched_wake_at[idx] = if timeout_seconds < 0
         # "Wait forever for I/O": -1 would mean "ready now" to the
         # tick picker, so use a far-future wake_at as the sentinel.
-        Tep::APP.sched_wake_at[idx] = Sock.sphttp_now_us + 86400 * 1000000
+        Sock.sphttp_now_us + 86400 * 1000000
       else
-        Tep::APP.sched_wake_at[idx] = Sock.sphttp_now_us + (timeout_seconds * 1000000).to_i
-      end
+        Sock.sphttp_now_us + (timeout_seconds * 1000000).to_i
+                                    end
       Fiber.yield
       ready = Tep::APP.sched_io_ready[idx]
       Tep::APP.sched_io_fd[idx]    = -1

@@ -142,7 +142,7 @@ module ActiveSupport
     # [:max_age].to_i` (campfire's QR code test) holds against an
     # Integer. Ruby's `!=` is the negation of this.
     def ==(other)
-      other.is_a?(Duration) ? @seconds == other.seconds : @seconds == other
+      @seconds == (other.is_a?(Duration) ? other.seconds : other)
     end
 
     # Ordering, the same rule: Rails' Duration compares as its seconds

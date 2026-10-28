@@ -127,16 +127,16 @@ module ActionCable
       out = []
       Broadcasts.log.each do |entry|
         next if entry[:stream] != stream
-        if entry[:action] == :message
-          out << entry[:payload].to_s
+        out << if entry[:action] == :message
+          entry[:payload].to_s
         else
-          out << JSON.generate(Broadcasts.render_fragment(
+          JSON.generate(Broadcasts.render_fragment(
                                  action: entry[:action],
                                  target: entry[:target],
                                  html: entry[:html],
                                  attributes: entry[:attributes].to_s
                                ))
-        end
+               end
       end
       out
     end

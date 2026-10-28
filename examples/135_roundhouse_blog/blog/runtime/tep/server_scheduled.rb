@@ -325,11 +325,11 @@ module Tep
         res.set_cookies.each do |line|
           head << "Set-Cookie: " + line + "\r\n"
         end
-        if keep_alive
-          head << "Connection: keep-alive\r\n"
+        head << if keep_alive
+          "Connection: keep-alive\r\n"
         else
-          head << "Connection: close\r\n"
-        end
+          "Connection: close\r\n"
+                end
         if res.file_path.length > 0
           fs = Sock.sphttp_filesize(res.file_path)
           head << "Content-Length: " + fs.to_s + "\r\n\r\n"

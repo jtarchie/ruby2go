@@ -553,11 +553,11 @@ module ActionView
                   # Foreign content is PRUNED whole — children, text and
                   # all — matching the gem's namespace rule. A
                   # self-closing root (`<svg/>`) contains nothing.
-                  if raw[raw.length - 1, 1].to_s == "/"
-                    i = after
+                  i = if raw[raw.length - 1, 1].to_s == "/"
+                    after
                   else
-                    i = sanitize_foreign_end(s, after, name)
-                  end
+                    sanitize_foreign_end(s, after, name)
+                      end
                 elsif sanitize_rawtext_elements.include?(name)
                   # Content up to the matching close is character data:
                   # escape it like text. (These names cannot be in

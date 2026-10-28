@@ -55,11 +55,11 @@ module Tep
       line = name + "=" + Url.escape(value)
       if opts.length > 0
         opts.each do |k, v|
-          if v.length == 0
-            line << "; " + k          # bare flag (HttpOnly, Secure)
+          line << if v.length == 0
+            "; " + k          # bare flag (HttpOnly, Secure)
           else
-            line << "; " + k + "=" + v
-          end
+            "; " + k + "=" + v
+                  end
         end
       end
       @set_cookies.push(line)

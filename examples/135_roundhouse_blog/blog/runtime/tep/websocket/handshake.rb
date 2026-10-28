@@ -97,11 +97,11 @@ module Tep
         i = 0
         while i < s.length
           c = s[i]
-          if c >= "A" && c <= "Z"
-            out << (c.ord + 32).chr
+          out << if c >= "A" && c <= "Z"
+            (c.ord + 32).chr
           else
-            out << c
-          end
+            c
+                 end
           i += 1
         end
         out

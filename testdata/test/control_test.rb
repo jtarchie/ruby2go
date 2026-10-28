@@ -498,20 +498,20 @@ end
 
 #: (bool) -> Integer
 def both_branches(flag)
-  if flag
-    a = 1
+  a = if flag
+    1
   else
-    a = 2
-  end
+    2
+      end
   twice(a)
 end
 
 #: (Integer) -> String
 def case_else(n)
-  case n
-  when 1 then s = "one"
-  else s = "many"
-  end
+  s = case n
+  when 1 then "one"
+  else "many"
+      end
   shout(s)
 end
 
@@ -1026,26 +1026,26 @@ end
 # Helpers for the checks that were control_locals.rb.
 #: (Integer) -> String
 def size_word(n)
-  if n > 100
-    word = "large"
+  word = if n > 100
+    "large"
   elsif n > 10
-    word = "medium"
+    "medium"
   else
-    word = "small"
-  end
+    "small"
+         end
   word + "!"
 end
 
 #: (Symbol) -> Integer
 def control_weight(s)
-  case s
+  w = case s
   when :a
-    w = 1
+    1
   when :b
-    w = 2
+    2
   else
-    w = 0
-  end
+    0
+      end
   w * 10
 end
 
@@ -1066,11 +1066,11 @@ end
 
 #: (Integer) -> String
 def nil_first(n)
-  if n > 0
-    label = nil
+  label = if n > 0
+    nil
   else
-    label = "non-positive"
-  end
+    "non-positive"
+          end
   label.inspect
 end
 
@@ -1274,11 +1274,11 @@ def joined(out, n)
   y = "a"
   y = nil if n > 5
   out << y.inspect
-  if n > 0
-    label = "pos"
+  label = if n > 0
+    "pos"
   else
-    label = nil
-  end
+    nil
+          end
   out << label.inspect
 end
 
@@ -2589,11 +2589,11 @@ module ControlTests
       if (m = h["a"])
         got << "found #{m + 1}"
       end
-      if (m2 = h["zz"])
-        got << "never #{m2}"
+      got << if (m2 = h["zz"])
+        "never #{m2}"
       else
-        got << "missing #{m2.inspect}"
-      end
+        "missing #{m2.inspect}"
+             end
       assert_equal ["found 2", "missing nil"], got
     end
 
@@ -3711,11 +3711,11 @@ module ControlTests
         i += 1
       end
       assert_equal 20, last
-      if i.zero?
-        msg = "zero"
+      msg = if i.zero?
+        "zero"
       else
-        msg = "i=#{i}"
-      end
+        "i=#{i}"
+            end
       assert_equal "i=3", msg
       maybe = nil
       maybe = "now" if i == 3

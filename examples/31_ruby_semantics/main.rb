@@ -49,11 +49,11 @@ puts skipped, log.size
 missing = nil #: String?
 puts (missing || 42).inspect, ("yes").inspect, ("fallback").inspect
 
-if values.size > 1
-  amount = "many"
+amount = if values.size > 1
+  "many"
 else
-  amount = "few"
-end
+  "few"
+         end
 puts amount
 
 class Shape

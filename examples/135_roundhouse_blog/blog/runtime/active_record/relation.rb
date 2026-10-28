@@ -171,11 +171,11 @@ module ActiveRecord
         sorted << loaded[i]
         i += 1
       end
-      if sort_in_place!(sorted, terms)
-        @records = sorted
+      @records = if sort_in_place!(sorted, terms)
+        sorted
       else
-        @records = nil
-      end
+        nil
+                 end
       self
     end
 

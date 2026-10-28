@@ -183,15 +183,15 @@ module Tep
         while i < plen
           b = s.getbyte(pos + i)
           mask_byte = 0
-          if (i & 3) == 0
-            mask_byte = m0
+          mask_byte = if (i & 3) == 0
+            m0
           elsif (i & 3) == 1
-            mask_byte = m1
+            m1
           elsif (i & 3) == 2
-            mask_byte = m2
+            m2
           else
-            mask_byte = m3
-          end
+            m3
+                      end
           bytes << (b ^ mask_byte)
           i += 1
         end

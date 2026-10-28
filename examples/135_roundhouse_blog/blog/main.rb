@@ -123,11 +123,11 @@ module Main
   def self.deep_dup(h)
     out = {}
     h.each do |k, v|
-      if v.is_a?(Hash)
-        out[k.to_s] = Main.deep_dup(v)
+      out[k.to_s] = if v.is_a?(Hash)
+        Main.deep_dup(v)
       else
-        out[k.to_s] = v
-      end
+        v
+                    end
     end
     out
   end

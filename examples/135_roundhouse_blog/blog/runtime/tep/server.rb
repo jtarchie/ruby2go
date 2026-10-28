@@ -240,11 +240,11 @@ module Tep
         if !res.headers.key?("Content-Type")
           res.headers["Content-Type"] = "application/octet-stream"
         end
-        if keep_alive
-          res.headers["Connection"] = "keep-alive"
+        res.headers["Connection"] = if keep_alive
+          "keep-alive"
         else
-          res.headers["Connection"] = "close"
-        end
+          "close"
+                                    end
         head = build_head(req, res)
         Sock.sphttp_write_str(client, head)
         Sock.sphttp_sendfile(client, res.file_path)
@@ -258,11 +258,11 @@ module Tep
       # stops at the first NUL. See the twin comment in
       # server_scheduled.rb#write_response for the failure this caused.
       res.headers["Content-Length"] = res.body.bytesize.to_s
-      if keep_alive
-        res.headers["Connection"] = "keep-alive"
+      res.headers["Connection"] = if keep_alive
+        "keep-alive"
       else
-        res.headers["Connection"] = "close"
-      end
+        "close"
+                                  end
 
       head = build_head(req, res)
       Sock.sphttp_write_str(client, head)

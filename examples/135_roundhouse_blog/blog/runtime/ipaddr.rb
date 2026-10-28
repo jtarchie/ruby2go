@@ -222,13 +222,13 @@ class IPAddr
     i = 0
     while i < octets.length
       bit = i * 8
-      if bit + 8 <= prefix
-        out << octets[i]
+      out << if bit + 8 <= prefix
+        octets[i]
       elsif bit >= prefix
-        out << 0
+        0
       else
-        out << (octets[i] & ((0xff << (8 - (prefix - bit))) & 0xff))
-      end
+        (octets[i] & ((0xff << (8 - (prefix - bit))) & 0xff))
+             end
       i += 1
     end
     out

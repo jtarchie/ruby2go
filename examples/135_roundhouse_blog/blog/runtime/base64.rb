@@ -110,13 +110,13 @@ module Base64
     n = std.length
     while i < n
       c = std[i]
-      if c == "+"
-        out << "-"
+      out << if c == "+"
+        "-"
       elsif c == "/"
-        out << "_"
+        "_"
       else
-        out << c.to_s
-      end
+        c.to_s
+             end
       i = i + 1
     end
     out
@@ -149,13 +149,13 @@ module Base64
     n = s.length
     while i < n
       c = s[i]
-      if c == "-"
-        std << "+"
+      std << if c == "-"
+        "+"
       elsif c == "_"
-        std << "/"
+        "/"
       else
-        std << c.to_s
-      end
+        c.to_s
+             end
       i = i + 1
     end
     strict_decode64(std)

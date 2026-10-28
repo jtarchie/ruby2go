@@ -202,12 +202,12 @@ module CgiIo
   def self.url_encode(s)
     out = String.new
     s.to_s.each_byte do |b|
-      if (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
+      out << if (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
          b == 45 || b == 46 || b == 95 || b == 126
-        out << b.chr
+        b.chr
       else
-        out << format("%%%02X", b)
-      end
+        format("%%%02X", b)
+             end
     end
     out
   end
