@@ -39,7 +39,7 @@ puts "toupper('q') = #{toupper.call("q".ord).chr}"
 qsort = Fiddle::Function.new(
   libc["qsort"],
   [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T, Fiddle::TYPE_SIZE_T, Fiddle::TYPE_VOIDP],
-  Fiddle::TYPE_VOID,
+  Fiddle::TYPE_VOID
 )
 compare = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_INT, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP]) do |a, b|
   a[0] <=> b[0]
