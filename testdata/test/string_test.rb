@@ -271,7 +271,7 @@ module StringTests
 
     # Adjacent plain literals and backslash-newline continue one string.
     def test_adjacent_plain_literals_and_backslash
-      assert_equal "adjacentlits", "adj" "acent" 'lits'
+      assert_equal "adjacentlits", "adj" + "acent" + 'lits'
       assert_equal "line one continued", "line one \
 continued"
     end
@@ -981,7 +981,7 @@ B
     # adjacent literals and a line continuation concatenate
     def test_adjacent_literals_and_a_line
       n_interp = 1
-      assert_equal "tu1v", "t" "u" "#{n_interp}" 'v'
+      assert_equal "tu1v", "t" + "u" + "#{n_interp}" + 'v'
       assert_equal "total: 1 items", "total: #{n_interp} " \
         "items"
     end
