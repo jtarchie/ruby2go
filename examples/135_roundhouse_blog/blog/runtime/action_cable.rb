@@ -132,10 +132,10 @@ module ActionCable
                  entry[:payload].to_s
                else
           JSON.generate(Broadcasts.render_fragment(
-                                 action: entry[:action],
-                                 target: entry[:target],
-                                 html: entry[:html],
-                                 attributes: entry[:attributes].to_s
+                          action: entry[:action],
+                          target: entry[:target],
+                          html: entry[:html],
+                          attributes: entry[:attributes].to_s
                                ))
                end
       end
