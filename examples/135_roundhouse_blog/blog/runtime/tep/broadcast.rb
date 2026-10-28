@@ -34,7 +34,7 @@ module Tep
     def self.subscribe(topic, fd)
       sub = Tep::BroadcastSubscription.new(
         topic, fd, 0, Tep::WebSocket::Driver.new(fd)
-)
+      )
       n = 0
       Tep::APP.broadcast_lock.synchronize do
         subs = Tep::APP.broadcast_subs
@@ -49,7 +49,7 @@ module Tep
     def self.subscribe_ws(topic, ws)
       sub = Tep::BroadcastSubscription.new(
         topic, ws.fd, Tep::WebSocket::OPCODE_TEXT, ws
-)
+      )
       n = 0
       Tep::APP.broadcast_lock.synchronize do
         subs = Tep::APP.broadcast_subs

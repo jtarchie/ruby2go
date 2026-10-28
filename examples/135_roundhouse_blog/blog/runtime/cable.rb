@@ -148,7 +148,7 @@ module Cable
     if name == "Turbo::StreamsChannel"
       return Turbo::StreamsChannel.new(
         connection, identifier, ActionCable::Channel::Parameters.new(identifier)
-)
+      )
     end
     nil
   end
@@ -467,7 +467,7 @@ module Cable
       # class per tree — see that method's note.
       @connection = Cable.build_connection(
         ActionController::CookieJar.new(Tep.str_hash)
-)
+      )
       @channels = []
     end
 
