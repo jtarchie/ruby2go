@@ -1720,7 +1720,7 @@ module ObjectTests
     end
 
     #: (NeVec) -> bool
-    def ==(o) = x == o.x
+    def ==(other) = x == other.x
   end
 
   NePoint = Struct.new(:x, :y) #: [Integer, Integer]
@@ -1873,7 +1873,7 @@ module ObjectTests
     end
 
     #: (MtVec) -> bool
-    def ==(o) = x == o.x
+    def ==(other) = x == other.x
   end
 
   # zsuper from a no-arg initialize lets the parent apply its own default
@@ -2251,19 +2251,19 @@ module ObjectTests
     end
 
     #: (OpVec) -> OpVec
-    def +(o) = OpVec.new(x + o.x, y + o.y)
+    def +(other) = OpVec.new(x + other.x, y + other.y)
 
     #: (OpVec) -> OpVec
-    def -(o) = OpVec.new(x - o.x, y - o.y)
+    def -(other) = OpVec.new(x - other.x, y - other.y)
 
     #: (Integer) -> OpVec
-    def *(k) = OpVec.new(x * k, y * k)
+    def *(other) = OpVec.new(x * other, y * other)
 
     #: () -> OpVec
     def -@ = OpVec.new(-x, -y)
 
     #: (OpVec) -> bool
-    def ==(o) = x == o.x && y == o.y
+    def ==(other) = x == other.x && y == other.y
 
     #: (Integer) -> Integer
     def [](i) = i == 0 ? x : y

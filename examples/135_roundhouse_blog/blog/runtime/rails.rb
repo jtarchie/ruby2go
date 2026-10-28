@@ -77,8 +77,8 @@ module Rails
 
     # `Rails.root + "storage/x"` — Pathname#+ is a path join, not string
     # concatenation, so it is `join` under another name.
-    def +(part)
-      AppPath.new(@base + "/" + part)
+    def +(other)
+      AppPath.new(@base + "/" + other)
     end
 
     def to_s

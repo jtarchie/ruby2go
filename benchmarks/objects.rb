@@ -19,7 +19,7 @@ class Vec
   def -(other) = Vec.new(@x - other.x, @y - other.y)
 
   #: (Float k) -> Vec
-  def *(k) = Vec.new(@x * k, @y * k)
+  def *(other) = Vec.new(@x * other, @y * other)
 
   #: () -> Float
   def length = Math.sqrt(@x * @x + @y * @y)

@@ -295,7 +295,7 @@ module NumberTests
   # Helpers for the checks that were testdata/run/number_bug_operator_name_collision.rb.
   class Meter
     #: (Integer) -> Integer
-    def +(o) = o + 1
+    def +(other) = other + 1
     #: (Integer) -> Integer
     def plus(o) = o + 2
     #: (Integer) -> Integer
@@ -307,11 +307,11 @@ module NumberTests
     #: () -> Integer
     def neg = -2
     #: (Integer) -> Integer
-    def /(o) = 100 / o
+    def /(other) = 100 / other
     #: (Integer) -> Integer
     def div(o) = 1000 / o
     #: (Integer) -> Integer
-    def **(o) = o * o
+    def **(other) = other * other
     #: (Integer) -> Integer
     def pow(o) = o * o * o
     #: () -> bool
@@ -324,7 +324,7 @@ module NumberTests
   # Integer == falls back to the other side's == for a user object
   class One
     #: (untyped) -> bool
-    def ==(o) = o == 1
+    def ==(other) = other == 1
   end
 
   # Helpers for the checks that were testdata/run/number_mid.rb.
@@ -355,17 +355,17 @@ module NumberTests
     end
 
     #: (Num) -> Num
-    def +(o) = Num.new(v + o.v)
+    def +(other) = Num.new(v + other.v)
     #: (Num) -> Num
-    def -(o) = Num.new(v - o.v)
+    def -(other) = Num.new(v - other.v)
     #: (Num) -> Num
-    def *(o) = Num.new(v * o.v)
+    def *(other) = Num.new(v * other.v)
     #: (Num) -> Num
-    def /(o) = Num.new(v / o.v)
+    def /(other) = Num.new(v / other.v)
     #: (Num) -> Num
-    def %(o) = Num.new(v % o.v)
+    def %(other) = Num.new(v % other.v)
     #: (Integer) -> Num
-    def **(e) = Num.new(v ** e)
+    def **(other) = Num.new(v ** other)
     #: () -> Num
     def -@ = Num.new(-v)
     #: () -> Num
@@ -375,33 +375,33 @@ module NumberTests
     #: (Integer) -> Num
     def <<(k) = Num.new(v * (2 ** k))
     #: (Integer) -> Num
-    def >>(k) = Num.new(v / (2 ** k))
+    def >>(other) = Num.new(v / (2 ** other))
     #: (Num) -> Num
-    def &(o) = Num.new(v < o.v ? v : o.v)
+    def &(other) = Num.new(v < other.v ? v : other.v)
     #: (Num) -> Num
-    def |(o) = Num.new(v > o.v ? v : o.v)
+    def |(other) = Num.new(v > other.v ? v : other.v)
     #: (Num) -> Num
-    def ^(o) = Num.new((v - o.v).abs)
+    def ^(other) = Num.new((v - other.v).abs)
     #: (untyped) -> bool
-    def ==(o) = o.is_a?(Num) && o.v == v
+    def ==(other) = other.is_a?(Num) && other.v == v
     #: (Num) -> bool
-    def !=(o) = v != o.v
+    def !=(other) = v != other.v
     #: (Num) -> Integer
-    def <=>(o) = v <=> o.v
+    def <=>(other) = v <=> other.v
     #: (Num) -> bool
-    def <(o) = v < o.v
+    def <(other) = v < other.v
     #: (Num) -> bool
-    def <=(o) = v <= o.v
+    def <=(other) = v <= other.v
     #: (Num) -> bool
-    def >(o) = v > o.v
+    def >(other) = v > other.v
     #: (Num) -> bool
-    def >=(o) = v >= o.v
+    def >=(other) = v >= other.v
     #: (Integer) -> bool
     def ===(x) = x == v
     #: (Integer) -> bool
     def =~(x) = x % v == 0
     #: (Integer) -> bool
-    def !~(x) = x % v != 0
+    def !~(other) = other % v != 0
     #: (Integer) -> Integer
     def [](i) = v * i
     #: (Integer, Integer) -> Integer

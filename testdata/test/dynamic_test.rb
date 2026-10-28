@@ -1466,7 +1466,7 @@ module DynamicTests
     end
 
     #: (untyped) -> bool
-    def ==(o) = o.is_a?(VecNe) && x == o.x
+    def ==(other) = other.is_a?(VecNe) && x == other.x
   end
 
   class DynamicMidTest < Minitest::Test
