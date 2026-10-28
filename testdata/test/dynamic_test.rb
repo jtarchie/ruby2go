@@ -2993,7 +2993,7 @@ module DynamicTests
       xs = [[1, 2], { "a" => 1 }, Set[:a], (1..3)] #: Array[untyped]
       assert_equal [false, false, false, true], xs.map(&:frozen?)
       assert_equal [true, true, true, true], xs.map { |x| x.itself.equal?(x) }
-      assert_equal [true, true, true, true], xs.map { |x| x.object_id == x.object_id }
+      assert_equal [true, true, true, true], xs.map { |x| x.equal?(x) }
       assert_equal [nil, nil, nil, nil], xs.map { |x| x.instance_variable_get(:@nope) }
       assert_equal ["[1, 2]", "{\"a\" => 1}"], [xs[0].send(:format, "%s", xs[0]), xs[1].send(:format, "%s", xs[1])]
       assert_equal [true, true], [xs[0].nil? == false, xs[2].instance_of?(Set)]

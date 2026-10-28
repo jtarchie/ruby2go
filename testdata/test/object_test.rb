@@ -4920,7 +4920,7 @@ module ObjectTests
       assert_equal [1, 2, 2, 1], [h[o], h[x], [o, x].uniq.size, [o, o].uniq.size]
       assert o.inspect.start_with?("#<Object:0x")
       assert_equal o.inspect, o.to_s
-      assert o.object_id != x.object_id
+      assert !o.equal?(x)
       assert BasicObject.new.equal?(BasicObject.new) == false
     end
   end
