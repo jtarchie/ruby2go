@@ -113,7 +113,7 @@ module SorbetTests
       a: ->(q) { "a=#{q}" },
       b: lambda { |q|
         "b=#{q}"
-      },
+      }
     }.freeze, T::Hash[Symbol, T.proc.params(query: String).returns(String)])
 
     sig { params(f: Field).returns(String) }

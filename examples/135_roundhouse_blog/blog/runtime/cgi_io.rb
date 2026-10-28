@@ -35,7 +35,7 @@ module CgiIo
     403 => "Forbidden",
     404 => "Not Found",
     422 => "Unprocessable Entity",
-    500 => "Internal Server Error",
+    500 => "Internal Server Error"
   }.freeze
 
   # Parse a CGI request from the given env hash + body-readable IO.

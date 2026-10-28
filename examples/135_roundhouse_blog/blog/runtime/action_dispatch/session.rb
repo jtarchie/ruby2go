@@ -127,7 +127,7 @@ module ActionDispatch
       " " => "%20",
       ";" => "%3B",
       "," => "%2C",
-      "\"" => "%22",
+      "\"" => "%22"
     }.freeze
     ENCODE_PATTERN = /[%&=+ ;,"]/
 
@@ -142,7 +142,7 @@ module ActionDispatch
       "%3B" => ";",
       "%2C" => ",",
       "%22" => "\"",
-      "+" => " ",
+      "+" => " "
     }.freeze
     DECODE_PATTERN = /%25|%26|%3D|%2B|%20|%3B|%2C|%22|\+/
 

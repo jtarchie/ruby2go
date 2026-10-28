@@ -467,7 +467,7 @@ module RugarooBoot
         "branches" => branches,
         "const_classes" => const_classes,
         "delegators" => @delegators,
-        "structs" => sorbet_structs,
+        "structs" => sorbet_structs
       }
       File.write(path, generate(manifest))
     end

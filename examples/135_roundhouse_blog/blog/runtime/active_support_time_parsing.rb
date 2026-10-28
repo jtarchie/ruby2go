@@ -38,7 +38,7 @@ module ActiveSupport
     "Paris" => "Europe/Paris",
     "Berlin" => "Europe/Berlin",
     "Tokyo" => "Asia/Tokyo",
-    "Sydney" => "Australia/Sydney",
+    "Sydney" => "Australia/Sydney"
   }.freeze
 
   # ---- THE TEST CLOCK ------------------------------------------------

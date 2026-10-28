@@ -29,7 +29,7 @@ config = {
     Server.new("db.example.com", 5432, ["database"])
   ],
   retries: { attempts: 3, backoff: [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0] },
-  "notes" => "line one\nline two\n",
+  "notes" => "line one\nline two\n"
 } #: Hash[untyped, untyped]
 
 pp config

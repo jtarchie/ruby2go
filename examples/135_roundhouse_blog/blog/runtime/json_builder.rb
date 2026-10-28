@@ -27,7 +27,7 @@ module JsonBuilder
     "\r" => "\\r",
     "\t" => "\\t",
     "\b" => "\\b",
-    "\f" => "\\f",
+    "\f" => "\\f"
   }.freeze
 
   # `\x08` rather than `\b` for the backspace because Rust's `regex`

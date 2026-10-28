@@ -258,7 +258,7 @@ module ActiveStorage
                                     "record_type" => "ActiveStorage::Blob",
                                     "record_id" => b.id,
                                     "blob_id" => poster.id,
-                                    "created_at" => ActiveSupport.db_now,
+                                    "created_at" => ActiveSupport.db_now
                                   })
       nil
     end
@@ -623,7 +623,7 @@ module ActiveStorage
                                          "service_name" => "local",
                                          "byte_size" => data.length,
                                          "checksum" => "",
-                                         "created_at" => ActiveSupport.db_now,
+                                         "created_at" => ActiveSupport.db_now
                                        })
       Blob.new(id, key, filename, content_type, data.length, metadata)
     end
@@ -801,14 +801,14 @@ module ActiveStorage
       )
       record_id = ActiveRecord.adapter.insert("active_storage_variant_records", {
                                                 "blob_id" => b.id,
-                                                "variation_digest" => digest,
+                                                "variation_digest" => digest
                                               })
       ActiveRecord.adapter.insert("active_storage_attachments", {
                                     "name" => "image",
                                     "record_type" => "ActiveStorage::VariantRecord",
                                     "record_id" => record_id,
                                     "blob_id" => image.id,
-                                    "created_at" => ActiveSupport.db_now,
+                                    "created_at" => ActiveSupport.db_now
                                   })
       @record_id = record_id
       @image_blob = image
@@ -1086,7 +1086,7 @@ module ActiveStorage
                                     "record_type" => @record_type,
                                     "record_id" => @record_id,
                                     "blob_id" => blob.id,
-                                    "created_at" => ActiveSupport.db_now,
+                                    "created_at" => ActiveSupport.db_now
                                   })
       @row_loaded = false
       nil

@@ -330,7 +330,7 @@ module StdlibTests
         "[1]]" => "unexpected token at end of stream ']' at line 1 column 4",
         "[-]" => "invalid number: '-]' at line 1 column 2",
         "[1.]" => "invalid number: '1.]' at line 1 column 2",
-        "\n\n  [1,\n 2,]" => "unexpected character: ']' at line 4 column 4",
+        "\n\n  [1,\n 2,]" => "unexpected character: ']' at line 4 column 4"
       }.each do |src, msg|
         e = assert_raises(JSON::ParserError) { JSON.parse(src) }
         assert_equal msg, e.message

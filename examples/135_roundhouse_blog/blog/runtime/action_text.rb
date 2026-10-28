@@ -1037,7 +1037,7 @@ module ActionText
       "&quot;" => "\"",
       "&#39;" => "'",
       "&apos;" => "'",
-      "&nbsp;" => " ",
+      "&nbsp;" => " "
     }.freeze
 
     # One entity, including its "&" and ";".

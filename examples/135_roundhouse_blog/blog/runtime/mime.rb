@@ -68,7 +68,7 @@ module Mime
       "application/pdf" => "application/pdf",
       "application/zip" => "application/zip",
       "application/gzip" => "application/gzip",
-      "application/x-gzip" => "application/gzip",
+      "application/x-gzip" => "application/gzip"
     }.freeze
 
     SYMBOLS = {
@@ -107,7 +107,7 @@ module Mime
       "application/json" => :json,
       "application/pdf" => :pdf,
       "application/zip" => :zip,
-      "application/gzip" => :gzip,
+      "application/gzip" => :gzip
     }.freeze
 
     EXTENSIONS = {
@@ -165,7 +165,7 @@ module Mime
       "pdf" => "application/pdf",
       "zip" => "application/zip",
       "gzip" => "application/gzip",
-      "gz" => "application/gzip",
+      "gz" => "application/gzip"
     }.freeze
 
     attr_reader :symbol

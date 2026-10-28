@@ -160,7 +160,7 @@ class DemoLineSource
   def each_line_from(sources, &_block)
     sources = {
       sources[0] => :stdout,
-      sources[1] => :stderr,
+      sources[1] => :stderr
     }
     until sources.empty?
       src = sources.keys.first
@@ -230,7 +230,7 @@ module DemoPackagesIndex
     data = {
       "version" => 2,
       **fingerprint,
-      **data,
+      **data
     }
     data.keys
   end

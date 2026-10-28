@@ -79,7 +79,7 @@ module ActionController
     loop_detected: 508,
     bandwidth_limit_exceeded: 509,
     not_extended: 510,
-    network_authentication_required: 511,
+    network_authentication_required: 511
   }.freeze
 
   # Base controller class. Holds the per-request state (params,
