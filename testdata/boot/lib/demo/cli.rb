@@ -279,11 +279,11 @@ module DemoDeep
   sig { type_parameters(:U).params(value: T.type_parameter(:U)).returns(T.type_parameter(:U)) }
   def self.deep(value)
     value = case value
-    when Hash
+            when Hash
       value.transform_values { |v| deep(v) }
-    when Array
+            when Array
       value.map { |v| deep(v) }
-    when String
+            when String
       value.upcase
     else
       value
