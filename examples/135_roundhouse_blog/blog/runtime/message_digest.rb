@@ -28,18 +28,18 @@ end
 
 module MessageDigest
   def self.hmac_sha1_hex(key, msg)
-    "#{SpCrypto.sp_crypto_hmac_sha1_hex(key, msg)}"
+    SpCrypto.sp_crypto_hmac_sha1_hex(key, msg).to_s
   end
 
   def self.hmac_sha256_hex(key, msg)
-    "#{SpCrypto.sp_crypto_hmac_sha256_hex(key, msg)}"
+    SpCrypto.sp_crypto_hmac_sha256_hex(key, msg).to_s
   end
 
   # sp_crypto returns the derived key base64url-encoded; the callers want
   # the raw bytes (an HMAC key is bytes), so decode on the way out. Both
   # results copy off the static buffer before the next FFI call.
   def self.pbkdf2_sha256(secret, salt, iters, dklen)
-    b64 = "#{SpCrypto.sp_crypto_pbkdf2_sha256_b64url_len(secret, salt, iters, dklen)}"
-    "#{SpCrypto.sp_crypto_b64url_decode(b64)}"
+    b64 = SpCrypto.sp_crypto_pbkdf2_sha256_b64url_len(secret, salt, iters, dklen).to_s
+    SpCrypto.sp_crypto_b64url_decode(b64).to_s
   end
 end
