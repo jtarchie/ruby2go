@@ -902,10 +902,10 @@ module ActiveRecord
     def update_all(updates)
       set_sql = if updates.is_a?(Hash)
                   parts = []
-        updates.each do |key, val|
-          parts.push("#{key} = #{ActiveRecord.adapter.escape_value(val)}")
-        end
-        parts.join(", ")
+                  updates.each do |key, val|
+                    parts.push("#{key} = #{ActiveRecord.adapter.escape_value(val)}")
+                  end
+                  parts.join(", ")
                 else
         updates.to_s
                 end

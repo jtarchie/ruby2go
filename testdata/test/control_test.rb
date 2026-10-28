@@ -1828,14 +1828,14 @@ module ControlTests
       pairs = [[1, 9], [2, 8]] #: Array[[Integer, Integer]]
       pairs.each do |pair| 
         lo = pair[1]
-                          hi = pair[0]
+        hi = pair[0]
 end
       assert_equal 8, lo
       assert_equal 2, hi
       ww = 0
       res = [5].map do |x| 
               ww = x
-                          z = x * 2; z
+              z = x * 2; z
 end
       assert_equal 5, ww
       assert_equal [10], res
@@ -5828,7 +5828,7 @@ module ControlTests
       assert_equal [:pos, :zero, :neg], [control_sign(3), control_sign(0), control_sign(-2)]
       assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i|
   i.even? and next i * 10
-                                     i
+  i
 }
       seen = [] #: Array[Integer]
       [1, 2, 3].each do |v|
