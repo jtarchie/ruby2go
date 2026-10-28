@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Class objects for every class and module; constants, const_get,
 # const_defined?, Object.const_get with paths. MRI orders `constants` by its
 # symbol table, so this example sorts before printing.

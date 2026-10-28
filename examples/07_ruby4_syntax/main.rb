@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Ruby 4.0: a continuation line may start with `&&` / `||`.
 
 #: (Integer) -> bool

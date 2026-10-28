@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # `extend Enumerable` on a module whose `each` walks its own constants,
 # `&block` parameters forwarded into iterators and closures, and user code
 # reopening a core class.

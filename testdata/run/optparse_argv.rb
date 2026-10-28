@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # args: build --jobs 4 -v src/main.rb --out=dist -- --literal
 
 # parse! reads ARGV by default and leaves the operands in it (decision 101).

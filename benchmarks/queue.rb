@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Four producers and four consumers over one bounded queue, a million small items (decision 403).
 
 P = 4

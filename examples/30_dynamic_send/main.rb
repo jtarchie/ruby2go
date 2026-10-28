@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Calls on untyped values dispatch at run time: to the method if the
 # receiver's class has one, else to method_missing, else NoMethodError.
 # send/public_send take literal or computed names; respond_to? works too.

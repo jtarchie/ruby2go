@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 class Shape
   #: () -> String
   def name = "Shape"

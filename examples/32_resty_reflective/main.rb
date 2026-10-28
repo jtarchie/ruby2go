@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 #
 # jtarchie/resty's library code as written (lib/resty/*.rb, in load order),
 # compiled with its reflection intact: constantize, const_get, constants,

@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Eight threads drawing from Kernel#rand at once: a shared generator serializes them unless the program never seeds (decision 403).
 
 N = 8

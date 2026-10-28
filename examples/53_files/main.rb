@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 require "tmpdir"
 
 # File and Dir: read a fixture next to the program, write and reread files

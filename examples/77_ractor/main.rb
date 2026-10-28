@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 #
 # Ractors: isolated workers that talk through ports. A message or constructor
 # argument is copied into the ractor, never shared, so no lock is needed.

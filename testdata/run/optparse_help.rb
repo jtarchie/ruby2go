@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # args: -v -h
 
 # --help/-h is built in: it prints the help and exits 0 (decision 101).

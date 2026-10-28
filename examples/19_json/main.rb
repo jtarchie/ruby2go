@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # to_json on core types and user classes; JSON.generate.
 require "json"
 

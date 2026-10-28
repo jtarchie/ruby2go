@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Nested modules and classes, `A::B` paths, constants, lexical lookup.
 
 module Geometry

@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # An erroring test and an assert_raises that saw the wrong class print the
 # frames MRI prints (decision 106): the test's own, up to minitest's.
 # args: --seed 1

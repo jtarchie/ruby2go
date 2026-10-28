@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Open3.capture2 lets the child's stderr through to the program's (it went to /dev/null); standalone for the file-wide stderr comparison.
 # stderr: match
 

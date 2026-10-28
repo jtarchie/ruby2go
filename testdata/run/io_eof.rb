@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # stdin: "one\r\ntwo\nxé"
 
 # $stdin's readers raise EOFError at end of input (#43)

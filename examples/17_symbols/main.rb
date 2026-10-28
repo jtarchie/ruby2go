@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Symbols, and braceless hash arguments (`f(a: 1)` passes a Hash).
 
 config = { port: 8080, host: "localhost" }

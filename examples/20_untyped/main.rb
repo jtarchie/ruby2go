@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Working with `untyped`: is_a? checks narrow a local, `||` and truthiness.
 
 #: (untyped) -> String

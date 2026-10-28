@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # method_missing and respond_to? on statically typed receivers: an unknown
 # method compiles to a method_missing call, typed by its signature.
 

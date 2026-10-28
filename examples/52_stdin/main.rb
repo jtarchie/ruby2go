@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # stdin: "3\n"
 # stdin: "alice 30\nbob 25\n"
 # stdin: "carol 35\n"

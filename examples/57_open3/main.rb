@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 require "open3"
 
 # Open3 runs commands without a shell: capture2/capture2e/capture3 collect output, popen3 streams it through a block.

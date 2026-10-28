@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 require "etc"
 
 # Etc via os/user and runtime; machine-specific values are checked structurally, not against literal expectations.

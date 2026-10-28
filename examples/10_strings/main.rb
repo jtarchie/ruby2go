@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 s = "Hello, World"
 puts s.size, s.upcase, s.downcase, s.reverse
 puts s.include?("World"), s.start_with?("Hell"), s.end_with?("x")

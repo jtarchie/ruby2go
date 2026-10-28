@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Struct.new and Data.define classes. Member types come from a `#: T` after
 # each member (rbs-inline's form), or from a `#: [A, B]` after the whole
 # definition. Nilable Struct members may be left out of `new`; every Data

@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 class AppError < StandardError; end
 class NotFound < AppError; end
 

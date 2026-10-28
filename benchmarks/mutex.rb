@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Eight threads bumping one counter under one Mutex: the cost of a contended lock handoff.
 
 N = 8

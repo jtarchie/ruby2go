@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # stdin: "x\ny\nz\n"
 
 # IO#lineno counts $stdin.gets (ruby/spec core/io, #49)

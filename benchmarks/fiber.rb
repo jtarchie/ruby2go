@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # A Fiber resumed and yielded 300k times, then an external Enumerator pulled as often: the cost of a coroutine switch (decisions 140, 403).
 
 N = 300_000

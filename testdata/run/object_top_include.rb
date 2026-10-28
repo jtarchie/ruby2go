@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # standalone: a top-level include is Object's, which changes every class's ancestors
 
 # a top-level include (Object's, as in MRI) was a run-time NoMethodError

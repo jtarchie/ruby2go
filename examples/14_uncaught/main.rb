@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 class Boom < StandardError; end
 
 #: (Integer) -> Integer

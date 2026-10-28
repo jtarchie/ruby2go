@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 require "timeout"
 
 # Timeout.timeout races a block against a wall-clock deadline. Go has no

@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Everyday Ruby semantics that untyped-looking code relies on: `rescue`
 # modifiers, `return` inside `ensure`, NoMethodError on nil, `&&`/`||`
 # returning values (and short-circuiting), locals first set in a branch,

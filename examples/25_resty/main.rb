@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 #
 # A typed port of https://github.com/jtarchie/resty, a web framework that
 # forces RESTful conventions, served by WEBrick and driven over HTTP with

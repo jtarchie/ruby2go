@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # A TCP echo server and its client in one process, then a UDP round trip.
 require "socket"
 

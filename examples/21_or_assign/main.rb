@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # `||=` on locals and instance variables (memoization).
 
 class Cache

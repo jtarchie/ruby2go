@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Eight CPU-bound threads with no shared state: how far threads scale without a GVL (decision 26).
 
 N = 8

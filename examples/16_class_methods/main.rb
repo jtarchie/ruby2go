@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Class methods, class objects as values, `singleton(C)`, `klass.new`,
 # `self.class`, and virtual dispatch of class methods.
 

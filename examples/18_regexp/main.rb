@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Regexp literals (Ruby syntax on Go's RE2), =~, !~, match, MatchData.
 
 path = "/posts/42.json"

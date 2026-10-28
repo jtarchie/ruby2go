@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # args: --seed 1
 
 require "minitest/autorun"

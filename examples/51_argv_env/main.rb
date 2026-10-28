@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # args: --upcase alpha beta --repeat=2 gamma
 # env: GREETING=hello
 # env: RUGAROO_EMPTY=

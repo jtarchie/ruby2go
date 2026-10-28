@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 require "fileutils"
 require "tempfile"
 require "tmpdir"

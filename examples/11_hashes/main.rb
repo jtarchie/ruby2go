@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 ages = { "alice" => 30, "bob" => 25 }
 ages["carol"] = 35
 puts ages.size, ages.inspect

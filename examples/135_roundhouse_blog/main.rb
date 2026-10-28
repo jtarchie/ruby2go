@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # nil_check: runtime
 # gem: blog/runtime
 

@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Multiple assignment from tuples and array literals.
 
 #: (Integer, Integer) -> [Integer, Integer]

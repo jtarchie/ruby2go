@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # nil_check: runtime
 
 # The magic comment above lets a possibly-nil value pass where a value is expected, checked when it runs, as MRI does (decision 393).

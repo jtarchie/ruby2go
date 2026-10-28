@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # A WEBrick server and a Net::HTTP client in one process.
 require "net/http"
 require "webrick"

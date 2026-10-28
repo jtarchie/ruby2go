@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Process.spawn, wait, wait2, waitpid and Kernel#exec (decision 107).
 
 pid = Process.spawn("sh", "-c", "exit 3")

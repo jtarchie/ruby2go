@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # load_path: lib
 
 # Plain `require` of the program's own files, found on the load path given

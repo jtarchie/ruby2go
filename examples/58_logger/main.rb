@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 require "logger"
 require "stringio"
 require "tmpdir"

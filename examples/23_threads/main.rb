@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 # Thread.new / join. An exception in a thread re-raises on join.
 
 results = []
