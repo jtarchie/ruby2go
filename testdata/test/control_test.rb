@@ -2957,7 +2957,7 @@ end)
       assert_equal "k", err.to_s
       assert_equal "u: k", "u: #{err}"
       assert_equal "ArgumentError", ArgumentError.new.to_s
-      assert_equal "RuntimeError", "#{RuntimeError.new}"
+      assert_equal "RuntimeError", RuntimeError.new.to_s
       list = [ArgumentError.new("a1"), TypeError.new("t1")] #: Array[StandardError]
       assert_equal %w[a1 t1], list.map(&:message)
       assert_equal(%w[ArgumentError TypeError], list.map { |l| l.class.name })

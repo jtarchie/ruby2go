@@ -717,7 +717,7 @@ module DynamicTests
       assert_equal "DynamicTests::Foo", dynamic_ident_class(Foo.new).class.to_s
       assert_equal "Array", dynamic_ident_class([1]).class.to_s
       assert_equal "NilClass", dynamic_ident_class(nil).class.to_s
-      assert_equal "Float", "#{dynamic_ident_class(2.5).class}"
+      assert_equal "Float", dynamic_ident_class(2.5).class.to_s
     end
 
     def test_untyped_nilable_parameter

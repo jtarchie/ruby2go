@@ -856,7 +856,7 @@ module NumberTests
       assert_equal "1.234567890123456e+15", 1_234_567_890_123_456.0.to_s
       assert_equal "9.999999999999998e+15", 9_999_999_999_999_998.0.inspect
       assert_equal "9.007199254740992e+15", 9_007_199_254_740_993.to_f.inspect
-      assert_equal "2.0e+15", "#{2e15}"
+      assert_equal "2.0e+15", (2e15).to_s
       assert_equal "1234567890123456.8", 1_234_567_890_123_456.7.inspect
       assert_equal "999999999999999.9", 999_999_999_999_999.9.inspect
       assert_equal "100000000000000.0", 100_000_000_000_000.0.inspect

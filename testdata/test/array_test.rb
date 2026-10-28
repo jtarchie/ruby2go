@@ -1546,7 +1546,7 @@ module ArrayTests
 
   class ArrayFormatTest < Minitest::Test
     def test_section_0
-      strs = ["é", "a\"b", "tab\there", "new\nline", "", "日本語", "\\", "\e", "#{1 + 1}"] #: Array[String]
+      strs = ["é", "a\"b", "tab\there", "new\nline", "", "日本語", "\\", "\e", (1 + 1).to_s] #: Array[String]
       assert_equal "[\"é\", \"a\\\"b\", \"tab\\there\", \"new\\nline\", \"\", \"日本語\", \"\\\\\", \"\\e\", \"2\"]", strs.inspect
       assert_equal "[\"é\", \"a\\\"b\", \"tab\\there\", \"new\\nline\", \"\", \"日本語\", \"\\\\\", \"\\e\", \"2\"]", strs.to_s
       assert_equal "é|a\"b|tab\there|new\nline||日本語|\\|\e|2", strs.join("|")
@@ -1608,7 +1608,7 @@ module ArrayTests
         3
       ] #: Array[Integer]
       assert_equal "[1, 2, 3]", multi.inspect
-      assert_equal "[1.5, -0.0]", "#{[1.5, -0.0]}"
+      assert_equal "[1.5, -0.0]", ([1.5, -0.0]).to_s
       w = %w[]
       assert_equal "[]", w.inspect
       assert_equal 0, w.size
@@ -1846,7 +1846,7 @@ module ArrayTests
       assert_equal "P1", pts.delete(Pt.new(1)).inspect
       assert_equal "[P2]", pts.inspect
       assert_equal "[P2]", pts.to_s
-      assert_equal "[P2]", "#{pts}"
+      assert_equal "[P2]", pts.to_s
       assert_nil pts.delete(Pt.new(9))
     end
 

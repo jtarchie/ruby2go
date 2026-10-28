@@ -220,7 +220,7 @@ module ActionView
       pairs = []
       params.each do |key, value|
         name = namespace.empty? ? key.to_s : "#{namespace}[#{key}]"
-        pairs << (value.nil? ? "#{url_encode(name)}" : "#{url_encode(name)}=#{url_encode(value.to_s)}")
+        pairs << (value.nil? ? url_encode(name).to_s : "#{url_encode(name)}=#{url_encode(value.to_s)}")
       end
       pairs.join("&")
     end

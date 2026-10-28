@@ -3037,13 +3037,13 @@ module ObjectTests
       assert_equal "CustomWidget", CmWidget.name
       assert_equal "ObjectTests::CmWidget", CmWidget.to_s
       assert_equal "ObjectTests::CmWidget", CmWidget.inspect
-      assert_equal "ObjectTests::CmWidget", "#{CmWidget}"
+      assert_equal "ObjectTests::CmWidget", (CmWidget).to_s
       assert_equal "[ObjectTests::CmWidget]", [CmWidget].inspect
       assert_equal "CustomWidget", CmWidget.new.class.name
       assert_equal "ObjectTests::CmGadget", CmGadget.name
       assert_equal "GadgetClass", CmGadget.to_s
       assert_equal "ObjectTests::CmGadget", CmGadget.inspect
-      assert_equal "GadgetClass", "#{CmGadget}"
+      assert_equal "GadgetClass", (CmGadget).to_s
     end
   end
 
@@ -3399,7 +3399,7 @@ module ObjectTests
       assert_equal "CustomWidget", SubWidget.new.class.name
       assert_equal "GadgetClass", MdGadget.to_s
       assert_equal "GadgetClass", SubGadget.to_s
-      assert_equal "GadgetClass", "#{SubGadget}"
+      assert_equal "GadgetClass", (SubGadget).to_s
       assert_equal "GadgetInspect", SubGadget.inspect
       assert_equal "[GadgetInspect]", [SubGadget].inspect
       d = MdDoc.new
@@ -3663,7 +3663,7 @@ module ObjectTests
       assert_equal "(-1, -2)", a.negate!.to_s
       assert_equal "[#<OpVec 1,2>, #<OpVec 3,-4>]", [a, b].inspect
       assert_equal "#<OpVec 1,2>", a.inspect
-      assert_equal "(1, 2)", "#{a}"
+      assert_equal "(1, 2)", a.to_s
       assert_equal "[[#<OpVec 1,2>]]", [[a]].inspect
       a.x = 10
       a[1] = -7
@@ -3688,8 +3688,8 @@ module ObjectTests
       assert_equal true, sh.inspect.start_with?("#<ObjectTests::Shown")
       assert_equal true, th.to_s.start_with?("#<ObjectTests::OpDeep::Thing")
       assert_equal true, [pl].inspect.start_with?("[#<ObjectTests::OpPlain")
-      assert_equal true, "#{pl}".start_with?("#<ObjectTests::OpPlain")
-      assert_equal "shown!", "#{sh}"
+      assert_equal true, pl.to_s.start_with?("#<ObjectTests::OpPlain")
+      assert_equal "shown!", sh.to_s
       c1 = Coin.new(5)
       assert_equal true, (c1 == Coin.new(5))
       assert_equal false, (c1 == Coin.new(6))
@@ -6558,7 +6558,7 @@ module ObjectTests
       s = ShStr.new("i", "t")
       assert_equal "i", s.inspect
       assert_equal "t", s.to_s
-      assert_equal "t", "#{s}"
+      assert_equal "t", s.to_s
       assert_equal %w[i t], s.to_a
       s.freeze
       begin
