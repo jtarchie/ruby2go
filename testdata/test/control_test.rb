@@ -869,9 +869,9 @@ def boom(out, kind)
   when 0 then raise ArgumentError, "bad arg"
   when 1 then raise "plain"
   when 2 then raise ControlTests::NotFound
-  when 3 then raise ControlTests::NotFound.new("built")
+  when 3 then raise ControlTests::NotFound, "built"
   when 4 then raise KeyError, "k"
-  when 5 then raise ControlTests::AppError.new
+  when 5 then raise ControlTests::AppError
   when 6 then raise ControlTests::ValidationError.new("name", "too short")
   when 7 then raise ControlTests::DefaultMsg
   when 8 then raise IndexError, ""
@@ -3262,7 +3262,7 @@ module ControlTests
       e2 = assert_raises(Blank) { raise Blank }
       assert_equal "ControlTests::Blank", e2.message
       assert_equal "#<ControlTests::Blank: ControlTests::Blank>", e2.inspect
-      e3 = assert_raises(WithCode) { raise WithCode.new(42) }
+      e3 = assert_raises(WithCode) { raise WithCode, 42 }
       assert_equal 42, e3.code
       assert_equal "code 42", e3.message
     end

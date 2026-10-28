@@ -117,7 +117,7 @@ module Surfguard
   # so the caller can tell a refusal from a lookup failure.
   def self.resolve_public_ips(host)
     addresses = resolve(host)
-    raise Unresolvable.new("No address for #{host}") if addresses.empty?
+    raise Unresolvable, "No address for #{host}" if addresses.empty?
 
     out = []
     addresses.each do |ip|

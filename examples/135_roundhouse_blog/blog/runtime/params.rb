@@ -85,8 +85,8 @@ module Params
   # which is how this gap announced itself in four tests.
   def self.require_key(params, key)
     value = params.fetch(key, "")
-    raise(ActionController::ParameterMissing.new(key)) if value.is_a?(String) && value.empty?
-    raise(ActionController::ParameterMissing.new(key)) unless params.key?(key)
+    raise ActionController::ParameterMissing, key if value.is_a?(String) && value.empty?
+    raise ActionController::ParameterMissing, key unless params.key?(key)
 
     value
   end
