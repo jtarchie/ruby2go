@@ -1237,7 +1237,7 @@ module DynamicTests
       assert_equal "hi", p1.send(:hello)
       assert_equal "hi", p1.public_send(:hello)
       assert_equal 42, (p1.send(:twice, 21))
-      assert_equal -8, (p1.public_send(:twice, -4))
+      assert_equal(-8, (p1.public_send(:twice, -4)))
       assert_equal "hi", p1.__send__(:hello)
       assert_equal "hidden", p1.send(:hidden)
       assert_equal "s3cret", c.send(:secret)
@@ -1249,7 +1249,7 @@ module DynamicTests
       assert_equal 8, (5.send(:+, 3))
       assert_equal "ABC", "abc".send(:upcase)
       assert_equal [1, 2, 3], ([3, 1, 2].send(:sort))
-      assert_equal -10, (10.public_send(:-, 20))
+      assert_equal(-10, (10.public_send(:-, 20)))
     end
 
     def test_send_and_respond_to_on_self

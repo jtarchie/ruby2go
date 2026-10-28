@@ -444,7 +444,7 @@ module HashTests
       assert_equal "<p>", (tag("p", {}))
       assert_equal "<i é=\"ü\">", (tag("i", "é": "ü"))
       assert_equal 3, (hash_total("a" => 1, "b" => 2))
-      assert_equal -5, (hash_total("z" => -5))
+      assert_equal(-5, (hash_total("z" => -5)))
       assert_equal 0, hash_total({})
       assert_equal "{port: 8080, host: \"h\", on: true, none: nil, list: [1, 2]}", (loose(port: 8080, host: "h", on: true, none: nil, list: [1, 2]))
       assert_equal 12, (hash_scaled(3, by: 4))
@@ -542,7 +542,7 @@ module HashTests
       assert_equal false, h.include?("x")
       assert_equal true, h.include?("d")
       assert_equal 3, h.fetch("c")
-      assert_equal -1, (h.fetch("zz", -1))
+      assert_equal(-1, (h.fetch("zz", -1)))
       assert_equal 3, (h.fetch("c", 99))
       assert_equal 0, (h.fetch("zz", 0))
       r = (h["e"] = 5)
@@ -1252,7 +1252,7 @@ module HashTests
           rescue StandardError
             -1
           end
-      assert_equal -1, x
+      assert_equal(-1, x)
       # formerly the uncaught KeyError that ended the file
       e = assert_raises(KeyError) { ints.fetch(42) }
       assert_equal "key not found: 42", e.message
@@ -1513,7 +1513,7 @@ module HashTests
       assert_equal "{\"b\" => 1}", ((nest.fetch("a", {}))).inspect
       assert_equal 0, count_or({})
       assert_equal 1, (count_or({ "a" => 1 }))
-      assert_equal -1, count_or
+      assert_equal(-1, count_or)
       assert_equal "{a: 1}", (opts_or(a: 1))
       assert_equal "none", opts_or
       assert_equal "{}", (hash_maybe(true)).inspect
@@ -1726,7 +1726,7 @@ module HashTests
       assert_equal "other 1", hash_untyped_kind(1)
       assert_equal "hash 0 []", hash_untyped_kind({})
       assert_equal 2, size_if_hash(th)
-      assert_equal -1, size_if_hash("s")
+      assert_equal(-1, size_if_hash("s"))
       u["c"] = 3
       assert_equal "{\"a\" => 1, \"b\" => 2, \"c\" => 3}", (th).inspect
     end

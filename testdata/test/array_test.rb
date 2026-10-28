@@ -687,7 +687,7 @@ module ArrayTests
       big = [9223372036854775807, -9223372036854775808, 0] #: Array[Integer]
       assert_equal [9223372036854775807, -9223372036854775808, 0], big
       assert_equal 9223372036854775807, big[0]
-      assert_equal -9223372036854775808, big.fetch(1)
+      assert_equal(-9223372036854775808, big.fetch(1))
       grid = [[1], [2]] #: Array[Array[Integer]]
       gcopy = grid.dup
       gcopy[0]&.push(9)
@@ -908,7 +908,7 @@ module ArrayTests
       sq = [[1, 2, 3], [4, 5, 6]] #: Array[Array[Integer]]
       assert_equal 11, (find_cell(sq, 5))
       assert_equal 0, (find_cell(sq, 1))
-      assert_equal -1, (find_cell(sq, 9))
+      assert_equal(-1, (find_cell(sq, 9)))
       out = []
       sq.each do |row|
         row.each do |v|
@@ -1230,7 +1230,7 @@ module ArrayTests
       assert_equal 1, cd.min
       assert_equal 4, cd.max
       assert_equal 24, (cd.reduce(1) { |a, n| a * n })
-      assert_equal -10, (cd.inject(0) { |a, n| a - n })
+      assert_equal(-10, (cd.inject(0) { |a, n| a - n }))
       assert_equal [4, 3], cd.first(2)
       assert_equal [], cd.take(0)
       assert_equal [4, 3, 2, 1], cd.first(9)
@@ -1380,7 +1380,7 @@ module ArrayTests
       assert_equal [5, 0, 12, 7], nums.reject(&:negative?)
       assert_equal 12, (nums.find { |n| n > 6 })
       assert_nil(nums.find { |n| n > 100 })
-      assert_equal -3, nums.detect(&:negative?)
+      assert_equal(-3, nums.detect(&:negative?))
       assert_nil(none.detect { |n| n > 0 })
       assert_equal true, (nums.any? { |n| n > 10 })
       assert_equal false, (nums.any? { |n| n > 100 })
@@ -1434,7 +1434,7 @@ module ArrayTests
       assert_equal [], (none.sort)
       assert_equal "[10.0, 2.5, 0.1, -1.0]", ((floats.sort_by { |f| -f })).inspect
       assert_equal ["apple", "banana", "fig", "fig", "kiwi", "pear", "Äpfel"], words.sort_by(&:downcase)
-      assert_equal -3, nums.min
+      assert_equal(-3, nums.min)
       assert_equal 12, nums.max
       assert_nil none.min
       assert_nil none.max
@@ -1488,7 +1488,7 @@ module ArrayTests
       doubled = top * 2 if top
       assert_equal 18, doubled
       assert_equal 10, (odd[1] || -1) + 1
-      assert_equal -1, (none[0] || -1)
+      assert_equal(-1, (none[0] || -1))
       assert_equal 4, odd.first(1)[0]
       assert_equal 9, odd.sort.last
       assert_equal "4", (odd.map { |n| n.to_s }.max_by(&:size))
@@ -1648,7 +1648,7 @@ module ArrayTests
       assert_equal [1, 1], (find_pos(grid, 5))
       assert_nil(find_pos(grid, 9))
       assert_equal 0, count_of([])
-      assert_equal -1, count_of(nil)
+      assert_equal(-1, count_of(nil))
       assert_equal 1, count_of([7])
       groups = { "odd" => [1] } #: Hash[String, Array[Integer]]
       assert_equal 0, (groups.fetch("even", []).size)
@@ -1955,7 +1955,7 @@ module ArrayTests
       assert_equal false, (pair == [2, "one"])
       assert_equal false, (pair != [1, "one"])
       assert_equal true, (pair != [1, "two"])
-      assert_equal -1, ([1, "a"] <=> [1, "b"])
+      assert_equal(-1, ([1, "a"] <=> [1, "b"]))
       assert_equal 1, ([2, "a"] <=> [1, "z"])
       assert_equal 0, ([1, "a"] <=> [1, "a"])
       assert_equal "seven=7", (render([7, "seven"]))
@@ -1967,7 +1967,7 @@ module ArrayTests
       assert_equal 3, q
       assert_equal 2, r
       q, r = array_divmod2(-17, 5)
-      assert_equal -4, q
+      assert_equal(-4, q)
       assert_equal 3, r
       assert_equal [0, 0], (array_divmod2(0, 3))
       assert_equal [-3, -3], (array_divmod2(9, -4))
@@ -1978,7 +1978,7 @@ module ArrayTests
       assert_equal ["", 0, true], describe_str("")
       assert_equal ["日本", 2, false], describe_str("日本")
       lo, hi = bounds([3, 9, -2])
-      assert_equal -2, lo
+      assert_equal(-2, lo)
       assert_equal 9, hi
       lo, hi = bounds([])
       assert_nil lo

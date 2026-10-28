@@ -96,7 +96,7 @@ module FfiTests
       mp = FFI::MemoryPointer.new(:int, 4)
       mp.write_array_of_int([1, -2, 3, -4])
       assert_equal [1, -2, 3, -4], mp.read_array_of_int(4)
-      assert_equal -2, (mp + 4).read_int
+      assert_equal(-2, (mp + 4).read_int)
       assert_equal 3, mp.get_int(8)
       mp.put_int(8, 99)
       assert_equal 99, mp.get_int(8)
@@ -150,7 +150,7 @@ module FfiTests
       assert_equal [-3, 1 << 40, [7, 8, 9], 1.5], [pair[:a], pair[:b], pair[:c].to_a, pair[:f]]
       assert_equal 7, pair.pointer.get_uint8(16)
       other = Lib::Pair.new(pair.pointer)
-      assert_equal -3, other[:a]
+      assert_equal(-3, other[:a])
     end
 
     def test_nested_struct
@@ -181,7 +181,7 @@ module FfiTests
     end
 
     def test_last_error
-      assert_equal -1, Lib.chdir("/nonexistent/dir/for/ffi")
+      assert_equal(-1, Lib.chdir("/nonexistent/dir/for/ffi"))
       assert_equal 2, FFI.errno
       assert_equal 2, FFI::LastError.error
     end

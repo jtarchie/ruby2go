@@ -2573,14 +2573,14 @@ module ObjectTests
       a = Account.new("ann")
       assert_equal "ann", a.owner
       assert_equal 0, a.balance
-      assert_equal -100, a.limit
+      assert_equal(-100, a.limit)
       a.deposit(50).deposit(25)
       assert_equal 75, a.balance
       assert_equal [50, 25], a.history
       assert_equal true, a.withdraw(100)
-      assert_equal -25, a.balance
+      assert_equal(-25, a.balance)
       assert_equal false, a.withdraw(80)
-      assert_equal -25, a.balance
+      assert_equal(-25, a.balance)
       assert_equal [50, 25, -100], a.history
       assert_equal "(none)", a.note_text
       a.note = "vip"
@@ -2595,7 +2595,7 @@ module ObjectTests
       a.balance = 0
       a.limit = a.limit + 5
       assert_equal 0, a.balance
-      assert_equal -95, a.limit
+      assert_equal(-95, a.limit)
       assert_equal "ann:0", a.summary
       a.deposit(1)
       assert_equal "ann:0", a.summary
@@ -2675,7 +2675,7 @@ module ObjectTests
       c.n += 3
       c.n *= 4
       c.drop(20)
-      assert_equal -8, c.n
+      assert_equal(-8, c.n)
       c.label ||= "first"
       c.label ||= "second"
       assert_equal "first", c.label
@@ -2711,7 +2711,7 @@ module ObjectTests
       assert_equal true, (v1 <= v1)
       assert_equal true, (v3 > v2)
       assert_equal false, (v1 >= v3)
-      assert_equal -1, (v1 <=> v2)
+      assert_equal(-1, (v1 <=> v2))
       assert_equal 1, (v3 <=> v1)
       assert_equal 0, (v1 <=> Version.new(1, 2))
       assert_equal true, (v2.between?(v1, v3))
@@ -3068,7 +3068,7 @@ module ObjectTests
       e = assert_raises(ArgumentError) { [Bonus.new(1.0), Bonus.new(z / z)].max }
       assert_equal "comparison of ObjectTests::Bonus with ObjectTests::Bonus failed", e.message
       x = 1.5 #: Float
-      assert_equal -1, (x <=> 2)
+      assert_equal(-1, (x <=> 2))
       assert_equal 1, (2 <=> x)
       assert_equal 0, ((x <=> 2.0) || 0) + 1
     end
@@ -3169,7 +3169,7 @@ module ObjectTests
   class ObjectExtendBlockTest < Minitest::Test
     def test_section_0
       assert_equal 8, EbWidget.twice(4)
-      assert_equal -2, EbGadget.twice(-1)
+      assert_equal(-2, EbGadget.twice(-1))
       assert_equal 0, Tools.twice(0)
       assert_equal "I am ObjectTests::EbWidget", EbWidget.describe
       assert_equal "I am ObjectTests::EbGadget", EbGadget.describe
@@ -3237,7 +3237,7 @@ module ObjectTests
       assert_equal 21, m.scale(2)
       assert_equal 27, l.scale(2)
       assert_equal 0, b.scale(0)
-      assert_equal -39, m.scale(-4)
+      assert_equal(-39, m.scale(-4))
       assert_equal "hi a!", b.greet("a")
       assert_equal "HI A?", m.greet("a")
       assert_equal "HI A.", (m.greet("a", "."))
@@ -3278,7 +3278,7 @@ module ObjectTests
       assert_equal 0, KidSummer.new.total
       assert_equal 2, Summer.new(1).scaled
       assert_equal 2, KidSummer.new(1).scaled
-      assert_equal -10, (KidSummer.new(1, -3).kid_scaled)
+      assert_equal(-10, (KidSummer.new(1, -3).kid_scaled))
       narrowed = [] #: Array[String]
       all.each do |x|
         if x.is_a?(InLeaf)
@@ -3534,7 +3534,7 @@ module ObjectTests
       assert_equal ["alpha", "beta"], MoRegistry.first(2)
       assert_equal ["alpha", "gamma", "beta"], (MoRegistry.sort_by { |s| -s.size })
       assert_equal 42, Util.double(21)
-      assert_equal -12, Util.quad(-3)
+      assert_equal(-12, Util.quad(-3))
       assert_equal 0, Util.quad(0)
       assert_equal "ObjectTests::Util", (Util).to_s
       assert_equal "ObjectTests::Util", Util.name
@@ -3610,7 +3610,7 @@ module ObjectTests
       assert_equal [1, 2, 3, 4], Outer::LIST
       assert_equal 10, Outer::Derived.new.list_sum
       assert_equal [1, -2], Outer::Factory.make.map(&:v)
-      assert_equal -1, Outer::Factory.make.fetch(0).plus(Outer::Factory.make.fetch(1)).v
+      assert_equal(-1, Outer::Factory.make.fetch(0).plus(Outer::Factory.make.fetch(1)).v)
       assert_equal 3, Outer::Factory.build(Outer::Derived).scale
       assert_equal "ObjectTests::Outer::Derived", (Outer::Factory.build(Outer::Derived).class).to_s
       ex = Expr::Add.new(Expr::Num.new(1), Expr::Add.of(2, 3))
@@ -3671,7 +3671,7 @@ module ObjectTests
       bag << 4
       assert_equal 10, bag.sum
       assert_equal 4, (+bag)
-      assert_equal -4, (~bag)
+      assert_equal(-4, (~bag))
       assert_equal [2, 4], bag.evens
       pl = OpPlain.new
       sh = Shown.new
@@ -3734,7 +3734,7 @@ module ObjectTests
       origin = SdPoint.new(0, 0)
       pt = SdPoint.new(3, -4)
       assert_equal 3, pt.x
-      assert_equal -4, pt.y
+      assert_equal(-4, pt.y)
       assert_equal "#<struct ObjectTests::SdPoint x=3, y=-4>", (pt).inspect
       assert_equal "#<struct ObjectTests::SdPoint x=3, y=-4>", pt.to_s
       assert_equal "#<struct ObjectTests::SdPoint x=0, y=0>", (origin).inspect

@@ -146,7 +146,7 @@ module StringTests
     def test_to_i_reads_an_optional
       assert_equal 42, "42abc".to_i
       assert_equal 42, " 42".to_i
-      assert_equal -7, "-7".to_i
+      assert_equal(-7, "-7".to_i)
       assert_equal 5, "+5".to_i
       assert_equal 0, "abc".to_i
       assert_equal 0, "".to_i
@@ -159,7 +159,7 @@ module StringTests
       assert_equal 0, "-0".to_i
       assert_equal 3, "3.9".to_i
       assert_equal 9223372036854775807, "9223372036854775807".to_i
-      assert_equal -9223372036854775808, "-9223372036854775808".to_i
+      assert_equal(-9223372036854775808, "-9223372036854775808".to_i)
       assert_equal 43, ("42".to_i + 1)
       assert_equal 12, "12 34".to_i
     end
@@ -171,11 +171,11 @@ module StringTests
       assert_equal 1000.0, "1e3".to_f
       assert_equal 0.5, ".5".to_f
       assert_equal 2.25, "  2.25  ".to_f
-      assert_equal -0.0, "-0.0".to_f
+      assert_equal(-0.0, "-0.0".to_f)
       assert_equal 0.0, "0x1A".to_f
       assert_equal 0.0, "".to_f
       assert_equal 1.0, "1.".to_f
-      assert_equal -0.0015, "-1.5e-3".to_f
+      assert_equal(-0.0015, "-1.5e-3".to_f)
       assert_equal 10.0, "10".to_f
       assert_equal 1000.5, "1_000.5".to_f
       assert_equal 0.30000000000000004, ("0.1".to_f + "0.2".to_f)
@@ -418,12 +418,12 @@ B
       assert_equal 35, "z".to_i(36)
       assert_equal 12, "12abc".to_i(10)
       assert_equal 255, "ff".hex
-      assert_equal -26, "-0x1A".hex
+      assert_equal(-26, "-0x1A".hex)
       assert_equal 511, "777".oct
       assert_equal 3, "0b11".oct
       assert_equal 0, "junk".hex
       assert_equal 9223372036854775807, "7fffffffffffffff".hex
-      assert_equal -9223372036854775807, "-7fffffffffffffff".hex
+      assert_equal(-9223372036854775807, "-7fffffffffffffff".hex)
       assert_equal 9223372036854775807, "777777777777777777777".oct
       assert_equal "ba", "az".succ
       assert_equal "aaa", "zz".succ
@@ -438,7 +438,7 @@ B
       assert_equal "abbbccc", "aaabbbccc".squeeze("a")
       assert_equal "misisipi", "mississippi".squeeze("sp")
       assert_equal "hELLO wORLD", "Hello World".swapcase
-      assert_equal -1, "abc".casecmp("ABD")
+      assert_equal(-1, "abc".casecmp("ABD"))
       assert_equal true, "abc".casecmp?("ABC")
       assert_equal false, "abc".casecmp?("abd")
       assert_equal true, "hello".start_with?("x", "he")
@@ -560,10 +560,10 @@ B
     # Decision 23: Symbol is its own type, never equal to the String of the same name.
     def test_decision_23_symbol_is_its
       a = :apple
-      assert_equal -1, (a <=> :banana)
+      assert_equal(-1, (a <=> :banana))
       assert_equal 0, (a <=> :apple)
       assert_equal 1, (:b <=> :a)
-      assert_equal -1, (:a <=> :ab)
+      assert_equal(-1, (:a <=> :ab))
       assert_equal true, (a == :apple)
       assert_equal false, (a == "apple")
       assert_equal true, (a != :x)
@@ -847,7 +847,7 @@ B
       assert_equal true, s == :sym
       assert_equal false, (s == "sym")
       assert_equal :sym, s.to_sym
-      assert_equal -1, (s <=> :syn)
+      assert_equal(-1, (s <=> :syn))
       assert_equal "Hello sym", "#{u} #{s}"
     end
 
@@ -1116,7 +1116,7 @@ B
       assert_equal 1, (s_cmp <=> "a")
       assert_equal 0, (s_cmp <=> "b")
       y_cmp = string_ident_cmp(:b)
-      assert_equal -1, (y_cmp <=> :c)
+      assert_equal(-1, (y_cmp <=> :c))
     end
 
     # case mapping follows Unicode special casing
@@ -1176,7 +1176,7 @@ B
       assert_equal "c", e
       assert_equal "fallback", (s[7] || "fallback")
       x = s.index("q")
-      assert_equal -1, x ? x + 1 : -1
+      assert_equal(-1, x ? x + 1 : -1)
       assert_equal "A", string_label(s[0])
       assert_equal "none", string_label(s[3])
     end

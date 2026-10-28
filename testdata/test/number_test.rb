@@ -721,8 +721,8 @@ module NumberTests
       assert_equal 3, m.plus(1)
       assert_equal 10, m[1]
       assert_equal 100, m.idx(1)
-      assert_equal -1, (-m)
-      assert_equal -2, m.neg
+      assert_equal(-1, (-m))
+      assert_equal(-2, m.neg)
       assert_equal 10, (m / 10)
       assert_equal 100, m.div(10)
       assert_equal 9, (m**3)
@@ -839,8 +839,8 @@ module NumberTests
     def test_float_round_rounds_half_away
       assert_equal 3, 2.5.round
       assert_equal 1, 0.5.round
-      assert_equal -3, -2.5.round
-      assert_equal -1, -0.5.round
+      assert_equal(-3, -2.5.round)
+      assert_equal(-1, -0.5.round)
       assert_equal 2, 1.5.round
       assert_equal 4, 3.5.round
     end
@@ -926,7 +926,7 @@ module NumberTests
 
     # a parenthesized literal as a receiver
     def test_a_parenthesized_literal_as_a
-      assert_equal -8, ((-2)**3)
+      assert_equal(-8, ((-2)**3))
       assert_equal 3, (3)
       assert_equal "2.5", ((2.5)).inspect
       assert_equal 0, (-0)
@@ -941,10 +941,10 @@ module NumberTests
     def test_cmp_on_untyped_numbers
       cmp_a = number_ident_cmp(3)
       cmp_b = number_ident_cmp(4)
-      assert_equal -1, (cmp_a <=> cmp_b)
+      assert_equal(-1, (cmp_a <=> cmp_b))
       assert_equal 0, (number_ident_cmp(2.5) <=> number_ident_cmp(2.5))
       assert_equal 1, (cmp_a <=> 1)
-      assert_equal -1, (number_ident_cmp(1.5) <=> 2.0)
+      assert_equal(-1, (number_ident_cmp(1.5) <=> 2.0))
     end
 
     # #hash on untyped values matches the typed hash
@@ -981,7 +981,7 @@ module NumberTests
       assert_equal 5, r
       assert_nil q
       assert_equal 5, (r || 0)
-      assert_equal -1, (q || -1)
+      assert_equal(-1, (q || -1))
       assert_equal true, q.nil?
       assert_equal false, r.nil?
       assert_equal 6, r&.succ
@@ -1088,7 +1088,7 @@ module NumberTests
       assert_equal "Hi", ([72, 105].map(&:chr).join)
       assert_equal "5+3+8+1", ints.map(&:to_s).join("+")
       assert_equal [1, 3], ints.sort.first(2)
-      assert_equal -3, floats.min.floor
+      assert_equal(-3, floats.min.floor)
       assert_equal 9, ints.max.succ
     end
   end
@@ -1118,7 +1118,7 @@ module NumberTests
       assert_equal 8, (a.clamp(8, 10))
       assert_equal 7, (a.clamp(1, 10))
       assert_equal 7, (a.clamp(7, 7))
-      assert_equal -3, (b.clamp(-3, 3))
+      assert_equal(-3, (b.clamp(-3, 3)))
       assert_equal "1.0", ((x.clamp(0.0, 1.0))).inspect
       assert_equal "3.0", ((x.clamp(3.0, 4.0))).inspect
       assert_equal "2.5", ((x.clamp(1.0, 4.0))).inspect
@@ -1130,7 +1130,7 @@ module NumberTests
       assert_equal [-20, -1, 0, 3, 3, 10], ints.sort
       assert_equal "[-3.25, -0.5, 0.0, 1.0, 2.5, 1.0e+20]", (floats.sort).inspect
       assert_equal 10, ints.max
-      assert_equal -20, ints.min
+      assert_equal(-20, ints.min)
       assert_equal "1.0e+20", (floats.max).inspect
       assert_equal "-3.25", (floats.min).inspect
       assert_equal [10, 3, 3, 0, -1, -20], ints.sort.reverse
@@ -1227,7 +1227,7 @@ module NumberTests
       assert_equal "0.0", ((1.0 / inf)).inspect
 
       # <=> and relational operators
-      assert_equal -1, (x <=> 3.0)
+      assert_equal(-1, (x <=> 3.0))
       assert_equal 0, (x <=> 2.5)
       assert_equal 1, (x <=> y)
       assert_equal 0, (z <=> -z)
@@ -1264,28 +1264,28 @@ module NumberTests
 
       # to_i truncates, floor and ceil return Integer
       assert_equal 2, x.to_i
-      assert_equal -1, y.to_i
+      assert_equal(-1, y.to_i)
       assert_equal 1, 1.99.to_i
-      assert_equal -1, -1.99.to_i
+      assert_equal(-1, -1.99.to_i)
       assert_equal 0, -0.5.to_i
       assert_equal 10000000000, 1e10.to_i
       assert_equal 2, x.floor
-      assert_equal -2, y.floor
+      assert_equal(-2, y.floor)
       assert_equal 3, 3.0.floor
-      assert_equal -3, -3.0.floor
-      assert_equal -1, -0.5.floor
+      assert_equal(-3, -3.0.floor)
+      assert_equal(-1, -0.5.floor)
       assert_equal 3, x.ceil
-      assert_equal -1, y.ceil
+      assert_equal(-1, y.ceil)
       assert_equal 3, 3.0.ceil
-      assert_equal -3, -3.0.ceil
+      assert_equal(-3, -3.0.ceil)
       assert_equal 0, -0.5.ceil
       assert_equal 1, 0.1.ceil
 
       # round (halves are in number_bug_float_round_half)
       assert_equal 1, 1.4.round
       assert_equal 2, 1.6.round
-      assert_equal -1, -1.4.round
-      assert_equal -2, -1.6.round
+      assert_equal(-1, -1.4.round)
+      assert_equal(-2, -1.6.round)
       assert_equal 3, 3.0.round
       assert_equal 2, 2.49999.round
       assert_equal 0, 0.2.round
@@ -1371,37 +1371,37 @@ module NumberTests
 
       # + - * and unary minus
       assert_equal 10, (a + 3)
-      assert_equal -3, (a - 10)
-      assert_equal -21, (a * -3)
+      assert_equal(-3, (a - 10))
+      assert_equal(-21, (a * -3))
       assert_equal 0, (z * b)
-      assert_equal -14, (b + b)
-      assert_equal -7, (-a)
+      assert_equal(-14, (b + b))
+      assert_equal(-7, (-a))
       assert_equal 7, (-b)
       assert_equal 0, (-z)
       assert_equal 7, (- -a)
-      assert_equal -4, (-2**2)
+      assert_equal(-4, (-2**2))
       assert_equal 2, (-2.abs)
 
       # / floors toward negative infinity
       assert_equal 3, (a / 2)
-      assert_equal -4, (b / 2)
-      assert_equal -4, (a / -2)
+      assert_equal(-4, (b / 2))
+      assert_equal(-4, (a / -2))
       assert_equal 3, (b / -2)
       assert_equal 0, (z / 5)
-      assert_equal -2, (-6 / 3)
-      assert_equal -2, (6 / -3)
+      assert_equal(-2, (-6 / 3))
+      assert_equal(-2, (6 / -3))
       assert_equal 0, (1 / 7)
-      assert_equal -1, (-1 / 7)
+      assert_equal(-1, (-1 / 7))
 
       # % takes the divisor's sign
       assert_equal 1, (a % 3)
       assert_equal 2, (b % 3)
-      assert_equal -2, (a % -3)
-      assert_equal -1, (b % -3)
+      assert_equal(-2, (a % -3))
+      assert_equal(-1, (b % -3))
       assert_equal 0, (-6 % 3)
       assert_equal 0, (z % 7)
       assert_equal 6, (-1 % 7)
-      assert_equal -6, (1 % -7)
+      assert_equal(-6, (1 % -7))
 
       # ** with non-negative exponents
       assert_equal 1024, (2**10)
@@ -1409,7 +1409,7 @@ module NumberTests
       assert_equal 1, (5**0)
       assert_equal 0, (0**3)
       assert_equal 1, (1**100)
-      assert_equal -343, (b**3)
+      assert_equal(-343, (b**3))
       assert_equal 49, (b**2)
       assert_equal 4611686018427387904, (2**62)
 
@@ -1419,15 +1419,15 @@ module NumberTests
       assert_equal 0, z.abs
       assert_equal 8, a.succ
       assert_equal 6, a.pred
-      assert_equal -6, b.succ
-      assert_equal -1, z.pred
+      assert_equal(-6, b.succ)
+      assert_equal(-1, z.pred)
       assert_equal 0, -1.succ
 
       # <=> and relational operators
-      assert_equal -1, (a <=> 8)
+      assert_equal(-1, (a <=> 8))
       assert_equal 0, (a <=> 7)
       assert_equal 1, (a <=> 6)
-      assert_equal -1, (b <=> a)
+      assert_equal(-1, (b <=> a))
       assert_equal 1, (a <=> b)
       assert_equal true, (a < 8)
       assert_equal false, (a < 7)
@@ -1473,7 +1473,7 @@ module NumberTests
 
       # to_i, to_f, to_s, inspect, hash
       assert_equal 7, a.to_i
-      assert_equal -7, b.to_i
+      assert_equal(-7, b.to_i)
       assert_equal "7.0", (a.to_f).inspect
       assert_equal "-7.0", (b.to_f).inspect
       assert_equal "0.0", (z.to_f).inspect
@@ -1484,7 +1484,7 @@ module NumberTests
       assert_equal "7", a.inspect
       assert_equal "-7", b.inspect
       assert_equal 7, a
-      assert_equal -7, b
+      assert_equal(-7, b)
       assert_equal 0, z
       assert_equal "7|-7|0", "#{a}|#{b}|#{z}"
       assert_equal true, (a.hash == 7.hash)
@@ -1506,11 +1506,11 @@ module NumberTests
       assert_equal 10, 0b1010
       assert_equal 15, 0o17
       assert_equal 15, 0o17
-      assert_equal -16, -0x10
+      assert_equal(-16, -0x10)
       assert_equal 0, 0
       assert_equal 9223372036854775807, 9_223_372_036_854_775_807
-      assert_equal -9223372036854775807, -9_223_372_036_854_775_807
-      assert_equal -9223372036854775808, (-9_223_372_036_854_775_807 - 1)
+      assert_equal(-9223372036854775807, -9_223_372_036_854_775_807)
+      assert_equal(-9223372036854775808, (-9_223_372_036_854_775_807 - 1))
 
       # op-assign
       x = 10
@@ -1522,9 +1522,9 @@ module NumberTests
       assert_equal 1, x
       x = -3
       x **= 3
-      assert_equal -27, x
+      assert_equal(-27, x)
       x /= 2
-      assert_equal -14, x
+      assert_equal(-14, x)
 
       # Kernel and BasicObject methods on Integer
       assert_equal 14, (a.then { |v| v * 2 })
@@ -1595,7 +1595,7 @@ module NumberTests
       # return from inside an iterator
       assert_equal 8, number_first_square_over(50)
       assert_equal 1, number_first_square_over(0)
-      assert_equal -1, number_first_square_over(99_999)
+      assert_equal(-1, number_first_square_over(99_999))
       assert_equal 0, triangle(0)
       assert_equal 1, triangle(1)
       assert_equal 5050, triangle(100)
@@ -1723,43 +1723,43 @@ module NumberTests
       t = -2 #: Integer
       o = -1 #: Integer
       assert_equal 9223372036854775807, (m + 0)
-      assert_equal -9223372036854775808, (n + 0)
+      assert_equal(-9223372036854775808, (n + 0))
       assert_equal 9223372036854775807, (m - 0)
-      assert_equal -9223372036854775808, (n + 1) - 1
-      assert_equal -1, (m + n)
-      assert_equal -1, (n - -m)
-      assert_equal -9223372036854775807, (0 - m)
+      assert_equal(-9223372036854775808, (n + 1) - 1)
+      assert_equal(-1, (m + n))
+      assert_equal(-1, (n - -m))
+      assert_equal(-9223372036854775807, (0 - m))
       assert_equal 9223372030926249001, (3_037_000_499 * 3_037_000_499)
-      assert_equal -9223372030926249001, (-3_037_000_499 * 3_037_000_499)
-      assert_equal -9223372036854775808, (-4_611_686_018_427_387_904 * 2)
+      assert_equal(-9223372030926249001, (-3_037_000_499 * 3_037_000_499))
+      assert_equal(-9223372036854775808, (-4_611_686_018_427_387_904 * 2))
       assert_equal 9223372036854775806, (4_611_686_018_427_387_903 * 2)
-      assert_equal -9223372036854775808, (n * 1)
-      assert_equal -9223372036854775807, (m * -1)
-      assert_equal -9223372036854775807, (-1 * m)
+      assert_equal(-9223372036854775808, (n * 1))
+      assert_equal(-9223372036854775807, (m * -1))
+      assert_equal(-9223372036854775807, (-1 * m))
       assert_equal 4611686016279904256, (2_147_483_648 * 2_147_483_647)
       assert_equal 4611686018427387904, (-2_147_483_648 * -2_147_483_648)
       assert_equal 4611686018427387904, (1_099_511_627_776 * 4_194_304)
-      assert_equal -9223372036854775808, (-1_099_511_627_776 * 8_388_608)
+      assert_equal(-9223372036854775808, (-1_099_511_627_776 * 8_388_608))
       assert_equal 4611686018427387904, (2**62)
-      assert_equal -9223372036854775808, (t**63)
+      assert_equal(-9223372036854775808, (t**63))
       assert_equal 4052555153018976267, (3**39)
       assert_equal 1000000000000000000, (10**18)
-      assert_equal -27, (t - 1)**3
+      assert_equal(-27, (t - 1)**3)
       assert_equal 1, (7**0)
       assert_equal 1, (1**1_000_000_000_000)
-      assert_equal -1, (o**1_000_000_000_001)
+      assert_equal(-1, (o**1_000_000_000_001))
       assert_equal 1, (o**-4)
-      assert_equal -1, (o**-3)
+      assert_equal(-1, (o**-3))
       assert_equal 1, (1**-5)
       assert_equal 9223372036854775807, (-m).abs
       assert_equal 9223372036854775807, m.pred.succ
-      assert_equal -9223372036854775808, (n / 1)
-      assert_equal -4611686018427387904, (n / 2)
+      assert_equal(-9223372036854775808, (n / 1))
+      assert_equal(-4611686018427387904, (n / 2))
       assert_equal 0, (n % -1)
       assert_equal 9223372036854775807, (-m / -1)
       assert_equal 9200000000000000000, 9.2e18.to_i
-      assert_equal -9200000000000000000, -9.2e18.floor
-      assert_equal -9223372036854775808, "-9223372036854775808".to_i
+      assert_equal(-9200000000000000000, -9.2e18.floor)
+      assert_equal(-9223372036854775808, "-9223372036854775808".to_i)
       assert_equal 9223372036854775807, "9223372036854775807".to_i
     end
 
@@ -1771,7 +1771,7 @@ module NumberTests
       assert_equal 0, 0.lcm(5)
       assert_equal 6, (10.pow(3, 7))
       assert_equal 81, 3.pow(4)
-      assert_equal -5, (2.pow(10, -7))
+      assert_equal(-5, (2.pow(10, -7)))
       assert_equal [4, 3, 2, 1], 1234.digits
       assert_equal [15, 15], 255.digits(16)
       assert_equal [0], 0.digits
@@ -1780,7 +1780,7 @@ module NumberTests
       assert_equal [3, 1], 7.divmod(2)
       assert_equal [-4, 1], -7.divmod(2)
       assert_equal 3, 7.div(2)
-      assert_equal -1, -7.remainder(2)
+      assert_equal(-1, -7.remainder(2))
       assert_equal 1, -7.modulo(2)
       assert_equal 8, 255.bit_length
       assert_equal 0, -1.bit_length
@@ -1804,7 +1804,7 @@ module NumberTests
       assert_equal "3.15", (3.14159.ceil(2)).to_s
       assert_equal "-3.2", (-3.14159.floor(1)).to_s
       assert_equal 2, 2.5.truncate
-      assert_equal -2, -2.5.truncate
+      assert_equal(-2, -2.5.truncate)
       assert_equal "0.7000000000000002", ((3.7 % 1)).to_s
       assert_equal "0.2999999999999998", ((-3.7 % 1)).to_s
       assert_equal "-0.5", ((7.5 % -2.0)).to_s
@@ -1812,7 +1812,7 @@ module NumberTests
       assert_equal "3.5", (7.0.fdiv(2.0)).to_s
       assert_equal true, 1.0.finite?
       assert_equal 1, (1.0 / 0).infinite?
-      assert_equal -1, (-1.0 / 0).infinite?
+      assert_equal(-1, (-1.0 / 0).infinite?)
       assert_nil 1.0.infinite?
       assert_equal false, 1.5.integer?
       assert_equal "0.1", (0.1.floor(1)).to_s
@@ -1843,7 +1843,7 @@ module NumberTests
       assert_equal false, (a == b)
       assert_equal false, (a == 7)
       assert_equal 1, (a <=> b)
-      assert_equal -1, (b <=> a)
+      assert_equal(-1, (b <=> a))
       assert_equal 0, (a <=> Num.new(7))
       assert_equal false, (a < b)
       assert_equal true, (a <= a)
@@ -1881,7 +1881,7 @@ module NumberTests
       assert_equal 3, 1.+(2)
       assert_equal 5, (7.send(:-, 2))
       assert_equal "5.0", ((2.5.public_send(:*, 2.0))).inspect
-      assert_equal -1, (3.send(:<=>, 4))
+      assert_equal(-1, (3.send(:<=>, 4)))
       assert_equal 2, (6.send(:%, 4))
       assert_equal 32, (2.send(:**, 5))
       assert_equal true, (1.send(:==, 1.0))
@@ -1895,7 +1895,7 @@ module NumberTests
   class NumberReopenTest < Minitest::Test
     def test_reopened_integer_and_float
       assert_equal 8, 4.double
-      assert_equal -6, -3.double
+      assert_equal(-6, -3.double)
       assert_equal true, 12.divisible_by?(4)
       assert_equal false, 12.divisible_by?(5)
       assert_equal 1, 0.factorial
