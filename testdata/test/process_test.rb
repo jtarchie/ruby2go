@@ -19,12 +19,10 @@ module ProcessTests
       msgs = [] #: Array[String]
       cmds = [Array.new, [{ "A" => "b" }]] #: Array[Array[untyped]]
       cmds.each do |cmd|
-
         IO.popen(cmd, &:read)
         msgs << "no error"
     rescue ArgumentError => e
       msgs << e.message
-
       end
       assert_equal ["wrong number of arguments (given 0, expected 1+)"] * 2, msgs
     end
@@ -96,11 +94,9 @@ module ProcessTests
         File.chmod(0o644, f)
         got = [] #: Array[String]
         [-> { Process.spawn(f) }, -> { Process.spawn({}, f) }, -> { Process.spawn(File.join(d, "missing")) }].each do |go|
-
           go.call
       rescue SystemCallError => e
         got << "#{e.class}: #{e.message.gsub(d, "D")}"
-
         end
         assert_equal ["Errno::EACCES: Permission denied - D/plain"] * 2 + ["Errno::ENOENT: No such file or directory - D/missing"], got
       end

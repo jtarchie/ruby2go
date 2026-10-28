@@ -1441,13 +1441,11 @@ end
       assert_equal "bb", e.message
       out = []
       w.each do |k, v|
-
         raise "x#{k}" if v.odd?
 
         out << "ok #{k}"
       rescue StandardError => re
         out << re.message
-
       end
       assert_equal ["xa", "ok bb", "xccc"], out
       w.each { |k, v| w[k] = v * 10 }
