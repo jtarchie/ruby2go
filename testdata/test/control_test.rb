@@ -3979,7 +3979,6 @@ module ControlTests
       assert_equal 7, j
       never = 0
 
-
       assert_equal 0, never
       k = 0
       k += 2 while k < 9
