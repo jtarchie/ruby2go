@@ -11,8 +11,8 @@ gem "rbs-inline", "~> 0.14", require: false
 gem "webrick", "~> 1.9"
 
 # Gems rugaroo compiles unmodified (#82): rack 3.2.7 is what sig/gems/rack was written against.
-gem "rack", "~> 3.2", ">= 3.2.7"
 gem "cuba", "~> 4.0"
+gem "rack", "~> 3.2", ">= 3.2.7"
 
 # Serves a Rack app on WEBrick under MRI; the transpiler maps it onto Go's net/http too.
 gem "rackup", "~> 2.3"
@@ -31,8 +31,8 @@ gem "tyda", require: false, group: :development
 gem "kramdown", "~> 2.5"
 
 # Templates (example 124): Jekyll 4's liquid, compiled unmodified from a traced run.
-gem "liquid", "~> 4.0"
 gem "bigdecimal", "~> 3.1" # liquid 4 requires it; a bundled gem since Ruby 3.4, so Bundler must list it
+gem "liquid", "~> 4.0"
 
 # SQLite under MRI for example 122; rugaroo maps `require "sqlite3"` onto its own Fiddle port of this gem (decision 327).
 gem "sqlite3", "~> 2.10"
