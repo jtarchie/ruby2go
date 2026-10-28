@@ -168,7 +168,7 @@ module InferTests
     end
 
     def test_enumerable_to_h_and_unannotated_kwrest
-      assert_equal [{a: 1, b: 2}, 2, 0], [InferTests::FallbackPairs.new.to_h, infer_kwrest_size(x: 1, y: 2), infer_kwrest_size]
+      assert_equal [{ a: 1, b: 2 }, 2, 0], [InferTests::FallbackPairs.new.to_h, infer_kwrest_size(x: 1, y: 2), infer_kwrest_size]
     end
 
     def test_splat_into_positional_parameters

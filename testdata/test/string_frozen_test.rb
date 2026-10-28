@@ -248,7 +248,7 @@ module StringFrozenTests
     def test_strings_as_hash_keys_compare
       counts = {} #: Hash[String, Integer]
       ["x", "y", "x", "x" + ""].each { |k| counts[k] = (counts[k] || 0) + 1 }
-      assert_equal({"x" => 3, "y" => 1}, counts)
+      assert_equal({ "x" => 3, "y" => 1 }, counts)
     end
 
     # case/when compares strings by value
@@ -287,7 +287,7 @@ module StringFrozenTests
       assert_equal ["fig", "pear", "kiwi", "Apple", "banana"], words.sort_by(&:size)
       assert_equal "banana", words.max_by(&:length)
       assert_equal "Apple", words.min_by { |w| w.downcase }
-      assert_equal({4 => ["pear", "kiwi"], 5 => ["Apple"], 3 => ["fig"], 6 => ["banana"]}, words.group_by(&:size))
+      assert_equal({ 4 => ["pear", "kiwi"], 5 => ["Apple"], 3 => ["fig"], 6 => ["banana"] }, words.group_by(&:size))
       assert_equal ["Apple", "banana", "fig", "kiwi", "pear"], words.sort
       assert_equal ["Apple", "banana", "fig", "kiwi", "pear"], words.sort_by(&:downcase)
       assert_equal "pear, Apple, fig, banana, kiwi", words.join(", ")
@@ -296,7 +296,7 @@ module StringFrozenTests
       assert_equal true, words.include?("kiwi")
       assert_equal false, words.include?("Kiwi")
       assert_equal true, words.include?("ki" + "wi")
-      assert_equal({"pear" => 1, "Apple" => 1, "fig" => 1, "banana" => 1, "kiwi" => 1}, words.tally)
+      assert_equal({ "pear" => 1, "Apple" => 1, "fig" => 1, "banana" => 1, "kiwi" => 1 }, words.tally)
       assert_equal 5, words.uniq.size
       assert_equal 5, words.reject(&:empty?).size
       assert_equal true, words.any? { |w| w.end_with?("i") }
@@ -352,13 +352,13 @@ module StringFrozenTests
         k = w[0] || ""
         cache[k] = (cache[k] || []) + [w]
       end
-      assert_equal({"p" => ["pear"], "A" => ["Apple"], "f" => ["fig"], "b" => ["banana"], "k" => ["kiwi"]}, cache)
+      assert_equal({ "p" => ["pear"], "A" => ["Apple"], "f" => ["fig"], "b" => ["banana"], "k" => ["kiwi"] }, cache)
       assert_equal ["pear"], cache["p"]
       assert_equal ["pear"], cache["p" + ""]
       assert_equal false, cache.key?("z")
       lens = {} #: Hash[String, Integer]
       words.each { |w| lens[w.downcase] = w.size }
-      assert_equal({"pear" => 4, "apple" => 5, "fig" => 3, "banana" => 6, "kiwi" => 4}, lens)
+      assert_equal({ "pear" => 4, "apple" => 5, "fig" => 3, "banana" => 6, "kiwi" => 4 }, lens)
       assert_equal ["PEAR", "APPLE", "FIG", "BANANA", "KIWI"], lens.keys.map(&:upcase)
       assert_equal "pear=4&apple=5&fig=3&banana=6&kiwi=4", lens.map { |k, v| "#{k}=#{v}" }.join("&")
       vowels = [] #: Array[String]

@@ -92,7 +92,7 @@ module MarshalTests
     def round(x) = Marshal.load(Marshal.dump(x))
 
     def test_issue_example
-      data = {name: "a", pts: [Point.new(1, 2), Point.new(3, 4)], when: Time.at(0).utc}
+      data = { name: "a", pts: [Point.new(1, 2), Point.new(3, 4)], when: Time.at(0).utc }
       copy = round(data)
       assert_equal true, copy == data
       copy[:pts][0].x = 99
@@ -112,7 +112,7 @@ module MarshalTests
       assert_equal ["", "héllo", "a\nb"], round(["", "héllo", "a\nb"])
       assert_equal :sym, round(:sym)
       assert_equal [1, [2, ["three", nil]], :four], round([1, [2, ["three", nil]], :four])
-      assert_equal({"a" => 1, b: [2], 3 => nil}, round({"a" => 1, b: [2], 3 => nil}))
+      assert_equal({ "a" => 1, b: [2], 3 => nil }, round({ "a" => 1, b: [2], 3 => nil }))
       assert_equal [1, nil, 3], round([1, nil, 3])
       assert_equal Marshal::MAJOR_VERSION, 4
       assert_equal Marshal::MINOR_VERSION, 8
@@ -167,12 +167,12 @@ module MarshalTests
     end
 
     def test_copy_is_independent
-      src = {list: [1, 2], inner: {k: "v"}}
+      src = { list: [1, 2], inner: { k: "v" } }
       copy = round(src)
       copy[:list] << 3
       copy[:inner][:k] = "w"
-      assert_equal({list: [1, 2], inner: {k: "v"}}, src)
-      assert_equal({list: [1, 2, 3], inner: {k: "w"}}, copy)
+      assert_equal({ list: [1, 2], inner: { k: "v" } }, src)
+      assert_equal({ list: [1, 2, 3], inner: { k: "w" } }, copy)
       acct = Account.new("bo", 1.0, Set[:x], "n")
       c2 = round(acct)
       c2.tags << :y
@@ -203,7 +203,7 @@ module MarshalTests
       assert_equal "leaf", k2.children[0].name
       assert_equal true, k2.children[0].parent.equal?(k2)
       pt = Point.new(1, 1)
-      both = round({a: pt, b: pt})
+      both = round({ a: pt, b: pt })
       assert_equal true, both[:a].equal?(both[:b])
     end
 
@@ -221,15 +221,15 @@ module MarshalTests
     def test_io_forms
       io = StringIO.new
       assert_equal true, Marshal.dump([1, 2], io).equal?(io)
-      Marshal.dump({a: 1}, io)
+      Marshal.dump({ a: 1 }, io)
       io.rewind
       assert_equal [1, 2], Marshal.load(io)
-      assert_equal({a: 1}, Marshal.load(io))
+      assert_equal({ a: 1 }, Marshal.load(io))
       e = assert_raises(EOFError) { Marshal.load(io) }
       assert_equal "end of file reached", e.message
       Dir.mktmpdir do |dir|
         path = File.join(dir, "cache.bin")
-        File.binwrite(path, Marshal.dump({name: "a", pts: [Point.new(1, 2)]}))
+        File.binwrite(path, Marshal.dump({ name: "a", pts: [Point.new(1, 2)] }))
         back = Marshal.load(File.binread(path))
         assert_equal "a", back[:name]
         assert_equal [Point.new(1, 2)], back[:pts]
@@ -249,9 +249,9 @@ module MarshalTests
         assert_equal ["first", [:second], :eof], got
       end
       a, b = UNIXSocket.pair
-      Marshal.dump({x: [1, 2]}, a)
+      Marshal.dump({ x: [1, 2] }, a)
       Marshal.dump("second", a)
-      assert_equal [{x: [1, 2]}, "second"], [Marshal.load(b), Marshal.load(b)]
+      assert_equal [{ x: [1, 2] }, "second"], [Marshal.load(b), Marshal.load(b)]
       a.close
       assert_raises(EOFError) { Marshal.load(b) }
       b.close
@@ -274,11 +274,11 @@ module MarshalTests
       r.rand(10)
       r2 = round(r)
       assert_equal r.rand(1000), r2.rand(1000)
-      assert_equal({"a" => [1, {"b" => nil}]}, round(JSON.parse('{"a": [1, {"b": null}]}')))
+      assert_equal({ "a" => [1, { "b" => nil }] }, round(JSON.parse('{"a": [1, {"b": null}]}')))
       assert_equal Comparable, round(Comparable)
       assert_equal ["1..", 1], [round(1..).inspect, round(1..).begin]
       words = %w[a b a]
-      assert_equal({"a" => 2, "b" => 1}, round(words.tally))
+      assert_equal({ "a" => 2, "b" => 1 }, round(words.tally))
       assert_equal [%w[a b], ["a"]], round(words.each_slice(2).to_a)
     end
 

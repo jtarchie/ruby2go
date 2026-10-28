@@ -253,12 +253,12 @@ module MethodTests
     end
 
     def test_dispatch_tables
-      ops = {add: method(:method_add), sub: method(:method_sub)}
+      ops = { add: method(:method_add), sub: method(:method_sub) }
       assert_equal 5, ops[:add]&.call(2, 3)
       assert_equal [3, -1], ops.values.map { |m| m.call(1, 2) }
       list = [method(:method_twice), method(:method_neg)]
       assert_equal [6, -3], list.map { |m| m.call(3) }
-      mixed = {twice: method(:method_twice), add: method(:method_add)} #: Hash[Symbol, Method]
+      mixed = { twice: method(:method_twice), add: method(:method_add) } #: Hash[Symbol, Method]
       assert_equal 8, mixed.fetch(:twice).call(4)
       assert_equal 9, mixed.fetch(:add).call(4, 5)
       assert_equal [1, 2], mixed.values.map(&:arity)
@@ -481,7 +481,7 @@ module MethodTests
       assert_equal [1, [2, 3], 4, 5, 6], proc { |(a, *b, c), d, e| [a, b, c, d, e] }.call([1, 2, 3, 4], 5, 6)
       assert_equal [[1, 2], :b, :c], y.one([1, 2]) { |a, b: :b, c: :c| [a, b, c] }
       assert_equal [[1, 2], {}], y.one([1, 2]) { |a, **k| [a, k] }
-      assert_equal [[{"a" => 10}]], y.other([{"a" => 10}]) { |a = nil| [a] }
+      assert_equal [[{ "a" => 10 }]], y.other([{ "a" => 10 }]) { |a = nil| [a] }
     end
   end
 end

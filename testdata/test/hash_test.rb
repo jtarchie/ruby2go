@@ -464,8 +464,8 @@ module HashTests
 
     # Core methods take braceless hashes too.
     def test_core_methods_take_braceless_hashes
-      assert_equal "[{a: 1}]", (([{a: 1}])).inspect
-      assert_equal "[1, {b: 2}]", (([1, {b: 2}])).inspect
+      assert_equal "[{a: 1}]", (([{ a: 1 }])).inspect
+      assert_equal "[1, {b: 2}]", (([1, { b: 2 }])).inspect
       k = { a: 1 } #: Hash[Symbol, Integer]
       assert_equal "{a: 1, b: 2}", ((k.merge(b: 2))).inspect
       assert_equal "{a: 9}", ((k.merge(a: 9))).inspect
@@ -1599,7 +1599,7 @@ module HashTests
       arr[-1] *= 2
       assert_equal 1, (arr[1] -= 1)
       assert_equal [11, 1, 6], arr
-      counts = {"x" => 0}
+      counts = { "x" => 0 }
       counts["x"] += 5
       assert_equal "{\"x\" => 5}", (counts).to_s
       nested = {} #: Hash[Symbol, Hash[Symbol, Integer]]
@@ -1608,7 +1608,7 @@ module HashTests
       flags = {} #: Hash[String, bool]
       flags["on"] ||= true
       assert_equal "{\"on\" => true}", (flags).to_s
-      hs_h = {a: 1, b: 2, c: 3}
+      hs_h = { a: 1, b: 2, c: 3 }
       assert_equal "{a: 10, b: 20, c: 30}", ((hs_h.transform_values { |v| v * 10 })).to_s
       tv = { a: 1, b: 2 }
       assert_equal [{ a: 10, b: 20 }, true], [tv.transform_values! { |v| v * 10 }, tv.transform_values!(&:itself).equal?(tv)]
@@ -1627,7 +1627,7 @@ module HashTests
       assert_equal "{a: 1, c: 3}", (hs_h.except(:b)).to_s
       assert_equal 4, (hs_h.store(:d, 4))
       assert_equal "{a: 1, b: 2, c: 3, d: 4}", (hs_h).to_s
-      assert_equal "{a: 101, b: 2, c: 3, d: 4, e: 5}", ((hs_h.merge({a: 100, e: 5}) { |_k, old, new| old + new })).to_s
+      assert_equal "{a: 101, b: 2, c: 3, d: 4, e: 5}", ((hs_h.merge({ a: 100, e: 5 }) { |_k, old, new| old + new })).to_s
       assert_equal 2, (hs_h.count { |_k, v| v.odd? })
       assert_equal true, (hs_h.any? { |_k, v| v > 3 })
       assert_equal true, (hs_h.all? { |_k, v| v > 0 })
@@ -1637,7 +1637,7 @@ module HashTests
       assert_equal "{a: 1, c: 3}", (hs_h2).to_s
       assert_equal "{a: 1, b: 2}", ((hs_h.reject { |_k, v| v > 2 })).to_s
       assert_equal "{c: 3, d: 4}", ((hs_h.select { |_k, v| v > 2 })).to_s
-      hs_h.update({z: 26})
+      hs_h.update({ z: 26 })
       hs_h.keep_if { |_k, v| v != 1 }
       assert_equal "{b: 2, c: 3, d: 4, z: 26}", (hs_h).to_s
       assert_equal [[:z, 26], [:d, 4]], (hs_h.sort_by { |_k, v| -v }.first(2))
@@ -2126,7 +2126,7 @@ module HashTests
       klass = Params #: singleton(Params)
       h = klass.new
       h["a"] = 1
-      assert_equal [{"a" => 1}, true], [h.to_h, h.is_a?(Params)]
+      assert_equal [{ "a" => 1 }, true], [h.to_h, h.is_a?(Params)]
     end
 
     def test_untyped_empty_containers
@@ -2143,7 +2143,7 @@ module HashTests
       q << 5
       a = Array.new
       a << :s
-      assert_equal [{"a" => 1}, 5, [:s]], [h, q.pop, a]
+      assert_equal [{ "a" => 1 }, 5, [:s]], [h, q.pop, a]
     end
 
     # Hash.new(default) and a memo literal are typed by what the code stores in them (decision 344)
@@ -2154,7 +2154,7 @@ module HashTests
       g = nums.each_with_object(Hash.new(0)) { |n, acc| acc[n % 3] += 1 }
       e = nums.each_with_object({}) { |n, acc| acc[n] ||= n.to_s }
       t = nums.each_with_object(Hash.new(0)) { |n, acc| acc[n.even?] += 1; }
-      assert_equal [{1 => 3, 0 => 2}, {1 => 2, 2 => 2, 0 => 1}, 5, "3", {false => 3, true => 2}, 7],
+      assert_equal [{ 1 => 3, 0 => 2 }, { 1 => 2, 2 => 2, 0 => 1 }, 5, "3", { false => 3, true => 2 }, 7],
                    [h, g, e.size, e.fetch(3), t, h.fetch(1) + g.fetch(2) + 2]
     end
 
@@ -2767,9 +2767,9 @@ module HashTests
   # decision 366: a Hash literal local widens by later writes in user code too
   class HashMixedLiteralTest < Minitest::Test
     def test_hash_literal_widens
-      g = {1 => :a}
+      g = { 1 => :a }
       g["s"] = 2
-      assert_equal({1 => :a, "s" => 2}, g)
+      assert_equal({ 1 => :a, "s" => 2 }, g)
     end
   end
 end

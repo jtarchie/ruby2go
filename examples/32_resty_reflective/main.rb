@@ -208,7 +208,7 @@ module Resty
       end
 
       def headers
-        {"Content-type" => "application/json"}
+        { "Content-type" => "application/json" }
       end
     end
   end

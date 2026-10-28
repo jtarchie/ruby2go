@@ -564,7 +564,7 @@ def union_shape(i)
   case i
   when 0 then [1, 2]
   when 1 then "s"
-  else {k: 3}
+  else { k: 3 }
   end
 end
 
@@ -589,7 +589,7 @@ module UnionTests
       ints = [1, 2, 3]
       assert_equal 6, union_numeric_sum(ints)
       assert_equal 3.5, union_numeric_sum([1.5, 2])
-      assert_equal 3, union_numeric_values({"a" => 1, "b" => 2})
+      assert_equal 3, union_numeric_values({ "a" => 1, "b" => 2 })
       assert_equal ["dog 1", "dog 2"], says([UnionDog.new(1), UnionDog.new(2)])
     end
 
@@ -597,7 +597,7 @@ module UnionTests
       got = (0..2).map do |i|
         case union_shape(i)
         in [a, b] then "pair #{a + b}"
-        in {k: Integer => k} then "hash #{k * 2}"
+        in { k: Integer => k } then "hash #{k * 2}"
         in String => s then "str #{s}"
         end
       end
@@ -622,9 +622,9 @@ module UnionTests
     end
 
     def test_mixed_literals
-      h = {a: 1, b: "x"}
+      h = { a: 1, b: "x" }
       h[:c] = 1.5
-      assert_equal({a: 1, b: "x", c: 1.5}, h)
+      assert_equal({ a: 1, b: "x", c: 1.5 }, h)
       t = [1, "a"]
       assert_equal [false, 2, false], [t.nil?, t.size, t.frozen?]
     end

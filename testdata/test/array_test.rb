@@ -1713,7 +1713,7 @@ module ArrayTests
       assert_equal [0, 3, 16, 3, 36, 10], (en_a.each_with_index.map { |x, i| x * i })
       assert_equal [5, 3, 1, 9], en_a.find_all(&:odd?)
       assert_equal [1, 2], (en_a.filter { |x| x < 3 })
-      en_h = {a: 1, b: 2, c: 3}
+      en_h = { a: 1, b: 2, c: 3 }
       assert_equal [:a, :c], (en_h.filter_map { |k, v| k if v.odd? })
       assert_equal "{1 => :a, 2 => :b, 3 => :c}", ((en_h.each_with_object({}) { |(k, v), acc| acc[v] = k })).to_s
       assert_equal [[[:b, 2], [:c, 3]], [[:a, 1]]], (en_h.partition { |_k, v| v > 1 })
@@ -2553,7 +2553,7 @@ module ArrayTests
     end
 
     def test_hash
-      h = {a: 1}
+      h = { a: 1 }
       e = {} #: Hash[Symbol, Integer]
       assert_equal [true, false, true, false], [h.any?, e.any?, h.all?, h.none?]
     end
@@ -2754,10 +2754,10 @@ module ArrayTests
       one = [0]
       a[*one] = "Z"
       assert_equal "Z", a[*one]
-      h = {1 => 2}
+      h = { 1 => 2 }
       k = [5]
       h[*k] = 6
-      assert_equal({1 => 2, 5 => 6}, h)
+      assert_equal({ 1 => 2, 5 => 6 }, h)
       begin
         a[*[1, 2, 3]] = "q"
         flunk "no error"

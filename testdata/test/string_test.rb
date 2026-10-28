@@ -1149,7 +1149,7 @@ B
     def test_ascii_only_symbols_are_us
       assert_equal ":\"a\\x00b\"", :"a\x00b".inspect
       assert_equal "\"\\u0001\\u007F\\e\"", "\x01\x7f\e".inspect # a UTF-8 string's controls; a Symbol's are \x00
-      assert_equal "{\"a\\x7F\": 1}", {"a\x7f": 1}.inspect
+      assert_equal "{\"a\\x7F\": 1}", { "a\x7f": 1 }.inspect
     end
   end
 
