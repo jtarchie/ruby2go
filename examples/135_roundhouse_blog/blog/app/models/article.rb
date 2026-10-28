@@ -66,11 +66,11 @@ class Article < ApplicationRecord
   end
 
   def self.schema_columns
-    [:id, :title, :body, :created_at, :updated_at]
+    %i[id title body created_at updated_at]
   end
 
   def self.schema_time_columns
-    [:created_at, :updated_at]
+    %i[created_at updated_at]
   end
 
   def self.instantiate(row)

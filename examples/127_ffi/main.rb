@@ -9,14 +9,14 @@ module LibC
   typedef :ulong, :count_t
   attach_function :strlen, [:string], :size_t
   attach_function :abs, [:int], :int
-  attach_function :pow, [:double, :double], :double
+  attach_function :pow, %i[double double], :double
   attach_function :toupper, [:int], :int
-  attach_function :memset, [:pointer, :int, :count_t], :pointer
+  attach_function :memset, %i[pointer int count_t], :pointer
   attach_function :getenv, [:string], :string
 
   # qsort calls back into Ruby: a callback type is a Proc that C can call.
-  callback :compare, [:pointer, :pointer], :int
-  attach_function :qsort, [:pointer, :size_t, :size_t, :compare], :void
+  callback :compare, %i[pointer pointer], :int
+  attach_function :qsort, %i[pointer size_t size_t compare], :void
 
   # struct timeval, filled in by gettimeofday.
   class Timeval < FFI::Struct

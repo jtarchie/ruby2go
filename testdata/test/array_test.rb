@@ -1445,7 +1445,7 @@ module ArrayTests
       assert_equal "[-1.0, 0.1, 2.5, 10.0]", floats.sort.inspect
       assert_equal [5, -3, 0, 12, -3, 7], nums
       assert_equal ["", "B", "Z", "a", "aa", "b", "é"], ["b", "B", "a", "é", "Z", "aa", ""].sort
-      assert_equal [:a, :b, :c], [:b, :a, :c].sort
+      assert_equal %i[a b c], %i[b a c].sort
       assert_equal ["fig", "fig", "kiwi", "pear", "apple", "Äpfel", "banana"], words.sort_by { |w| [w.size, w] }
       assert_equal [12, 7, 5, 0, -3, -3], nums.sort_by { |n| -n }
       assert_equal [], none.sort
@@ -1514,7 +1514,7 @@ module ArrayTests
       assert_equal [[9, "9"]], odd.reject(&:even?).map { |n| [n, n.to_s] }
       assert_equal "2<4<9", odd.sort.map(&:to_s).join("<")
       bools = [true, false] #: Array[bool]
-      syms = [:a, :b] #: Array[Symbol]
+      syms = %i[a b] #: Array[Symbol]
       flag = false
       assert_equal true, bools.include?(true)
       assert_equal true, bools.include?(false)
@@ -1539,7 +1539,7 @@ module ArrayTests
       assert_equal [2, 2], [1, 2, 3, 2].grep(2)
       grep_mixed = [1, "a", 2.5] #: Array[untyped]
       assert_equal ["a"], %w[a bb cb].grep_v(/b/)
-      assert_equal [:ab], [:ab, :cd].grep(/a/)
+      assert_equal [:ab], %i[ab cd].grep(/a/)
       assert_equal [1, "a"], grep_mixed.grep_v(Float)
     end
   end
@@ -1731,7 +1731,7 @@ module ArrayTests
       assert_equal [5, 3, 1, 9], en_a.find_all(&:odd?)
       assert_equal [1, 2], en_a.filter { |x| x < 3 }
       en_h = { a: 1, b: 2, c: 3 }
-      assert_equal [:a, :c], en_h.filter_map { |k, v| k if v.odd? }
+      assert_equal %i[a c], en_h.filter_map { |k, v| k if v.odd? }
       assert_equal "{1 => :a, 2 => :b, 3 => :c}", en_h.each_with_object({}) { |(k, v), acc| acc[v] = k }.to_s
       assert_equal [[[:b, 2], [:c, 3]], [[:a, 1]]], en_h.partition { |_k, v| v > 1 }
       assert_equal [:c, 3], en_h.min_by { |_k, v| -v }
@@ -3155,11 +3155,11 @@ module ArrayTests
     end
 
     def test_symbol_swap
-      a = [:a, :b]
+      a = %i[a b]
       t = a[0]
       a[0] = a[1]
       a[1] = t
-      assert_equal [:b, :a], a
+      assert_equal %i[b a], a
     end
 
     def test_rfind_bsearch_assoc_survive_store
@@ -3176,7 +3176,7 @@ module ArrayTests
     end
 
     def test_multiple_assignment_survives_store
-      m = [:p, :q]
+      m = %i[p q]
       x1, x2 = m
       m[0] = :z
       m[1] = :z

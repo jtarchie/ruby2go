@@ -75,11 +75,11 @@ class Comment < ApplicationRecord
   end
 
   def self.schema_columns
-    [:id, :article_id, :commenter, :body, :created_at, :updated_at]
+    %i[id article_id commenter body created_at updated_at]
   end
 
   def self.schema_time_columns
-    [:created_at, :updated_at]
+    %i[created_at updated_at]
   end
 
   def self.instantiate(row)

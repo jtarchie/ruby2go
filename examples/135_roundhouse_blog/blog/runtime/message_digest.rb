@@ -20,9 +20,9 @@
 # static that the next call to the same function clobbers, so each result
 # is copied (`+ ""`) before it can outlive the next call.
 module SpCrypto
-  ffi_func :sp_crypto_hmac_sha1_hex,            [:str, :str],             :str
-  ffi_func :sp_crypto_hmac_sha256_hex,          [:str, :str],             :str
-  ffi_func :sp_crypto_pbkdf2_sha256_b64url_len, [:str, :str, :int, :int], :str
+  ffi_func :sp_crypto_hmac_sha1_hex,            %i[str str],             :str
+  ffi_func :sp_crypto_hmac_sha256_hex,          %i[str str],             :str
+  ffi_func :sp_crypto_pbkdf2_sha256_b64url_len, %i[str str int int], :str
   ffi_func :sp_crypto_b64url_decode,            [:str],                   :str
 end
 

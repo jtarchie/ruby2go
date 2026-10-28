@@ -2825,7 +2825,7 @@ module ObjectTests
       assert_equal true, BgVal.new(1).frozen?
       d = BgDog.new
       assert_equal true, d.is_a?(BgAnimal)
-      assert_equal [:BG_LIMIT, :OWN], BgUses.constants.sort
+      assert_equal %i[BG_LIMIT OWN], BgUses.constants.sort
       assert_equal true, BgUses.const_defined?(:BG_LIMIT)
       assert_equal 5, BgUses.const_get(:BG_LIMIT)
       assert_equal "String", bg_kind("a")
@@ -3082,9 +3082,9 @@ module ObjectTests
 
   class ObjectConstantsTest < Minitest::Test
     def test_section_0
-      assert_equal [:Alpha, :Base, :Beta, :MAX, :VERSION], CtPlugins.constants.sort
-      assert_equal [:One, :Root, :Two], Kinds.constants.sort
-      assert_equal [:COLOR, :SIZE], CtChild.constants.sort
+      assert_equal %i[Alpha Base Beta MAX VERSION], CtPlugins.constants.sort
+      assert_equal %i[One Root Two], Kinds.constants.sort
+      assert_equal %i[COLOR SIZE], CtChild.constants.sort
       assert_equal [:COLOR], CtParent.constants
       assert_equal [], CtPlugins::Alpha.constants
       assert_equal "1.0", CtPlugins.const_get(:VERSION)
@@ -3125,9 +3125,9 @@ module ObjectTests
       assert_equal "red", child_const("COLOR")
       assert_equal 5, CtChild.const_get("SIZE".downcase.upcase)
       assert_equal [18, 2], Limits.constants.sort.map { |c| Limits.const_get(c) * 2 }
-      assert_equal [:Coord, :ORIGIN, :Tag], CtGeo.constants.sort
+      assert_equal %i[Coord ORIGIN Tag], CtGeo.constants.sort
       assert_equal "#<struct ObjectTests::CtGeo::Tag text=\"t\">", CtGeo.const_get(:Tag).new("t").inspect
-      assert_equal [:lat, :lng], CtGeo.const_get(:Coord).members
+      assert_equal %i[lat lng], CtGeo.const_get(:Coord).members
       assert_equal "0.0", CtGeo.const_get(:ORIGIN).lat.inspect
       assert_equal [], CtGeo::Tag.constants
       assert_equal "ObjectTests::CtGeo::Coord", CtGeo.const_get("Coord").name
@@ -3500,9 +3500,9 @@ module ObjectTests
       h = { a: vec(1) } #: Hash[Symbol, MtVec]
       assert_equal true, (h == { a: vec(1) })
       assert_equal 1, MtBox.new.id
-      assert_equal [:test_base, :test_child, :test_shared], PimChild.public_instance_methods(true).grep(/^test_/).sort
-      assert_equal [:==, :test_child], PimChild.public_instance_methods(false).sort
-      assert_equal [:==, :test_child], PimChild.instance_methods(false).sort
+      assert_equal %i[test_base test_child test_shared], PimChild.public_instance_methods(true).grep(/^test_/).sort
+      assert_equal %i[== test_child], PimChild.public_instance_methods(false).sort
+      assert_equal %i[== test_child], PimChild.instance_methods(false).sort
       assert_equal true, PimChild.method_defined?(:test_base)
       assert_equal false, PimChild.public_method_defined?("test_private")
       assert_equal false, PimChild.method_defined?(:test_base, false)
@@ -3751,8 +3751,8 @@ module ObjectTests
       assert_equal "#<struct ObjectTests::SdPoint x=10, y=-5>", pt.inspect
       assert_equal [10, -5], pt.to_a
       assert_equal "{x: 10, y: -5}", pt.to_h.inspect
-      assert_equal [:x, :y], pt.members
-      assert_equal [:x, :y], SdPoint.members
+      assert_equal %i[x y], pt.members
+      assert_equal %i[x y], SdPoint.members
       assert_equal true, (pt == SdPoint.new(10, -5))
       assert_equal false, (pt == origin)
       assert_equal true, (pt != origin)
@@ -3786,7 +3786,7 @@ module ObjectTests
       o.name = "late"
       assert_equal "8:late:-", o.label
       assert_equal [8, "late", nil], o.to_a
-      assert_equal [:id, :name, :note], o.members
+      assert_equal %i[id name note], o.members
       here = SdGeo::Coord.new(lat: 1.5, lng: -2.0)
       there = here.with(lng: 3.25)
       same = here.with
@@ -3801,8 +3801,8 @@ module ObjectTests
       assert_equal false, (here == there)
       assert_equal true, (here == SdGeo::Coord.new(1.5, -2.0))
       assert_equal "{lat: 1.5, lng: -2.0}", here.to_h.inspect
-      assert_equal [:lat, :lng], SdGeo::Coord.members
-      assert_equal [:lat, :lng], here.members
+      assert_equal %i[lat lng], SdGeo::Coord.members
+      assert_equal %i[lat lng], here.members
       assert_equal "ObjectTests::SdGeo::Coord", SdGeo::Coord.name
       assert_equal "#<data ObjectTests::SdGeo::Coord lat=0.0, lng=0.0>", here.with(lat: 0.0, lng: 0.0).inspect
       assert_equal "#<struct ObjectTests::SdGeo::Tag text=\"t\">", SdGeo::Tag.new("t").inspect
@@ -3858,12 +3858,12 @@ module ObjectTests
       assert_equal 1, p3.x
       assert_equal [1, 2], p3.to_a
       assert_equal "#<struct ObjectTests::Pt3 x=1, y=2>", p3.inspect
-      assert_equal [:x, :y], p3.members
+      assert_equal %i[x y], p3.members
       assert_equal 3, p3.z
       p3.x = 10
       assert_equal 15, p3.sum
       assert_equal "{x: 10, y: 2}", p3.to_h.inspect
-      assert_equal [:x, :y], Pt3.members
+      assert_equal %i[x y], Pt3.members
       assert_equal "ObjectTests::Pt3", Pt3.name
     end
 
@@ -4384,7 +4384,7 @@ module ObjectTests
     def test_keyword_parameters
       assert_equal ["hello ann!", "hi bo?", "yo cy."], [object_greet("ann", punct: "!"), object_greet("bo", greeting: "hi", punct: "?"), object_greet("cy", punct: ".", greeting: "yo")]
       assert_equal [3, 6, 4], [object_kw_add(a: 1), object_kw_add(a: 1, b: 5), object_kw_add(b: 1, a: 3)]
-      assert_equal [[:x, :y], [], [:q], [:a, :b]], [object_keys_of(x: 1, y: 2), object_keys_of, object_keys_of(**{ q: 1 }), object_keys_of(**{ a: 1 }, b: 2)]
+      assert_equal [%i[x y], [], [:q], %i[a b]], [object_keys_of(x: 1, y: 2), object_keys_of, object_keys_of(**{ q: 1 }), object_keys_of(**{ a: 1 }, b: 2)]
       assert_equal ["12 {tag: \"a\"}", "4 {}"], [object_mix(1, 2, 3, scale: 2, tag: "a"), object_mix(4, scale: 1)]
       pt = KwPoint.new(x: 1).shift(by: 2)
       assert_equal [3, 2, 6], [pt.x, pt.y, KwPoint.new(y: 5, x: 2).shift.y]
@@ -4408,7 +4408,7 @@ module ObjectTests
   class ObjectRubySpecIvarTest < Minitest::Test
     def test_instance_variables
       pt = IvarPt.new(3)
-      assert_equal [[:@x, :@tags, :@label], 3, [], nil], [pt.instance_variables, pt.instance_variable_get(:@x), pt.instance_variable_get("@tags"), pt.instance_variable_get(:@nope)]
+      assert_equal [%i[@x @tags @label], 3, [], nil], [pt.instance_variables, pt.instance_variable_get(:@x), pt.instance_variable_get("@tags"), pt.instance_variable_get(:@nope)]
       assert_equal [true, false], [pt.instance_variable_defined?(:@x), pt.instance_variable_defined?(:@nope)]
       pt.instance_variable_set(:@x, 9)
       pt.instance_variable_set(:@label, "hi")
@@ -4479,7 +4479,7 @@ module ObjectTests
     def test_defined_ivar
       m = IvarMemo.new
       assert_equal [nil, nil, [:@hits]], [m.seen, m.ghost, m.instance_variables]
-      assert_equal [42, "instance-variable", [:@hits, :@value], 42], [m.value, m.seen, m.instance_variables, m.value]
+      assert_equal [42, "instance-variable", %i[@hits @value], 42], [m.value, m.seen, m.instance_variables, m.value]
       m.note = nil
       assert_equal [true, false], [m.instance_variable_defined?(:@note), IvarMemo.new.instance_variable_defined?(:@note)]
       assert_nil defined?(@object_top_ivar)
@@ -4489,7 +4489,7 @@ module ObjectTests
       b = IvarBox.new
       assert_equal [nil, [:@w]], [b.counted?, b.instance_variables]
       b.bump
-      assert_equal ["instance-variable", [:@w, :@count]], [b.counted?, b.instance_variables]
+      assert_equal ["instance-variable", %i[@w @count]], [b.counted?, b.instance_variables]
     end
 
     def test_remove_instance_variable
@@ -4806,7 +4806,7 @@ module ObjectTests
     def object_sum_all(*) = [*].sum
 
     def test_anonymous_forwarding
-      assert_equal [6, 0, [:a, :b], [10, 20], 3], [object_fwd(1, 2, 3), object_fwd, object_kw_fwd(a: 1, b: 2), object_blk_fwd { |x| x * 10 }, object_sum_all(1, 2)]
+      assert_equal [6, 0, %i[a b], [10, 20], 3], [object_fwd(1, 2, 3), object_fwd, object_kw_fwd(a: 1, b: 2), object_blk_fwd { |x| x * 10 }, object_sum_all(1, 2)]
     end
   end
 
@@ -5373,7 +5373,7 @@ module ObjectTests
 
     self.limit = (ENV["RUGAROO_NO_SUCH_LIMIT"] || 128).to_i
     self.limit = (ENV["RUGAROO_NO_SUCH_LIMIT_2"] || limit + 1).to_i
-    @order = [:a, :b]
+    @order = %i[a b]
   end
 
   # dup inside a struct class's own method keeps the class's type.
@@ -5394,7 +5394,7 @@ module ObjectTests
 
   class ObjectBodyIvarTest < Minitest::Test
     def test_class_body_statements_and_ivars
-      assert_equal [129, [:a, :b]], [BodyIvars.limit, BodyIvars.order]
+      assert_equal [129, %i[a b]], [BodyIvars.limit, BodyIvars.order]
     end
 
     def test_dup_in_own_method
@@ -5499,7 +5499,7 @@ module ObjectTests
     def test_nilclass_method_on_optional_receiver
       none = [1].find { |v| v > 5 }
       one = [1].find { |v| v > 0 }
-      assert_equal [:nil, :int], [none.object_tests_kind, one.object_tests_kind]
+      assert_equal %i[nil int], [none.object_tests_kind, one.object_tests_kind]
     end
 
     def test_unannotated_protocol_hooks

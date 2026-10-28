@@ -92,7 +92,7 @@ module RugarooBoot
       @line_tp.enable
       calls = []
       @define_method_tp = TracePoint.new(:c_call, :c_return) do |tp|
-        next unless [:define_method, :define_singleton_method].include?(tp.method_id)
+        next unless %i[define_method define_singleton_method].include?(tp.method_id)
 
         if tp.event == :c_call
           b = @line_bindings["#{tp.path}:#{tp.lineno}"]

@@ -52,7 +52,7 @@ module StringReopenTests
       assert_equal "d", "d".at_least("c")
       assert_equal :c, :b.at_least(:c)
       assert_equal :ABC, :abc.up
-      assert_equal [:X, :Y], %i[x y].map(&:up)
+      assert_equal %i[X Y], %i[x y].map(&:up)
       assert_equal "BA...", "ab".reverse.shout.truncate(2)
       assert_equal false, ("x" + "y").palindrome?
       assert_equal true, "noon".strip.palindrome?

@@ -29,7 +29,7 @@ puts [[1, 2], [3]]
 puts [nil]
 print [1, 2], "\n"
 print "a", "b", 1, 2.5, nil, :c, "\n"
-puts [1.5, 2.0], [:a, :b], [true, false]
+puts [1.5, 2.0], %i[a b], [true, false]
 print [[1], [2, [3]]], "\n"
 
 # puts and print take a rest param of mixed values (was array_splat.rb)

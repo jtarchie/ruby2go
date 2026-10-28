@@ -1600,7 +1600,7 @@ module DynamicTests
     end
 
     def test_not_equal_dispatches_through_a_user_equals_and_computed_send
-      ne_m = [:!=, :==][0] #: Symbol?
+      ne_m = %i[!= ==][0] #: Symbol?
       ne_a = [1, 2] #: Array[Integer]
       ne_v = VecNe.new(1) #: untyped
       assert_equal false, ne_a.send(ne_m || :x, [1, 2])
@@ -2375,7 +2375,7 @@ module DynamicTests
       assert_equal "ada", g.public_send(:name)
       assert_equal "(m)", g.send(:wrap, "m", "(", ")")
       assert_equal ["\"hello, ada\"", "\"\"", "\"ada\"", "nil"], ["greet", "shout", "name", "lucky"].map { |m| g.send(m).inspect }
-      assert_equal ["\"hello, ada\"", "\"ada\""], [:greet, :name].map { |m| g.public_send(m).inspect }
+      assert_equal ["\"hello, ada\"", "\"ada\""], %i[greet name].map { |m| g.public_send(m).inspect }
       assert_equal "3", g.send("sum", 1, 2).inspect
       assert_equal "\"ghost glide(1)\"", ghost.send("glide", 1).inspect
       assert_equal "\"ghost anything()\"", ghost.send(:anything).inspect

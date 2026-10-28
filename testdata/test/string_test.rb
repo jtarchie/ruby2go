@@ -252,7 +252,7 @@ module StringTests
       assert_equal "bar", %(bar)
       assert_equal "br {n} 1", %(br {n} #{1})
       assert_equal ["a", "b", "c"], %w[a b c]
-      assert_equal [:a, :b, :c], %i[a b c]
+      assert_equal %i[a b c], %i[a b c]
       assert_equal [], %w[]
     end
 
@@ -596,7 +596,7 @@ continued"
     # Symbol#inspect quotes only names that would not read back bare.
     def test_symbol_inspect_quotes_only_names
       syms = [:abc, :"a b", :a?, :b!, :c=, :[], :[]=, :+, :-, :-@, :+@, :<=>, :==, :===, :=~] #: Array[Symbol]
-      syms += [:!, :!=, :!~, :<<, :>>, :<=, :>=, :**, :%, :/, :*, :&, :|, :^, :~, :<, :>]
+      syms += %i[! != !~ << >> <= >= ** % / * & | ^ ~ < >]
       syms += [:"foo-bar", :"9a", :"", :A, :Abc?, :_x, :"a?b", :"a==", :"?", :"=", :"[]?", :call, :"a\nb", :"q\"q"]
       assert_equal [":abc", ":\"a b\"", ":a?", ":b!", ":c=", ":[]", ":[]=", ":+", ":-", ":-@", ":+@", ":<=>", ":==", ":===", ":=~"], syms[0, 15].map(&:inspect)
       assert_equal [":!", ":!=", ":!~", ":<<", ":>>", ":<=", ":>=", ":**", ":%", ":/", ":*", ":&", ":|", ":^", ":~", ":<", ":>"], syms[15, 17].map(&:inspect)
@@ -613,17 +613,17 @@ continued"
 
     # Sorting, min/max and &:sym blocks.
     def test_sorting_min_max_and_sym
-      assert_equal [:a, :b, :c], [:b, :a, :c].sort
-      assert_equal :b, [:b, :a].max
-      assert_equal :a, [:b, :a].min
-      assert_equal ["x", "y"], [:x, :y].map(&:to_s)
-      assert_equal [:p, :q], %w[p q].map(&:to_sym)
+      assert_equal %i[a b c], %i[b a c].sort
+      assert_equal :b, %i[b a].max
+      assert_equal :a, %i[b a].min
+      assert_equal ["x", "y"], %i[x y].map(&:to_s)
+      assert_equal %i[p q], %w[p q].map(&:to_sym)
       assert_equal [2, 4], %i[up down].map(&:size)
     end
 
     # case/when matches symbols by identity of name.
     def test_case_when_matches_symbols_by
-      got = [:pear, :apple, :fig].map do |fruit|
+      got = %i[pear apple fig].map do |fruit|
         case fruit
         when :pear then "pear"
         when :apple then "apple!"
@@ -638,10 +638,10 @@ continued"
       config = { port: 8080, host: "localhost" } #: Hash[Symbol, untyped]
       assert_equal 8080, config[:port]
       assert_equal "localhost", config[:host]
-      assert_equal [:port, :host], config.keys
+      assert_equal %i[port host], config.keys
       assert_nil config[:nope]
       counts = {} #: Hash[Symbol, Integer]
-      [:a, :b, :a].each { |k| counts[k] = (counts[k] || 0) + 1 }
+      %i[a b a].each { |k| counts[k] = (counts[k] || 0) + 1 }
       assert_equal "{a: 2, b: 1}", counts.inspect
       assert_equal true, counts.key?(:a)
       assert_equal "hi x", string_greet(name: "x")
@@ -664,11 +664,11 @@ continued"
       assert_equal "{\"a\" => :x, \"b c\" => :\"y z\"}", by_name.inspect
       assert_equal [:x, :"y z"], by_name.values
       ss = %i[b a c]
-      assert_equal [:c, :b, :a], ss.sort.reverse
+      assert_equal %i[c b a], ss.sort.reverse
       assert_equal ["B", "A", "C"], ss.map(&:to_s).map(&:upcase)
       assert_equal :a, ss.min_by(&:to_s)
       assert_equal true, ss.include?(:a)
-      assert_equal [:a, :b, :c], ss.sort_by { |x| x.to_s }
+      assert_equal %i[a b c], ss.sort_by { |x| x.to_s }
       assert_equal "{1 => [:b, :a, :c]}", ss.group_by(&:size).inspect
     end
   end

@@ -612,7 +612,7 @@ module HashTests
       assert_equal 1, sym[:alpha]
       assert_nil sym[:gamma]
       assert_equal true, sym.key?(:beta)
-      assert_equal [:alpha, :beta], sym.keys
+      assert_equal %i[alpha beta], sym.keys
       uni = { "héllo" => 1, "日本" => 2, "😀" => 3, "" => 4 } #: Hash[String, Integer]
       assert_equal 2, uni["日本"]
       assert_equal 3, uni["😀"]
@@ -1093,9 +1093,9 @@ module HashTests
       assert_equal true, h.select { |_k, v| v > 5 }.empty?
       assert_equal false, (!h)
       ss = { a: :z, b: :y, c: :x } #: Hash[Symbol, Symbol]
-      assert_equal [[:c, :x], [:b, :y], [:a, :z]], ss.sort_by { |_k, v| v }
-      assert_equal [:a, :z], ss.max_by { |_k, v| v }
-      assert_equal [:a, :z], ss.min
+      assert_equal [%i[c x], %i[b y], %i[a z]], ss.sort_by { |_k, v| v }
+      assert_equal %i[a z], ss.max_by { |_k, v| v }
+      assert_equal %i[a z], ss.min
       ff = { 2.5 => "x", -1.0 => "y", 0.0 => "z" } #: Hash[Float, String]
       assert_equal "[[-1.0, \"y\"], [0.0, \"z\"], [2.5, \"x\"]]", ff.sort.inspect
       assert_equal "[2.5, \"x\"]", ff.max.inspect
@@ -1696,7 +1696,7 @@ module HashTests
       assert_equal "LOCALHOST", cfg[:host].upcase
       assert_equal false, cfg.fetch(:debug)
       assert_equal "dflt", cfg.fetch(:nope, "dflt")
-      assert_equal [:port, :host, :ratio], cfg.select { |_k, v| v }.keys
+      assert_equal %i[port host ratio], cfg.select { |_k, v| v }.keys
       assert_equal "port:8080,host:localhost,debug:false,ratio:0.5", cfg.map { |k, v| "#{k}:#{v}" }.join(",")
       assert_equal "{port: 8080, host: \"localhost\", debug: false}", cfg.reject { |k, _v| k == :ratio }.inspect
       cfg[:port] = "now a string"
@@ -2353,7 +2353,7 @@ module HashTests
       g = proc { |x| x * 2 } #: ^(Integer) -> Integer
       left = hash_proc_note(log, :f, f) << hash_proc_note(log, :g, g)
       right = hash_proc_note(log, :f2, f) >> hash_proc_note(log, :g2, g)
-      assert_equal [:f, :g, :f2, :g2], log
+      assert_equal %i[f g f2 g2], log
       assert_equal [7, 8], [left.call(3), right.call(3)]
     end
 
@@ -2363,7 +2363,7 @@ module HashTests
       assert_equal [:d], log
       refute_equal "dflt", v
       ENV.fetch(hash_snote(log, :k, "PATH"), hash_snote(log, :d2, "dflt"))
-      assert_equal [:d, :k, :d2], log
+      assert_equal %i[d k d2], log
     end
   end
 end
@@ -2386,7 +2386,7 @@ module HashTests
       h = { a: 1, b: 2, c: 3 }
       h.delete(:a)
       h[:a] = 4
-      assert_equal [:b, :c, :a], h.keys
+      assert_equal %i[b c a], h.keys
       h[:b] = 20
       assert_equal [[:b, 20], [:c, 3], [:a, 4]], h.to_a
       assert_equal 3, h.size
@@ -2439,7 +2439,7 @@ module HashTests
         raised = e.message == "can't add a new key into hash during iteration"
       end
       assert raised
-      assert_equal [:a, :b, :c], h.keys
+      assert_equal %i[a b c], h.keys
       h.each { |k, _v| h.delete(k) }
       assert_empty h
       h[:z] = 1
@@ -2461,7 +2461,7 @@ module HashTests
         seen << k
         h.shift if k == :a
       end
-      assert_equal [:a, :b, :c], seen
+      assert_equal %i[a b c], seen
       assert_equal({ b: 2, c: 3 }, h)
     end
 
@@ -2707,7 +2707,7 @@ module HashTests
       pr[:a] += 1
       pr[:b] += 2
       assert_equal({ a: 12, b: 12 }, pr)
-      assert_equal [:a, :b], calls
+      assert_equal %i[a b], calls
     end
 
     def test_errors_leave_the_entry
@@ -2752,7 +2752,7 @@ module HashTests
         raised = true
       end
       assert raised
-      assert_equal [:a, :b], h.keys
+      assert_equal %i[a b], h.keys
     end
   end
 end

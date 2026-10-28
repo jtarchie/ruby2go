@@ -279,9 +279,9 @@ module PatternTests
       end
       assert_equal false, (pt in { z: 1 })
       assert_equal [3, 4], pt.deconstruct
-      assert_equal({ y: 4, x: 3 }, pt.deconstruct_keys([:y, :x]))
-      assert_equal({ x: 3 }, pt.deconstruct_keys([:x, :z]))
-      assert_equal({}, pt.deconstruct_keys([:x, :y, :z]))
+      assert_equal({ y: 4, x: 3 }, pt.deconstruct_keys(%i[y x]))
+      assert_equal({ x: 3 }, pt.deconstruct_keys(%i[x z]))
+      assert_equal({}, pt.deconstruct_keys(%i[x y z]))
       assert_equal({ left: 1, right: "one" }, pair.deconstruct_keys(nil))
       assert_equal [1, "one"], pair.deconstruct
     end

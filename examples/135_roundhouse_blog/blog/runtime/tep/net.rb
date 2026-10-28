@@ -16,16 +16,16 @@ module Sock
   # recv uses the `:binstr` return mode (matz/spinel ac1e0d2c) — builds a
   # binary-safe String from (ptr, sp_net_bin_len) rather than strlen, so a
   # recv'd 0x00 no longer truncates.
-  ffi_func :sp_net_listen,                [:int, :int],       :int
+  ffi_func :sp_net_listen,                %i[int int],       :int
   ffi_func :sp_net_accept,                [:int],             :int
   ffi_func :sp_net_accept_nb,             [:int],             :int
   ffi_func :sp_net_set_nonblock,          [:int],             :int
   ffi_func :sp_net_close,                 [:int],             :int
-  ffi_func :sp_net_write_str,             [:int, :str],       :int
-  ffi_func :sp_net_write_bytes,           [:int, :str, :int], :int
-  ffi_func :sp_net_recv_some,             [:int, :int],       :binstr
-  ffi_func :sp_net_recv_all,              [:int, :int],       :binstr
-  ffi_func :sp_net_connect,               [:str, :int],       :int
+  ffi_func :sp_net_write_str,             %i[int str],       :int
+  ffi_func :sp_net_write_bytes,           %i[int str int], :int
+  ffi_func :sp_net_recv_some,             %i[int int],       :binstr
+  ffi_func :sp_net_recv_all,              %i[int int],       :binstr
+  ffi_func :sp_net_connect,               %i[str int],       :int
   ffi_func :sp_net_fork,                  [],                 :int
   ffi_func :sp_net_exit,                  [:int],             :int
   ffi_func :sp_net_getpid,                [],                 :int
@@ -33,10 +33,10 @@ module Sock
   ffi_func :sp_net_install_term_handlers, [],                 :int
   ffi_func :sp_net_shutdown_requested,    [],                 :int
   ffi_func :sp_net_poll_reset,            [],                 :int
-  ffi_func :sp_net_poll_add,              [:int, :int],       :int
+  ffi_func :sp_net_poll_add,              %i[int int],       :int
   ffi_func :sp_net_poll_run,              [:int],             :int
   ffi_func :sp_net_poll_ready,            [:int],             :int
-  ffi_func :sp_net_shell_capture,         [:str, :int],       :binstr
+  ffi_func :sp_net_shell_capture,         %i[str int],       :binstr
 
   # Delegators: keep the existing `Sock.sphttp_*` call sites unchanged
   # while routing them through sp_net (Stage 1 of retiring sphttp.c).
@@ -139,11 +139,11 @@ end
 # matz/spinel#514), which the spinel driver auto-links into every
 # binary. No ffi_cflags needed; just declare the signatures.
 module Crypto
-  ffi_func :sp_crypto_hmac_sha256_hex,      [:str, :str],       :str
-  ffi_func :sp_crypto_hmac_sha256_b64url,   [:str, :str],       :str
+  ffi_func :sp_crypto_hmac_sha256_hex,      %i[str str],       :str
+  ffi_func :sp_crypto_hmac_sha256_b64url,   %i[str str],       :str
   ffi_func :sp_crypto_b64url_encode,        [:str],             :str
   ffi_func :sp_crypto_b64url_decode,        [:str],             :str
-  ffi_func :sp_crypto_pbkdf2_sha256_b64url, [:str, :str, :int], :str
+  ffi_func :sp_crypto_pbkdf2_sha256_b64url, %i[str str int], :str
   ffi_func :sp_crypto_random_b64url,        [:int],             :str
   # SHA-1 + WebSocket accept-key compute. SHA-1 is shipped only
   # because RFC 6455 requires it for the Sec-WebSocket-Accept

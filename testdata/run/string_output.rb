@@ -129,7 +129,7 @@ puts pr, "#{pr}", Val.new("q")
 
 # puts of hashes, symbol/float arrays and untyped values; print of a nil Integer?.
 puts({ "k" => 1, b: [1, 2] })
-puts [:a, :b], [1.5, 2.0]
+puts %i[a b], [1.5, 2.0]
 arru = ident([1, [2, 3], "s"])
 puts arru
 puts "[#{ident(nil)}] #{arru}"

@@ -304,7 +304,7 @@ module StringFrozenTests
       assert_equal "pear", words.max
       assert_equal "Apple", words.min
       assert_equal "fig", words.find { |w| w.size == 3 }
-      assert_equal [:pear, :Apple, :fig, :banana, :kiwi], words.map(&:to_sym)
+      assert_equal %i[pear Apple fig banana kiwi], words.map(&:to_sym)
       assert_equal "\"pear\" \"Apple\" \"fig\" \"banana\" \"kiwi\"", words.map(&:inspect).join(" ")
       assert_equal 22, words.flat_map(&:chars).size
       out = ""

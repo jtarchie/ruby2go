@@ -11,18 +11,18 @@ module FfiTests
 
     typedef :int, :myint
     enum :color, [:red, :green, 5, :blue]
-    callback :cmp, [:pointer, :pointer], :int
+    callback :cmp, %i[pointer pointer], :int
 
     attach_function :labs, [:long], :long
     attach_function :ffi_abs, :abs, [:myint], :myint
     attach_function :strlen, [:string], :size_t
     attach_function :atoi, [:string], :int
-    attach_function :ldexp, [:double, :int], :double
+    attach_function :ldexp, %i[double int], :double
     attach_function :fabsf, [:float], :float
     attach_function :toupper, [:int], :int
-    attach_function :strchr, [:string, :int], :pointer
-    attach_function :memcpy, [:pointer, :pointer, :size_t], :pointer
-    attach_function :qsort, [:pointer, :size_t, :size_t, :cmp], :void
+    attach_function :strchr, %i[string int], :pointer
+    attach_function :memcpy, %i[pointer pointer size_t], :pointer
+    attach_function :qsort, %i[pointer size_t size_t cmp], :void
     attach_function :chdir, [:string], :int
     attach_function :color_id, :abs, [:color], :color
 
@@ -54,10 +54,10 @@ module FfiTests
 
     typedef Rec.by_ref, :rec_ptr
     typedef :int, :myint2
-    callback :cmpc, [:pointer, :pointer], :myint2
+    callback :cmpc, %i[pointer pointer], :myint2
     attach_function :strlen, [:string], :size_t
-    attach_function :rec_copy, :memcpy, [:rec_ptr, :rec_ptr, :size_t], :rec_ptr
-    attach_function :qsort, [:pointer, :size_t, :size_t, :cmpc], :void
+    attach_function :rec_copy, :memcpy, %i[rec_ptr rec_ptr size_t], :rec_ptr
+    attach_function :qsort, %i[pointer size_t size_t cmpc], :void
 
     #: (String) -> untyped
     def len(str) = strlen(str)
@@ -136,7 +136,7 @@ module FfiTests
 
     def test_struct_layout
       assert_equal [24, 8, [[:a, 0], [:b, 8], [:c, 16], [:f, 20]]], [Lib::Pair.size, Lib::Pair.alignment, Lib::Pair.offsets]
-      assert_equal [:id, :pair, :tag], Lib::Outer.members
+      assert_equal %i[id pair tag], Lib::Outer.members
       assert_equal [4, 4], [Lib::Bits.size, Lib::Bits.alignment]
       assert_equal 8, Lib::Pair.offset_of(:b)
     end

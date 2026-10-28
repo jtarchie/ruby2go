@@ -314,7 +314,7 @@ module SorbetTests
     end
 
     def test_frozen_lambda_hash
-      assert_equal ["b=x", [:a, :b], true], [Args::URLS.fetch(:b).call("x"), Args::URLS.keys, Args::URLS.frozen?]
+      assert_equal ["b=x", %i[a b], true], [Args::URLS.fetch(:b).call("x"), Args::URLS.keys, Args::URLS.frozen?]
     end
 
     def test_enum

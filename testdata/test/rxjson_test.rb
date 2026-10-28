@@ -1516,7 +1516,7 @@ b/
       assert_equal "[1,2,3]", [1, 2, 3].to_json
       assert_equal "[\"a\",\"b\\\"c\"]", ["a", "b\"c"].to_json
       assert_equal "[true,false]", [true, false].to_json
-      assert_equal "[\"a\",\"b\"]", [:a, :b].to_json
+      assert_equal "[\"a\",\"b\"]", %i[a b].to_json
       assert_equal "[1.5,2.0]", [1.5, 2.0].to_json
       assert_equal "[null]", [nil].to_json
       assert_equal "[null,null]", [nil, nil].to_json
@@ -1615,7 +1615,7 @@ b/
       bo = true #: bool?
       assert_equal "2.5", fo.to_json
       assert_equal "true", bo.to_json
-      sh = { a: [:x, :y], b: [] } #: Hash[Symbol, Array[Symbol]]
+      sh = { a: %i[x y], b: [] } #: Hash[Symbol, Array[Symbol]]
       assert_equal "{\"a\":[\"x\",\"y\"],\"b\":[]}", sh.to_json
       mk = { 1 => 2, "a" => 3, :s => 4 }
       assert_equal "{\"1\":2,\"a\":3,\"s\":4}", mk.to_json

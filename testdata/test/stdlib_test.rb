@@ -188,7 +188,7 @@ module StdlibTests
       assert_equal 1, n.select { |r| r["age"].nil? }.size
       assert_equal [["name", "age", "score"], ["Ada", 36, 9.5], ["Grace", nil, 1000], [" Linus ", 8.0, 26]], CSV.parse(src, converters: :numeric)
       assert_equal [["a", "b"], [1.5, 2.0]], CSV.parse("a,b\n1.5,2", converters: :float)
-      assert_equal [["a", "b"], [1.5, 2]], CSV.parse("a,b\n1.5,2", converters: [:integer, :float])
+      assert_equal [["a", "b"], [1.5, 2]], CSV.parse("a,b\n1.5,2", converters: %i[integer float])
       assert_equal [1, 2.5, "x"], CSV.parse_line("1,2.5,x", converters: :numeric)
       assert_equal [{ "a" => "1", "b" => "2", nil => "3" }, { "a" => "4", "b" => nil }], CSV.parse("a,b\n1,2,3\n4", headers: true).map(&:to_h)
       assert_equal({ "a" => "1" }, CSV.parse("a,a\n1,2", headers: true)[0].to_h)
@@ -2042,7 +2042,7 @@ module StdlibTests
     def test_categories
       # minitest's autorun turns :deprecated on (MRI's default is false)
       assert_equal [true, true, false, false], [Warning[:deprecated], Warning[:experimental], Warning[:performance], Warning[:strict_unused_block]]
-      assert_equal [:deprecated, :experimental, :performance, :strict_unused_block], Warning.categories
+      assert_equal %i[deprecated experimental performance strict_unused_block], Warning.categories
       e = assert_raises(ArgumentError) { Warning[:nope] }
       assert_equal "unknown category: nope", e.message
       assert_raises(ArgumentError) { Warning[:nope] = true }
@@ -2494,8 +2494,8 @@ module StdlibTests
     def test_time_deconstruct_keys
       t = Time.utc(2000, 1, 2, 3, 4, 5, Rational(1, 2))
       assert_equal({ year: 2000, month: 1, day: 2, yday: 2, wday: 0, hour: 3, min: 4, sec: 5, subsec: Rational(1, 2000000), dst: false, zone: "UTC" }, t.deconstruct_keys(nil))
-      assert_equal({ year: 2000, zone: "UTC" }, t.deconstruct_keys([:year, :zone, :foo]))
-      assert_equal({ zone: "UTC", year: 2000 }, t.deconstruct_keys([:zone, :year]))
+      assert_equal({ year: 2000, zone: "UTC" }, t.deconstruct_keys(%i[year zone foo]))
+      assert_equal({ zone: "UTC", year: 2000 }, t.deconstruct_keys(%i[zone year]))
     end
 
     def test_random_srand

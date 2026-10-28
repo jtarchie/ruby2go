@@ -82,7 +82,7 @@ end
 
 # A T::Struct whose props a load-time loop declares under computed names: boot's props (decision 241).
 class DemoFormulaStruct < T::Struct
-  PREDICATES = [:bottle, :head].freeze
+  PREDICATES = %i[bottle head].freeze
 
   PREDICATES.each do |predicate_name|
     present_method_name = :"#{predicate_name}_present"

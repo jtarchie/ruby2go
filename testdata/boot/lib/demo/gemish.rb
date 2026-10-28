@@ -139,7 +139,7 @@ module Demo
     # a splat of a value that is a Symbol or an Array (bindata's BitField.define_class(name, :nbits, *args))
     def splat_args
       made = []
-      { "Bit" => :big, "Sbit" => [:big, :signed] }.each_pair { |name, args| made << define_field(name, :nbits, *args) }
+      { "Bit" => :big, "Sbit" => %i[big signed] }.each_pair { |name, args| made << define_field(name, :nbits, *args) }
       made
     end
 

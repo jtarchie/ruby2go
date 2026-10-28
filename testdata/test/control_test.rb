@@ -4883,7 +4883,7 @@ end
 
     def test_interpolated_symbol
       x = "dyn"
-      assert_equal [:dyn_sym, :plain2], [:"#{x}_sym", :"plain#{1 + 1}"]
+      assert_equal %i[dyn_sym plain2], [:"#{x}_sym", :"plain#{1 + 1}"]
     end
   end
 
@@ -5637,7 +5637,7 @@ end
 
     def test_splat_non_array
       assert_equal [["u", "z"], [:x], [0, 1, 2]], control_splats("u", nil, [1, 2])
-      assert_equal [:x, :y], control_splats("u", :y, [1, 2])[1]
+      assert_equal %i[x y], control_splats("u", :y, [1, 2])[1]
       m = "ab".match(/(a)(c)?/)
       assert_equal [["a", "a", nil], [], [["k", 1]], [1, 2]], [[*m], [*"zz".match(/q/)], [*{ "k" => 1 }], [*1..2]]
     end
@@ -5964,7 +5964,7 @@ module ControlTests
     end
 
     def test_and_or_jumps
-      assert_equal [:pos, :zero, :neg], [control_sign(3), control_sign(0), control_sign(-2)]
+      assert_equal %i[pos zero neg], [control_sign(3), control_sign(0), control_sign(-2)]
       assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i|
   i.even? and next i * 10
   i

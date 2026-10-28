@@ -131,16 +131,16 @@ module MethodTests
     def test_reflection
       m = method(:method_twice)
       assert_equal 1, m.arity
-      assert_equal [[:req, :n]], m.parameters
+      assert_equal [%i[req n]], m.parameters
       assert_equal :method_twice, m.name
       assert_equal Object, m.owner
       assert m.receiver.equal?(self)
       assert_equal(-2, method(:method_opt).arity)
-      assert_equal [[:req, :a], [:opt, :b]], method(:method_opt).parameters
+      assert_equal [%i[req a], %i[opt b]], method(:method_opt).parameters
       assert_equal(-2, method(:method_join).arity)
-      assert_equal [[:req, :head], [:rest, :rest]], method(:method_join).parameters
+      assert_equal [%i[req head], %i[rest rest]], method(:method_join).parameters
       assert_equal(-2, method(:method_kw).arity)
-      assert_equal [[:req, :a], [:key, :k]], method(:method_kw).parameters
+      assert_equal [%i[req a], %i[key k]], method(:method_kw).parameters
       assert_equal 0, method(:method_seven).arity
       assert_equal [], method(:method_seven).parameters
     end
@@ -218,7 +218,7 @@ module MethodTests
       assert_equal 3, len.bind_call("abc")
       g = Animal.instance_method(:greet)
       assert_equal 1, g.arity
-      assert_equal [[:req, :who]], g.parameters
+      assert_equal [%i[req who]], g.parameters
       assert_equal "woof you", g.bind_call(Dog.new, "you")
       # MRI binds this definition, not the subclass's override
       assert_equal "...", Animal.instance_method(:speak).bind_call(Dog.new)
@@ -406,9 +406,9 @@ module MethodTests
     end
 
     def test_proc_literal_info
-      assert_equal [[:opt, :x], [:opt, :y]], proc { |x, y| }.parameters
-      assert_equal [[:req, :x], [:opt, :y]], ->(x, y = 1) {}.parameters
-      assert_equal [[:keyreq, :k], [:key, :o], [:keyrest, :kr], [:block, :b]], proc { |k:, o: 1, **kr, &b| }.parameters
+      assert_equal [%i[opt x], %i[opt y]], proc { |x, y| }.parameters
+      assert_equal [%i[req x], %i[opt y]], ->(x, y = 1) {}.parameters
+      assert_equal [%i[keyreq k], %i[key o], %i[keyrest kr], %i[block b]], proc { |k:, o: 1, **kr, &b| }.parameters
       assert_equal [], proc {}.parameters
       assert_equal [0, -2, 2, -1, 0], [proc { |x = 1| }.arity, ->(x, y = 1) {}.arity, proc { _1 + _2 }.arity, ->(x: 1) {}.arity, proc { |x: 0| }.arity]
       assert_equal [false, true, true], [proc {}.lambda?, -> {}.lambda?, -> {}.lambda?]
@@ -460,7 +460,7 @@ module MethodTests
       assert_equal [1, 2, 6, 3, 4], s.m([1, 2, 3, 4]) { |a, b = 5, c = 6, d, e| [a, b, c, d, e] }
       assert_equal [1, 2, [3, 4, 5], 6, 7], s.m([1, 2, 3, 4, 5, 6, 7]) { |a, b = 5, *c, d, e| [a, b, c, d, e] }
       assert_equal [1, [], 2, nil], proc { |a, *b, c, d| [a, b, c, d] }.call(1, 2)
-      assert_equal [[:opt, :a], [:rest, :b], [:opt, :c]], proc { |a, *b, c| }.parameters
+      assert_equal [%i[opt a], %i[rest b], %i[opt c]], proc { |a, *b, c| }.parameters
     end
   end
 end

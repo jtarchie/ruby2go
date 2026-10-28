@@ -212,8 +212,8 @@ module RegexpTests
       assert m
       if m
         assert_equal({ f: "foo", b: "bar" }, m.deconstruct_keys(nil))
-        assert_equal({ f: "foo", b: "bar" }, m.deconstruct_keys([:f, :b]))
-        assert_equal [{}, {}, { f: "foo" }, { b: "bar" }], [m.deconstruct_keys([:f, :b, :c]), m.deconstruct_keys([:c, :f]), m.deconstruct_keys([:f, :c]), m.deconstruct_keys([:b])]
+        assert_equal({ f: "foo", b: "bar" }, m.deconstruct_keys(%i[f b]))
+        assert_equal [{}, {}, { f: "foo" }, { b: "bar" }], [m.deconstruct_keys(%i[f b c]), m.deconstruct_keys(%i[c f]), m.deconstruct_keys(%i[f c]), m.deconstruct_keys([:b])]
       end
       m2 = /(?<f>foo)(?<b>bar)?/.match("foo")
       assert_equal({ f: "foo", b: nil }, m2&.deconstruct_keys(nil))
