@@ -879,7 +879,7 @@ b/
       end
       path = "/posts/42.json"
       assert_equal 7, (path =~ /\d+/)
-      assert_nil (path =~ /zzz/)
+      assert_nil(path =~ /zzz/)
       assert_equal true, (path !~ /\.html$/)
       assert_equal false, (path !~ /json/)
       assert_equal true, path.match?(/json/)
@@ -1016,8 +1016,8 @@ b/
 
     # ^ does not match after a string's final newline
     def test_does_not_match_after_a
-      assert_nil ("a\n" =~ /^$/)
-      assert_nil ("a\n" =~ /^\z/)
+      assert_nil("a\n" =~ /^$/)
+      assert_nil("a\n" =~ /^\z/)
       assert_equal false, "a\n".match?(/\n^/)
     end
 
@@ -1163,7 +1163,7 @@ b/
         assert_equal "0.0", m_nilclass[2].to_f.to_s
       end
       line = nil #: String?
-      assert_nil (line =~ /x/)
+      assert_nil(line =~ /x/)
     end
 
     # /o interpolates once, on first evaluation
@@ -1268,7 +1268,7 @@ b/
     def test_b_uses_unicode_word_characters
       assert_nil "café".match(/caf\b/)
       assert_nil "éb".match(/\bb/)
-      assert_nil ("日本 x".match(/\b本/))
+      assert_nil("日本 x".match(/\b本/))
     end
   end
 

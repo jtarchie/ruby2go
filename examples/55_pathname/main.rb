@@ -17,8 +17,8 @@ puts Pathname.new("report.tar.gz").basename(".gz")
 puts Pathname.new("report.tar.gz").basename(".*")
 
 root = Pathname("logs")
-puts (root / "2026" / "app.log")
-puts (root + "2026" + "app.log")
+puts(root / "2026" / "app.log")
+puts(root + "2026" + "app.log")
 puts root.join("2026", "app.log")
 puts root.join("/abs")
 

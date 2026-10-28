@@ -780,8 +780,8 @@ module ArrayTests
     def test_return_from_block_in_method
       nums = NUMS.dup
       assert_equal 2, (index_of(nums, 15))
-      assert_nil (index_of(nums, 99))
-      assert_nil (index_of([], 1))
+      assert_nil(index_of(nums, 99))
+      assert_nil(index_of([], 1))
       assert_equal "cccc", (first_long(["a", "bb", "cccc", "ddddd"]))
       assert_equal "none", first_long([])
     end
@@ -1236,7 +1236,7 @@ module ArrayTests
       assert_equal [4, 3, 2, 1], cd.first(9)
       assert_equal "{4 => 1, 3 => 1, 2 => 1, 1 => 1}", (cd.tally).inspect
       assert_equal 2, (cd.find { |n| n < 3 })
-      assert_nil (cd.detect { |n| n > 9 })
+      assert_nil(cd.detect { |n| n > 9 })
       assert_equal [2, 4, 1, 3], (cd.sort_by { |n| [n % 2, n.to_s] })
       assert_equal "{false => [4, 2], true => [3, 1]}", (cd.group_by(&:odd?)).inspect
       assert_equal [4, -4, 3, -3, 2, -2, 1, -1], (cd.flat_map { |n| [n, -n] })
@@ -1263,7 +1263,7 @@ module ArrayTests
       assert_equal "{}", (zero.tally).inspect
       assert_equal [], zero.sort
       assert_equal [], (zero.map { |n| n })
-      assert_nil (zero.min_by { |n| n })
+      assert_nil(zero.min_by { |n| n })
       shelf = Shelf.new("Dune", "Emma", "Ulysses", "Beloved")
       assert_equal ["Beloved", "Dune", "Emma", "Ulysses"], shelf.sort
       assert_equal [4, 4, 7, 7], shelf.map(&:size)
@@ -1379,9 +1379,9 @@ module ArrayTests
       assert_equal [], (none.reject { |n| n > 0 })
       assert_equal [5, 0, 12, 7], nums.reject(&:negative?)
       assert_equal 12, (nums.find { |n| n > 6 })
-      assert_nil (nums.find { |n| n > 100 })
+      assert_nil(nums.find { |n| n > 100 })
       assert_equal -3, nums.detect(&:negative?)
-      assert_nil (none.detect { |n| n > 0 })
+      assert_nil(none.detect { |n| n > 0 })
       assert_equal true, (nums.any? { |n| n > 10 })
       assert_equal false, (nums.any? { |n| n > 100 })
       assert_equal false, (none.any? { |n| n > 0 })
@@ -1444,8 +1444,8 @@ module ArrayTests
       assert_equal "10.0", (floats.max).inspect
       assert_equal "fig", (words.min_by { |w| w.size })
       assert_equal "banana", (words.max_by { |w| w.size })
-      assert_nil (none.min_by { |n| n })
-      assert_nil (none.max_by { |n| n })
+      assert_nil(none.min_by { |n| n })
+      assert_nil(none.max_by { |n| n })
       assert_equal 0, (nums.min_by { |n| n.abs })
       assert_equal 12, nums.max_by(&:abs)
       assert_equal "{4 => [\"pear\", \"kiwi\"], 3 => [\"fig\", \"fig\"], 5 => [\"apple\", \"Äpfel\"], 6 => [\"banana\"]}", ((words.group_by { |w| w.size })).inspect
@@ -1482,7 +1482,7 @@ module ArrayTests
       assert_equal 3, (odd.min || 0) + 1
       assert_equal 1, (none.min || 0) + 1
       assert_equal "BANANA", (words.find { |w| w.size > 5 }&.upcase)
-      assert_nil (words.find { |w| w.size > 9 }&.upcase)
+      assert_nil(words.find { |w| w.size > 9 }&.upcase)
       top = odd.max
       doubled = 0
       doubled = top * 2 if top
@@ -1646,14 +1646,14 @@ module ArrayTests
       assert_equal false, mixed_inc.include?("y")
       grid = [[1, 2, 3], [4, 5, 6]] #: Array[Array[Integer]]
       assert_equal [1, 1], (find_pos(grid, 5))
-      assert_nil (find_pos(grid, 9))
+      assert_nil(find_pos(grid, 9))
       assert_equal 0, count_of([])
       assert_equal -1, count_of(nil)
       assert_equal 1, count_of([7])
       groups = { "odd" => [1] } #: Hash[String, Array[Integer]]
       assert_equal 0, (groups.fetch("even", []).size)
-      assert_nil (pass_through(1) <=> "a")
-      assert_nil (pass_through(:a) <=> 1)
+      assert_nil(pass_through(1) <=> "a")
+      assert_nil(pass_through(:a) <=> 1)
       mixed = []
       mixed << 3
       mixed << "x"
@@ -1666,7 +1666,7 @@ module ArrayTests
       assert_nil idx_arr.index("z")
       assert_equal 1, (idx_arr.index { |x| x > "a" })
       assert_equal 2, idx_arr.find_index("c")
-      assert_nil (idx_arr.find_index { |x| x == "q" })
+      assert_nil(idx_arr.find_index { |x| x == "q" })
       assert_equal 3, idx_arr.rindex("b")
       assert_nil idx_arr.rindex("q")
       pairs = [["a", "1"], ["b"]] #: Array[Array[String]]
@@ -1685,7 +1685,7 @@ module ArrayTests
       assert_equal 1, en_a.count(3)
       assert_equal 28, (en_a.inject { |s, x| s + x })
       assert_equal 2160, (en_a.reduce { |s, x| s * x })
-      assert_nil (en_e.inject { |s, x| s + x })
+      assert_nil(en_e.inject { |s, x| s + x })
       assert_equal [10, 6, 16, 2, 18, 4], (en_a.each_with_object([]) { |x, acc| acc << x * 2 })
       assert_equal [50, 30, 10, 90], (en_a.filter_map { |x| x * 10 if x.odd? })
       assert_equal ["v1.2", "v3.4"], (%w[1.2 x 3.4].filter_map { |v| Version.parse(v) }.map(&:to_s))
@@ -1741,7 +1741,7 @@ module ArrayTests
       assert_equal [[1, 2, 3], [1, 3, 2]], ([1, 2, 3].permutation.first(2))
       assert_equal [[]], ([1, 2].combination(0).to_a)
       assert_equal 5, ([1, 3, 5, 7, 9].bsearch { |x| x >= 4 })
-      assert_nil ([1, 3].bsearch { |x| x > 9 })
+      assert_nil([1, 3].bsearch { |x| x > 9 })
       assert_equal 2, ar_a.count(2)
       ar_c = [5, 1, 4]
       ar_c.sort!
@@ -1749,9 +1749,9 @@ module ArrayTests
       ar_c.map! { |x| x * 2 }
       assert_equal [2, 8, 10], ar_c.dup
       assert_equal [8, 10], (ar_c.select! { |x| x > 2 })
-      assert_nil (ar_c.select! { |x| x > 2 })
+      assert_nil(ar_c.select! { |x| x > 2 })
       assert_equal [8], (ar_c.reject! { |x| x > 9 })
-      assert_nil (ar_c.reject! { |x| x > 99 })
+      assert_nil(ar_c.reject! { |x| x > 99 })
       ar_c.delete_if { |x| x == 8 }
       assert_equal [], ar_c
       ar_c.keep_if(&:positive?)
@@ -2063,7 +2063,7 @@ module ArrayTests
       cells[[0, 1]] = "a"
       cells[[2, 3]] = "b"
       assert_equal "a", (cells[[0, 1]])
-      assert_nil (cells[[9, 9]])
+      assert_nil(cells[[9, 9]])
       assert_equal true, (cells.key?([2, 3]))
       assert_equal 2, cells.size
       cells[[0, 1]] = "c"
@@ -2205,12 +2205,12 @@ module ArrayTests
       mix << "x"
       mix << nil
       mix << 2.5
-      assert_nil (mix.find { |e| e.nil? })
+      assert_nil(mix.find { |e| e.nil? })
       assert_equal true, (mix.any? { |e| e.nil? })
       assert_equal false, (mix.all? { |e| e.nil? })
       assert_equal false, (mix.none? { |e| e.nil? })
       assert_equal "{false => [3, \"x\", 2.5], true => [nil]}", ((mix.group_by { |e| e.nil? })).inspect
-      assert_nil (mix.min_by { |e| e.to_s })
+      assert_nil(mix.min_by { |e| e.to_s })
       assert_equal "2.5", ((mix.max_by { |e| e.to_s.size })).inspect
       assert_equal 8, (mix.flat_map { |e| [e, e] }.size)
       assert_equal "[3, \"x\", 2.5]", ((mix.reject { |e| e.nil? })).inspect

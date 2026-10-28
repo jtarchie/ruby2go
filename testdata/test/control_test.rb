@@ -1744,7 +1744,7 @@ module ControlTests
       w = 3 #: untyped
       assert_equal "dflt", (u || "dflt")
       assert_equal 3, (w || "dflt")
-      assert_nil (u && "x")
+      assert_nil(u && "x")
       assert_equal "x", (w && "x")
       name = nil #: String?
       greeting = name && "hi #{name}"
@@ -2039,15 +2039,15 @@ end
       some = 3 #: Integer?
       assert_equal 10, (none || 10)
       assert_equal 3, (some || 10)
-      assert_nil (none && none + 1)
+      assert_nil(none && none + 1)
       assert_equal 4, (some && some + 1)
       str = nil #: String?
       assert_equal "", (str || "")
-      assert_nil (str && str.size)
+      assert_nil(str && str.size)
       str = "abc"
       assert_equal 3, (str && str.size)
       other_nil = nil #: Integer?
-      assert_nil (none || other_nil)
+      assert_nil(none || other_nil)
       yes = true
       no = false
       assert_equal "fallback", (no || "fallback")
@@ -2056,7 +2056,7 @@ end
       assert_equal true, (yes || "never")
       assert_equal false, (none || false)
       assert_equal "three", (some && "three")
-      assert_nil (none && "none")
+      assert_nil(none && "none")
       zero_and = "zero is truthy"
       assert_equal "zero is truthy", zero_and
       empty_and = :empty_is_truthy
@@ -3113,7 +3113,7 @@ end
       assert_nil big2
       flag = false
       assert_equal 3, (flag || some)
-      assert_nil (flag || none)
+      assert_nil(flag || none)
     end
 
     # multiple assignment from an Array-returning method and from a pair

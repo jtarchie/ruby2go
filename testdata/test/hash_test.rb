@@ -668,7 +668,7 @@ module HashTests
       # Value-returning block calls through &. on a possibly-nil nested hash
       # (iterators through &. are dynamic_bug_safe_nav_iterator).
       assert_equal ["y1", "z2"], (nested["x"]&.map { |nk, nv| "#{nk}#{nv}" })
-      assert_nil (nested["zz"]&.map { |nk, _nv| nk })
+      assert_nil(nested["zz"]&.map { |nk, _nv| nk })
       assert_equal "{\"z\" => 2}", ((nested["x"]&.select { |_nk, nv| nv > 1 })).inspect
       assert_equal ["y", "z"], nested["x"]&.keys
     end
@@ -696,7 +696,7 @@ module HashTests
       assert_equal ["a true ", "b false 2", "nil", "2"], got
       assert_nil ov.fetch("a")
       assert_equal 2, ov.fetch("b")
-      assert_nil (ov.fetch("a", 9))
+      assert_nil(ov.fetch("a", 9))
       ov["a"] = 5
       assert_equal ["a", "b"], (ov.select { |_k, v| !v.nil? }.keys)
       assert_equal ["a", "b"], (ov.map { |k, v| v ? k : "-" })
@@ -801,9 +801,9 @@ module HashTests
     def test_an_explicit_nil_fetch_default
       fetch_h = { "a" => 1 } #: Hash[String, Integer]
       assert_equal 1, (fetch_h.fetch("a", nil))
-      assert_nil (fetch_h.fetch("x", nil))
+      assert_nil(fetch_h.fetch("x", nil))
       cfg = { debug: false } #: Hash[Symbol, untyped]
-      assert_nil (cfg.fetch(:nope, nil))
+      assert_nil(cfg.fetch(:nope, nil))
     end
 
     # a negative count to first is MRI's ArgumentError
@@ -973,7 +973,7 @@ module HashTests
       assert_equal [["A", 10], ["BB", 20], ["CCC", 30]], (h.map { |k, v| [k.upcase, v * 10] })
       assert_equal ["a", "1", "bb", "2", "ccc", "3"], (h.flat_map { |k, v| [k, v.to_s] })
       assert_equal ["bb", 2], (h.find { |_k, v| v > 1 })
-      assert_nil (h.detect { |_k, v| v > 5 })
+      assert_nil(h.detect { |_k, v| v > 5 })
       assert_equal true, (h.any? { |_k, v| v > 2 })
       assert_equal false, (h.any? { |_k, v| v > 3 })
       assert_equal true, (h.all? { |_k, v| v > 0 })
@@ -1020,10 +1020,10 @@ module HashTests
       e = {} #: Hash[String, Integer]
       assert_nil e.min
       assert_nil e.max
-      assert_nil (e.min_by { |_k, v| v })
+      assert_nil(e.min_by { |_k, v| v })
       assert_equal [], e.sort
       assert_equal [], e.to_a
-      assert_nil (e.find { |_k, _v| true })
+      assert_nil(e.find { |_k, _v| true })
       assert_equal false, (e.any? { |_k, _v| true })
       assert_equal true, (e.all? { |_k, _v| false })
       assert_equal 10, (e.reduce(10) { |s, _pair| s + 1 })
@@ -1325,8 +1325,8 @@ module HashTests
       h.each_value { |v| ints << v }
       assert_equal [1, 5, -2, 7], ints
       assert_equal "b", (first_over(h, 4))
-      assert_nil (first_over(h, 100))
-      assert_nil (first_over({}, 0))
+      assert_nil(first_over(h, 100))
+      assert_nil(first_over({}, 0))
       assert_equal 6, sum_until_negative(h)
       assert_equal 0, sum_until_negative({})
       assert_equal ["a", "b", "c", "d"], keys_via_each_key(h)
@@ -1820,7 +1820,7 @@ module HashTests
       tk[[2, "a"]] = 3
       assert_equal 2, tk.size
       assert_equal 2, (tk[[1, "a"]])
-      assert_nil (tk[[1, "b"]])
+      assert_nil(tk[[1, "b"]])
       assert_equal "{[1, \"a\"] => 2, [2, \"a\"] => 3}", (tk).inspect
       pairs = [[1, "a"], [1, "a"], [2, "b"]]
       assert_equal "{[1, \"a\"] => 2, [2, \"b\"] => 1}", (pairs.tally).inspect

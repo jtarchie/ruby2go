@@ -2650,8 +2650,8 @@ module ObjectTests
       assert_nil kid.nick
       up = baby.parent
       assert_equal "? < root", (up.lineage if up)
-      assert_nil (up&.parent&.nick)
-      assert_nil (root.parent&.nick)
+      assert_nil(up&.parent&.nick)
+      assert_nil(root.parent&.nick)
       lz = Lazy.new
       lz.data << 3
       lz.load
@@ -3062,7 +3062,7 @@ module ObjectTests
       assert_equal "S0.1", ([a, b, Bonus.new(0.1)].min.to_s)
       z = 0.0 #: Float
       n = Score.new(z / z)
-      assert_nil (n <=> a)
+      assert_nil(n <=> a)
       e = assert_raises(ArgumentError) { [a, n].sort }
       assert_equal "comparison of ObjectTests::Score with ObjectTests::Score failed", e.message
       e = assert_raises(ArgumentError) { [Bonus.new(1.0), Bonus.new(z / z)].max }
@@ -3190,7 +3190,7 @@ module ObjectTests
       assert_equal ["ObjectTests::Handlers::Base", "ObjectTests::Handlers::Posts", "ObjectTests::Handlers::Users"], (Handlers.map { |h| h.name })
       assert_equal 3, Handlers.count
       assert_equal "[ObjectTests::Handlers::Posts]", ((Handlers.select { |h| h.matches?("/posts/9") })).inspect
-      assert_nil (Handlers.find { |h| h.matches?("/x") })
+      assert_nil(Handlers.find { |h| h.matches?("/x") })
       bag = EbBag.new.add(3).add(1).add(2)
       items = [] #: Array[Integer]
       bag.each { |n| items << n }

@@ -770,9 +770,9 @@ module NumberTests
     def test_with_nan_is_nil
       nan_zero = 0.0 #: Float
       nan = nan_zero / nan_zero #: Float
-      assert_nil (nan <=> 1.0)
-      assert_nil (1.0 <=> nan)
-      assert_nil (nan <=> nan)
+      assert_nil(nan <=> 1.0)
+      assert_nil(1.0 <=> nan)
+      assert_nil(nan <=> nan)
     end
 
     # Float#** rounds like C pow
