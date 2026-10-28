@@ -156,9 +156,7 @@ def test(i) = "mine #{i}"
 puts test(3)
 
 # main's public/private, `(a; b)`, loops as values, `a, b = 1`, `def obj.m` on a fresh object, `case nil` (decision 364)
-public
 def ctrl_pub = 1
-private
 p ctrl_pub
 p((ctrl_a = 1; ctrl_a + 1))
 p(())
