@@ -92,8 +92,8 @@ class Comment < ApplicationRecord
     instance = Comment.new
     instance.id = row.id
     instance.article_id = row.article_id
-    instance.commenter = (row.commenter).nil? ? nil : (row.commenter).to_s
-    instance.body = (row.body).nil? ? nil : (row.body).to_s
+    instance.commenter = row.commenter.nil? ? nil : row.commenter.to_s
+    instance.body = row.body.nil? ? nil : row.body.to_s
     instance.created_at_raw = row.created_at
     instance.updated_at_raw = row.updated_at
     instance._note_hydrated
@@ -117,13 +117,13 @@ class Comment < ApplicationRecord
     super()
     self.id = (attrs[:id] || 0).to_i
     self.article_id = attrs[:article_id] || 0
-    self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s
-    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s
+    self.commenter = attrs[:commenter].nil? ? nil : attrs[:commenter].to_s
+    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s
     self.created_at_raw = attrs[:created_at] || ""
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless (attrs[:created_at].nil?)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].nil?
     self.updated_at_raw = attrs[:updated_at] || ""
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless (attrs[:updated_at].nil?)
-    self.article_id = attrs[:article].id unless (attrs[:article].nil?)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].nil?
+    self.article_id = attrs[:article].id unless attrs[:article].nil?
   end
 
   def attributes
@@ -137,9 +137,9 @@ class Comment < ApplicationRecord
     when :article_id
       @article_id
     when :commenter
-      (@commenter).nil? ? nil : (@commenter).to_s
+      @commenter.nil? ? nil : @commenter.to_s
     when :body
-      (@body).nil? ? nil : (@body).to_s
+      @body.nil? ? nil : @body.to_s
     when :created_at
       @created_at_raw
     when :updated_at
@@ -150,46 +150,46 @@ class Comment < ApplicationRecord
   def []=(name, value)
     case name
     when :id
-      @id = (value).to_i
+      @id = value.to_i
     when :article_id
-      @article_id = (value).to_i
+      @article_id = value.to_i
     when :commenter
-      @commenter = (value).nil? ? nil : (value).to_s
+      @commenter = value.nil? ? nil : value.to_s
     when :body
-      @body = (value).nil? ? nil : (value).to_s
+      @body = value.nil? ? nil : value.to_s
     when :created_at
-      @created_at_raw = (value).to_s
+      @created_at_raw = value.to_s
     when :updated_at
-      @updated_at_raw = (value).to_s
+      @updated_at_raw = value.to_s
     end
   end
 
   def update(attrs)
-    self.article_id = (attrs[:article_id]).to_i if attrs.key?(:article_id)
-    self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s if attrs.key?(:commenter)
-    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s if attrs.key?(:body)
-    self.created_at_raw = (attrs[:created_at]).to_s if attrs.key?(:created_at)
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless ((attrs[:created_at]).to_s.nil?)
-    self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless ((attrs[:updated_at]).to_s.nil?)
+    self.article_id = attrs[:article_id].to_i if attrs.key?(:article_id)
+    self.commenter = attrs[:commenter].nil? ? nil : attrs[:commenter].to_s if attrs.key?(:commenter)
+    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s if attrs.key?(:body)
+    self.created_at_raw = attrs[:created_at].to_s if attrs.key?(:created_at)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].to_s.nil?
+    self.updated_at_raw = attrs[:updated_at].to_s if attrs.key?(:updated_at)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].to_s.nil?
     save
   end
 
   def update!(attrs)
-    self.article_id = (attrs[:article_id]).to_i if attrs.key?(:article_id)
-    self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s if attrs.key?(:commenter)
-    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s if attrs.key?(:body)
-    self.created_at_raw = (attrs[:created_at]).to_s if attrs.key?(:created_at)
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless ((attrs[:created_at]).to_s.nil?)
-    self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless ((attrs[:updated_at]).to_s.nil?)
+    self.article_id = attrs[:article_id].to_i if attrs.key?(:article_id)
+    self.commenter = attrs[:commenter].nil? ? nil : attrs[:commenter].to_s if attrs.key?(:commenter)
+    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s if attrs.key?(:body)
+    self.created_at_raw = attrs[:created_at].to_s if attrs.key?(:created_at)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].to_s.nil?
+    self.updated_at_raw = attrs[:updated_at].to_s if attrs.key?(:updated_at)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].to_s.nil?
     save!
     self
   end
 
   def fill_timestamps(creating)
     now = ActiveSupport.db_now
-    if !(creating) || @updated_at_raw.nil? || (@updated_at_raw || "").empty?
+    if !creating || @updated_at_raw.nil? || (@updated_at_raw || "").empty?
       @__t_updated_at = nil
       @updated_at_raw = now
     end
@@ -298,12 +298,12 @@ class Comment < ApplicationRecord
   end
 
   def update_from_comment_params(p)
-    if !(p.commenter_provided)
+    if !p.commenter_provided
       nil
     else
       self.commenter = p.commenter
     end
-    if !(p.body_provided)
+    if !p.body_provided
       nil
     else
       self.body = p.body
@@ -312,12 +312,12 @@ class Comment < ApplicationRecord
   end
 
   def update_from_comment_params!(p)
-    if !(p.commenter_provided)
+    if !p.commenter_provided
       nil
     else
       self.commenter = p.commenter
     end
-    if !(p.body_provided)
+    if !p.body_provided
       nil
     else
       self.body = p.body
@@ -329,7 +329,7 @@ class Comment < ApplicationRecord
   def validate
     errors << "Commenter can't be blank" if @commenter.nil? || (@commenter || "").empty?
     errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
-    errors << "Article must exist" if @article_id.nil? || @article_id == 0 || !(Article.exists?(@article_id))
+    errors << "Article must exist" if @article_id.nil? || @article_id == 0 || !Article.exists?(@article_id)
   end
 
   def article
@@ -405,7 +405,7 @@ class Comment < ApplicationRecord
   end
 
   def _autosave_article
-    if @article_loaded && @article_id == 0 && !(@article_cache.nil?)
+    if @article_loaded && @article_id == 0 && !@article_cache.nil?
       @article_cache.save
       @article_id = @article_cache.id
     end

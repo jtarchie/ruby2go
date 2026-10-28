@@ -560,10 +560,10 @@ B
     # Decision 23: Symbol is its own type, never equal to the String of the same name.
     def test_decision_23_symbol_is_its
       a = :apple
-      assert_equal(-1, (a <=> :banana))
+      assert_equal(-1, a <=> :banana)
       assert_equal 0, (a <=> :apple)
       assert_equal 1, (:b <=> :a)
-      assert_equal(-1, (:a <=> :ab))
+      assert_equal(-1, :a <=> :ab)
       assert_equal true, (a == :apple)
       assert_equal false, (a == "apple")
       assert_equal true, (a != :x)
@@ -847,7 +847,7 @@ B
       assert_equal true, s == :sym
       assert_equal false, (s == "sym")
       assert_equal :sym, s.to_sym
-      assert_equal(-1, (s <=> :syn))
+      assert_equal(-1, s <=> :syn)
       assert_equal "Hello sym", "#{u} #{s}"
     end
 
@@ -1116,7 +1116,7 @@ B
       assert_equal 1, (s_cmp <=> "a")
       assert_equal 0, (s_cmp <=> "b")
       y_cmp = string_ident_cmp(:b)
-      assert_equal(-1, (y_cmp <=> :c))
+      assert_equal(-1, y_cmp <=> :c)
     end
 
     # case mapping follows Unicode special casing
@@ -2048,7 +2048,7 @@ module StringTests
 
     def test_arguments_evaluate_in_order_first
       x = 0
-      assert_equal "1 11 111", format("%d %d %d", (x += 1), (x += 10), (x += 100))
+      assert_equal "1 11 111", format("%d %d %d", x += 1, x += 10, x += 100)
       assert_equal "05|n12     |   1.714|c\n", format("%02d|%-8s|%8.3f|%x\n", 5, "n#{12 % 97}", 12 / 7.0, 12)
     end
   end

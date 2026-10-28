@@ -82,8 +82,8 @@ class Article < ApplicationRecord
   def self.from_row(row)
     instance = Article.new
     instance.id = row.id
-    instance.title = (row.title).nil? ? nil : (row.title).to_s
-    instance.body = (row.body).nil? ? nil : (row.body).to_s
+    instance.title = row.title.nil? ? nil : row.title.to_s
+    instance.body = row.body.nil? ? nil : row.body.to_s
     instance.created_at_raw = row.created_at
     instance.updated_at_raw = row.updated_at
     instance._note_hydrated
@@ -105,12 +105,12 @@ class Article < ApplicationRecord
   def initialize(attrs = ActiveRecord::Base::EMPTY_ATTRS)
     super()
     self.id = (attrs[:id] || 0).to_i
-    self.title = (attrs[:title]).nil? ? nil : (attrs[:title]).to_s
-    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s
+    self.title = attrs[:title].nil? ? nil : attrs[:title].to_s
+    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s
     self.created_at_raw = attrs[:created_at] || ""
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless (attrs[:created_at].nil?)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].nil?
     self.updated_at_raw = attrs[:updated_at] || ""
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless (attrs[:updated_at].nil?)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].nil?
     @comments_cache = nil
     @comments_loaded = false
   end
@@ -124,9 +124,9 @@ class Article < ApplicationRecord
     when :id
       @id
     when :title
-      (@title).nil? ? nil : (@title).to_s
+      @title.nil? ? nil : @title.to_s
     when :body
-      (@body).nil? ? nil : (@body).to_s
+      @body.nil? ? nil : @body.to_s
     when :created_at
       @created_at_raw
     when :updated_at
@@ -137,42 +137,42 @@ class Article < ApplicationRecord
   def []=(name, value)
     case name
     when :id
-      @id = (value).to_i
+      @id = value.to_i
     when :title
-      @title = (value).nil? ? nil : (value).to_s
+      @title = value.nil? ? nil : value.to_s
     when :body
-      @body = (value).nil? ? nil : (value).to_s
+      @body = value.nil? ? nil : value.to_s
     when :created_at
-      @created_at_raw = (value).to_s
+      @created_at_raw = value.to_s
     when :updated_at
-      @updated_at_raw = (value).to_s
+      @updated_at_raw = value.to_s
     end
   end
 
   def update(attrs)
-    self.title = (attrs[:title]).nil? ? nil : (attrs[:title]).to_s if attrs.key?(:title)
-    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s if attrs.key?(:body)
-    self.created_at_raw = (attrs[:created_at]).to_s if attrs.key?(:created_at)
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless ((attrs[:created_at]).to_s.nil?)
-    self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless ((attrs[:updated_at]).to_s.nil?)
+    self.title = attrs[:title].nil? ? nil : attrs[:title].to_s if attrs.key?(:title)
+    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s if attrs.key?(:body)
+    self.created_at_raw = attrs[:created_at].to_s if attrs.key?(:created_at)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].to_s.nil?
+    self.updated_at_raw = attrs[:updated_at].to_s if attrs.key?(:updated_at)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].to_s.nil?
     save
   end
 
   def update!(attrs)
-    self.title = (attrs[:title]).nil? ? nil : (attrs[:title]).to_s if attrs.key?(:title)
-    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s if attrs.key?(:body)
-    self.created_at_raw = (attrs[:created_at]).to_s if attrs.key?(:created_at)
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless ((attrs[:created_at]).to_s.nil?)
-    self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless ((attrs[:updated_at]).to_s.nil?)
+    self.title = attrs[:title].nil? ? nil : attrs[:title].to_s if attrs.key?(:title)
+    self.body = attrs[:body].nil? ? nil : attrs[:body].to_s if attrs.key?(:body)
+    self.created_at_raw = attrs[:created_at].to_s if attrs.key?(:created_at)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].to_s.nil?
+    self.updated_at_raw = attrs[:updated_at].to_s if attrs.key?(:updated_at)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].to_s.nil?
     save!
     self
   end
 
   def fill_timestamps(creating)
     now = ActiveSupport.db_now
-    if !(creating) || @updated_at_raw.nil? || (@updated_at_raw || "").empty?
+    if !creating || @updated_at_raw.nil? || (@updated_at_raw || "").empty?
       @__t_updated_at = nil
       @updated_at_raw = now
     end
@@ -280,12 +280,12 @@ class Article < ApplicationRecord
   end
 
   def update_from_article_params(p)
-    if !(p.title_provided)
+    if !p.title_provided
       nil
     else
       self.title = p.title
     end
-    if !(p.body_provided)
+    if !p.body_provided
       nil
     else
       self.body = p.body
@@ -294,12 +294,12 @@ class Article < ApplicationRecord
   end
 
   def update_from_article_params!(p)
-    if !(p.title_provided)
+    if !p.title_provided
       nil
     else
       self.title = p.title
     end
-    if !(p.body_provided)
+    if !p.body_provided
       nil
     else
       self.body = p.body
@@ -311,7 +311,7 @@ class Article < ApplicationRecord
   def validate
     errors << "Title can't be blank" if @title.nil? || (@title || "").empty?
     errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
-    unless (@body.nil?)
+    unless @body.nil?
       len = @body.length
       errors << "Body is too short (minimum is 10 characters)" if len < 10
     end

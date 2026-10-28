@@ -46,7 +46,7 @@ module Inflector
       word
     elsif ["x", "z"].include?(last)
       word + "es"
-    elsif n > 1 && (["ch", "sh"].include?(word[n - 2, 2]))
+    elsif n > 1 && ["ch", "sh"].include?(word[n - 2, 2])
       word + "es"
     else
       word + "s"

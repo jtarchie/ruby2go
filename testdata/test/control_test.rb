@@ -1754,8 +1754,8 @@ module ControlTests
       assert_equal false, big?(nil)
       assert_equal false, big?(5)
       assert_equal true, big?(50)
-      assert_equal 2, (control_pick(nil, 2))
-      assert_equal 1, (control_pick(1, 2))
+      assert_equal 2, control_pick(nil, 2)
+      assert_equal 1, control_pick(1, 2)
       flag = true
       opt = nil #: Integer?
       mixed = flag && opt
@@ -1764,7 +1764,7 @@ module ControlTests
       assert_nil mixed2
       values = [opt || 1, (flag && 2) || 3] #: Array[Integer]
       assert_equal [1, 2], values
-      assert_equal "n=5", (control_show(opt || 5))
+      assert_equal "n=5", control_show(opt || 5)
       u = nil #: untyped
       w = 3 #: untyped
       assert_equal "dflt", (u || "dflt")
@@ -2005,7 +2005,7 @@ end
       y = "y"
       z = "z"
       x, y, z = y, z, x
-      assert_equal ["y", "z", "x"], ([x, y, z])
+      assert_equal ["y", "z", "x"], [x, y, z]
       f0 = 0
       f1 = 1
       10.times { f0, f1 = f1, f0 + f1 }
@@ -2052,13 +2052,13 @@ end
       r2 = tb(log, "c", true) || tb(log, "d", true)
       r3 = tb(log, "e", true) && tb(log, "f", false)
       r4 = tb(log, "g", false) || tb(log, "h", false)
-      assert_equal [false, true, false, false], ([r1, r2, r3, r4])
+      assert_equal [false, true, false, false], [r1, r2, r3, r4]
       assert_equal ["a", "c", "e", "f", "g", "h"], log
       log.clear
       r5 = (tb(log, "i", true) and tb(log, "j", true))
       r6 = (tb(log, "k", false) or tb(log, "l", true))
-      r7 = (!tb(log, "m", true))
-      assert_equal [true, true, false], ([r5, r6, r7])
+      r7 = !tb(log, "m", true)
+      assert_equal [true, true, false], [r5, r6, r7]
       assert_equal ["i", "j", "k", "l", "m"], log
       none = nil #: Integer?
       some = 3 #: Integer?
@@ -2340,15 +2340,15 @@ end
     def test_literal_left_of_and_or
       assert_equal false, (false && "never")
       assert_equal true, (true || "never")
-      assert_equal "yes", ("yes")
-      assert_equal "fallback", ("fallback")
+      assert_equal "yes", "yes"
+      assert_equal "fallback", "fallback"
       x_nil = nil && 5
       assert_nil x_nil
       s_nil = "a"
       y_nil = nil && s_nil
       assert_nil y_nil
-      assert_equal false, (false)
-      assert_equal "right", ("right")
+      assert_equal false, false
+      assert_equal "right", "right"
     end
 
     # case on a literal subject, with and without an else
@@ -2504,7 +2504,7 @@ end
       assert_equal "odd", unless_else(3)
       assert_equal "even", unless_else(0)
       assert_equal "even", unless_else(-4)
-      assert_equal ["neg", "digit", "digit", "tens", "tens", "big", "big"], ([-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) })
+      assert_equal ["neg", "digit", "digit", "tens", "tens", "big", "big"], [-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) }
       x = 3
       assert_equal "big", (x > 2 ? "big" : "small")
       assert_equal 2, (x.even? ? 1 : 2)
@@ -2535,7 +2535,7 @@ end
       teen = x >= 13
         || x == 3
       assert_equal true, teen
-      assert_equal ["A", "A", "B", "negative one", "F", "F"], ([90, 100, 80, -1, 0, 85].map { |n| grade(n) })
+      assert_equal ["A", "A", "B", "negative one", "F", "F"], [90, 100, 80, -1, 0, 85].map { |n| grade(n) }
       assert_equal :warm, control_color("red")
       assert_equal :cool, control_color("green")
       assert_equal :empty, control_color("")
@@ -2568,8 +2568,8 @@ end
       assert_equal "str HI", control_what("hi")
       assert_equal "dog", control_what(Dog.new)
       assert_equal "animal", control_what(Cat.new)
-      assert_equal "array of 2", (control_what([1, 2]))
-      assert_equal "hash of 1", (control_what({ "a" => 1 }))
+      assert_equal "array of 2", control_what([1, 2])
+      assert_equal "hash of 1", control_what({ "a" => 1 })
       assert_equal "other", control_what(2.5)
       assert_equal "other", control_what(:sym)
       assert_equal "other", control_what(false)
@@ -2587,7 +2587,7 @@ end
              end
       assert_nil none
       assert_equal "three", (case three when 3 then "three" else "other" end)
-      assert_equal "n=III", ("n=#{case three when 3 then "III" else "?" end}")
+      assert_equal "n=III", "n=#{case three when 3 then "III" else "?" end}"
       vals = [nil, false, 0, "", [], true, 0.0] #: Array[untyped]
       rows = vals.map do |val|
         word = val ? "T" : "F"
@@ -2686,7 +2686,7 @@ end
       got = [] #: Array[String]
       got << "and-not" if a and !b
       got << "unless-or" unless a || b
-      got << "not-or" unless (a || b)
+      got << "not-or" unless a || b
       got << "neither" unless a or b
       assert_equal ["and-not"], got
       assert_equal true, (a || b && b)
@@ -3867,7 +3867,7 @@ end
         end
       end
       assert_equal ["1x3", "1x4", "2x3", "2x4"], grid
-      assert_equal [1, 3, 6, 0], (running([1, 2, 3, -6]))
+      assert_equal [1, 3, 6, 0], running([1, 2, 3, -6])
       assert_equal [], running([])
       assert_equal 7, control_bump(4)
       assert_equal(-9, control_bump(-4))
@@ -3879,7 +3879,7 @@ end
       f = 1.5
       f /= 2
       f -= 0.25
-      assert_equal "0.5", (f).inspect
+      assert_equal "0.5", f.inspect
       b = 7
       b %= 4
       b **= 3
@@ -3998,13 +3998,13 @@ end
       got = 0
       got = first + 1 if first
       assert_equal 8, got
-      assert_equal(-1, (second || -1))
+      assert_equal(-1, second || -1)
     end
 
     # `it` and numbered params
     def test_it_and_numbered_params
-      assert_equal [2, 4], ([1, 2].map { it * 2 })
-      assert_equal [4, 5], ([3, 4].map { _1 + 1 })
+      assert_equal [2, 4], [1, 2].map { it * 2 }
+      assert_equal [4, 5], [3, 4].map { _1 + 1 }
     end
 
     # Ruby locals, params and rescue bindings may use Go keywords and predeclared names
@@ -4048,10 +4048,10 @@ end
       byte = "b"
       rune = "r"
       float64 = 2.5
-      assert_equal "[\"t\", 1, :d, 2, \"s\", \"e\", 5, 6, 9, 2, true, \"go\", 1, 1, \"nil\", 3, \"st\", \"pkg\", \"imp\", 1, 2, 3, 4, \"main\", \"init\", \"out\", false, false, 7, \"[1, 2]\", \"p\", \"r\", 1.5, 0, \"b\", \"r\", 2.5]", (([type, range, default, len, string, error.message, new, copy, max, min, func, go, var,
+      assert_equal "[\"t\", 1, :d, 2, \"s\", \"e\", 5, 6, 9, 2, true, \"go\", 1, 1, \"nil\", 3, \"st\", \"pkg\", \"imp\", 1, 2, 3, 4, \"main\", \"init\", \"out\", false, false, 7, \"[1, 2]\", \"p\", \"r\", 1.5, 0, \"b\", \"r\", 2.5]", [type, range, default, len, string, error.message, new, copy, max, min, func, go, var,
                                                                                                                                                                                                                                               map.size, interface.inspect, chan, struct, package, import, fallthrough, defer, goto, const,
-                                                                                                                                                                                                                                              main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64])).inspect
-      assert_equal "a1", (kw("a", 1))
+                                                                                                                                                                                                                                              main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64].inspect
+      assert_equal "a1", kw("a", 1)
       msg = "" #: String
       begin
         raise "x"
@@ -4169,13 +4169,13 @@ end
         break if key == "y"
       end
       assert_equal ["1:b", "2:c", "d", "b", "y=2"], got
-      assert_equal 1, (index_of_empty(["a", "", "b"]))
+      assert_equal 1, index_of_empty(["a", "", "b"])
       assert_nil index_of_empty(["a"])
       assert_nil index_of_empty([])
       grid = [[1, 2], [3, 4]] #: Array[Array[Integer]]
-      assert_equal "1,1", (find_pair(grid, 4))
-      assert_equal "0,0", (find_pair(grid, 1))
-      assert_equal "missing", (find_pair(grid, 9))
+      assert_equal "1,1", find_pair(grid, 4)
+      assert_equal "0,0", find_pair(grid, 1)
+      assert_equal "missing", find_pair(grid, 9)
       assert_equal 64, control_first_square_over(50)
       assert_equal 1, control_first_square_over(0)
       assert_nil control_first_square_over(100_000)
@@ -4232,7 +4232,7 @@ end
         end
       end
       assert_equal ["v1", "v3", "last"], kinds
-      assert_equal "string s", (first_string([1, nil, "s", "t"]))
+      assert_equal "string s", first_string([1, nil, "s", "t"])
       assert_equal "no string", first_string([nil])
       assert_equal "no string", first_string([])
     end

@@ -64,7 +64,7 @@ module FfiTests
 
     #: (untyped) -> untyped
     def sort(mem)
-      qsort(mem, 3, 4, (@cmp ||= proc { |a, b| a.read_int <=> b.read_int }))
+      qsort(mem, 3, 4, @cmp ||= proc { |a, b| a.read_int <=> b.read_int })
       mem.read_array_of_int(3)
     end
   end

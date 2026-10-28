@@ -612,10 +612,10 @@ while i < ARGV.length
     puts "    (HTTP only, one thread; the measurement lane, matz/spinel#4306)"
     puts "  SQLite file: BLOG_DB env (default storage/development.sqlite3)"
     exit(0)
-  elsif (["--port", "-p"].include?(arg)) && i + 1 < ARGV.length
+  elsif ["--port", "-p"].include?(arg) && i + 1 < ARGV.length
     port = ARGV[i + 1].to_i
     i += 2
-  elsif (["--workers", "-w"].include?(arg)) && i + 1 < ARGV.length
+  elsif ["--workers", "-w"].include?(arg) && i + 1 < ARGV.length
     workers = ARGV[i + 1].to_i
     i += 2
   else

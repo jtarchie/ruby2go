@@ -51,7 +51,7 @@ puts "sorted: #{buf[0, 6]}"
 
 # Pointer arithmetic and C strings.
 greeting = Fiddle::Pointer["hello, world"]
-puts "C string: #{greeting}, from offset 7: #{(greeting + 7)}"
+puts "C string: #{greeting}, from offset 7: #{greeting + 7}"
 
 begin
   Fiddle.dlopen("/nonexistent/libnope.so")

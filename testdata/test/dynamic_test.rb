@@ -1192,7 +1192,7 @@ module DynamicTests
       assert_equal "L", c.size
       assert_equal "", c.empty
       assert_equal "(no weight: [])", c.weight
-      assert_equal "(no weight: [1, \"two\", nil])", (c.weight(1, "two", nil))
+      assert_equal "(no weight: [1, \"two\", nil])", c.weight(1, "two", nil)
       assert_equal "BLUE", c.color.upcase
       assert_equal "blueblue", c.color_twice
       assert_equal "config", c.to_s
@@ -1207,7 +1207,7 @@ module DynamicTests
       r = Recorder.new
       assert_equal 1, r.first
       assert_equal 2, r.second(1)
-      assert_equal 3, (r.third("a", [2], nil, 1.5, :sym))
+      assert_equal 3, r.third("a", [2], nil, 1.5, :sym)
       assert_equal ["first()", "second(1)", "third(\"a\", [2], nil, 1.5, :sym)"], r.calls
       total = r.one + r.two
       assert_equal 9, total
@@ -1246,20 +1246,20 @@ module DynamicTests
       # send and public_send with literal names are ordinary calls
       assert_equal "hi", p1.send(:hello)
       assert_equal "hi", p1.public_send(:hello)
-      assert_equal 42, (p1.send(:twice, 21))
-      assert_equal(-8, (p1.public_send(:twice, -4)))
+      assert_equal 42, p1.send(:twice, 21)
+      assert_equal(-8, p1.public_send(:twice, -4))
       assert_equal "hi", p1.__send__(:hello)
       assert_equal "hidden", p1.send(:hidden)
       assert_equal "s3cret", c.send(:secret)
       assert_equal "blue", c.send(:color)
       assert_equal "L", c.public_send(:size)
-      assert_equal "(no weight: [3])", (c.send(:weight, 3))
+      assert_equal "(no weight: [3])", c.send(:weight, 3)
       assert_equal "hi", p1.send("hello")
-      assert_equal 10, (p1.send("twice", 5))
-      assert_equal 8, (5.send(:+, 3))
+      assert_equal 10, p1.send("twice", 5)
+      assert_equal 8, 5.send(:+, 3)
       assert_equal "ABC", "abc".send(:upcase)
-      assert_equal [1, 2, 3], ([3, 1, 2].send(:sort))
-      assert_equal(-10, (10.public_send(:-, 20)))
+      assert_equal [1, 2, 3], [3, 1, 2].send(:sort)
+      assert_equal(-10, 10.public_send(:-, 20))
     end
 
     def test_send_and_respond_to_on_self
@@ -1279,7 +1279,7 @@ module DynamicTests
       fc = FallbackChild.new
       assert_equal "own fallback zzz_x 0", fc.own
       assert_equal "fallback foo_x 0", fc.foo_x
-      assert_equal "fallback bar 2", (fc.bar(1, 2))
+      assert_equal "fallback bar 2", fc.bar(1, 2)
       assert_equal "real", fc.real
       assert_equal true, fc.respond_to?(:foo_x)
       assert_equal false, fc.respond_to?(:foo)
@@ -1290,9 +1290,9 @@ module DynamicTests
       assert_equal "own fallback zzz_x 0", fu.own
       assert_equal true, fu.respond_to?(:q_x)
       assert_equal false, fu.respond_to?(:q)
-      assert_equal "fallback dyn_x 1", (fc.send(:dyn_x, 3))
+      assert_equal "fallback dyn_x 1", fc.send(:dyn_x, 3)
       assert_equal "fallback dyn_y 0", fc.public_send(:dyn_y)
-      assert_equal "fallback direct 1", (fc.method_missing(:direct, 1))
+      assert_equal "fallback direct 1", fc.method_missing(:direct, 1)
     end
 
     def test_a_module_method_calling_an_unknown_name_reaches
@@ -1312,7 +1312,7 @@ module DynamicTests
       assert_equal true, shu.respond_to?(:maybe)
       assert_equal false, shu.respond_to?(:nope)
       assert_equal "hi", shu.hi
-      assert_equal "shy dyn [3]", (shu.send(["dyn"].first(1)[0] || "", 3))
+      assert_equal "shy dyn [3]", shu.send(["dyn"].first(1)[0] || "", 3)
       assert_equal false, shy.respond_to?(:method_missing)
       assert_equal false, shy.respond_to?(:respond_to_missing?)
     end

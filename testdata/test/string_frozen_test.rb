@@ -81,12 +81,12 @@ module StringFrozenTests
   class StringCoreTest < Minitest::Test
     # <=> is a byte comparison returning -1/0/1; shorter prefix sorts first.
     def test_is_a_byte_comparison_returning
-      assert_equal(-1, ("a" <=> "b"))
+      assert_equal(-1, "a" <=> "b")
       assert_equal 1, ("b" <=> "a")
       assert_equal 0, ("a" <=> "a")
-      assert_equal(-1, ("a" <=> "ab"))
-      assert_equal(-1, ("" <=> "a"))
-      assert_equal(-1, ("B" <=> "a"))
+      assert_equal(-1, "a" <=> "ab")
+      assert_equal(-1, "" <=> "a")
+      assert_equal(-1, "B" <=> "a")
       assert_equal 1, ("é" <=> "z")
     end
 
@@ -267,11 +267,11 @@ module StringFrozenTests
       assert_equal true, (w =~ "ell")
       assert_equal true, w.match("hello")
       assert_equal false, w.match("ell")
-      assert_equal(-1, (w <=> Word.new("world")))
+      assert_equal(-1, w <=> Word.new("world"))
       assert_equal "olleh", (-w).s
       assert_equal "HELLO", (+w).s
       assert_equal false, (!w)
-      assert_equal true, (!Word.new(""))
+      assert_equal true, !Word.new("")
       assert_equal "idx_set 2", w.idx_set(2)
     end
   end
@@ -339,7 +339,7 @@ module StringFrozenTests
     def test_on_string_and_a_narrowed
       c = "abc"[9]
       assert_nil c&.upcase
-      assert_equal(-1, (c&.size || -1))
+      assert_equal(-1, c&.size || -1)
       assert_equal "A", "abc"[0]&.upcase
       first = words.first(1)[0]
       assert_equal "PEAR", first.upcase if first
@@ -417,7 +417,7 @@ module StringFrozenTests
       hello = "hello"
       at = hello.index("l")
       assert_equal "l", hello[at] if at
-      assert_equal(-1, (hello.index("z") || -1))
+      assert_equal(-1, hello.index("z") || -1)
       assert_equal 0, (hello.index("h") || -1)
     end
 

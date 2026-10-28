@@ -15,7 +15,7 @@ module Tep
           hi = Url.hex_nibble(s[i + 1])
           lo = Url.hex_nibble(s[i + 2])
           if hi >= 0 && lo >= 0
-            out << ((hi * 16 + lo).chr)
+            out << (hi * 16 + lo).chr
             i += 3
           else
             out << c
