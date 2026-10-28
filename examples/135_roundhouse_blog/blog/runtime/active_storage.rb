@@ -347,7 +347,7 @@ module ActiveStorage
     end
 
     def encode
-      "limit-#{@width.to_s}x#{@height.to_s}-#{@format == "" ? "keep" : @format}"
+      "limit-#{@width}x#{@height}-#{@format == "" ? "keep" : @format}"
     end
 
     def digest
@@ -405,7 +405,7 @@ module ActiveStorage
       if @width.zero? || @height.zero?
         "{\"identified\":true,\"analyzed\":true}"
       else
-        "{\"identified\":true,\"width\":#{@width.to_s},\"height\":#{@height.to_s},\"analyzed\":true}"
+        "{\"identified\":true,\"width\":#{@width},\"height\":#{@height},\"analyzed\":true}"
       end
     end
 
@@ -585,7 +585,7 @@ module ActiveStorage
     # size in the same millisecond.
     def self.generate_key(filename, byte_size)
       MessageDigest.hmac_sha256_hex(
-        "active_storage/blob/#{byte_size.to_s}",
+        "active_storage/blob/#{byte_size}",
         "#{filename}/#{ActiveSupport.db_now}"
       )
     end

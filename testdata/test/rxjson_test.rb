@@ -895,7 +895,7 @@ b/
       return unless pm
 
       assert_equal "#<MatchData \"/posts/42.json\" 1:\"posts\" 2:\"42\" 3:\".json\">", pm.inspect
-      assert_equal "posts#42", "#{pm[1].to_s}##{pm[2].to_s}"
+      assert_equal "posts#42", "#{pm[1]}##{pm[2]}"
 
     end
 

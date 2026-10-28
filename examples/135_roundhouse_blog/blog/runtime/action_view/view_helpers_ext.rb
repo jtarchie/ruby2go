@@ -57,7 +57,7 @@ module ActionView
       out = +""
       i = int.length
       while i > 3
-        out = ",#{int[i - 3, 3].to_s}#{out}"
+        out = ",#{int[i - 3, 3]}#{out}"
         i -= 3
       end
       out = int[0, i].to_s + out
@@ -149,7 +149,7 @@ module ActionView
         n /= 1000
         idx += 1
       end
-      num = neg ? "-#{n.to_s}" : n.to_s
+      num = neg ? "-#{n}" : n.to_s
       format.sub("%n", num).sub("%u", units[idx]).strip
     end
 
@@ -606,7 +606,7 @@ module ActionView
       end
       # Close anything the input left open, innermost first — measured:
       # the gem answers "<b>unclosed</b>" for "<b>unclosed".
-      out = "#{out}</#{open_stack.pop.to_s}>" while open_stack.length.positive?
+      out = "#{out}</#{open_stack.pop}>" while open_stack.length.positive?
       out
     end
 
@@ -1386,7 +1386,7 @@ module ActionView
           attrs = "#{attrs} href=\"#{href}\""
           placed = true
         else
-          attrs = "#{attrs} #{k.to_s}=\"#{html_escape(v.to_s)}\""
+          attrs = "#{attrs} #{k}=\"#{html_escape(v.to_s)}\""
         end
       end
       attrs = "#{attrs} href=\"#{href}\"" unless placed

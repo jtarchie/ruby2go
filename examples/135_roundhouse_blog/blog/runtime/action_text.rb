@@ -108,7 +108,7 @@ module ActionText
       ActionController::MessageVerifier.envelope(
         Rails.application.secret_key_base,
         SALT,
-        ActionController::MessageVerifier.json_string("#{model_name}/#{id.to_s}"),
+        ActionController::MessageVerifier.json_string("#{model_name}/#{id}"),
         PURPOSE,
         "null",
         false
@@ -891,7 +891,7 @@ module ActionText
       # top-level item and gets no indent.
       bullet = "•"
       depth = list_names.length
-      bullet = "#{list_counts[depth - 1].to_s}." if depth.positive? && list_names[depth - 1] == "ol"
+      bullet = "#{list_counts[depth - 1]}." if depth.positive? && list_names[depth - 1] == "ol"
       "#{indent(depth)}#{bullet} #{inner}\n"
     end
 
@@ -903,7 +903,7 @@ module ActionText
       return "“”" if first.negative?
 
       last = last_non_space_index(text)
-      "#{text[0, first].to_s}“#{text[first, last - first + 1].to_s}”#{text[last + 1, text.length - last - 1].to_s}"
+      "#{text[0, first]}“#{text[first, last - first + 1]}”#{text[last + 1, text.length - last - 1]}"
     end
 
     def self.first_non_space_index(text)

@@ -369,7 +369,7 @@ module Cable
   end
 
   def self.ping_payload
-    "{\"type\":\"ping\",\"message\":#{Time.now.to_i.to_s}}"
+    "{\"type\":\"ping\",\"message\":#{Time.now.to_i}}"
   end
 
   # The registry, copied out under its lock. The writes then happen

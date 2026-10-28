@@ -63,7 +63,7 @@ module ActiveRecord
 
       # Pool-exhausted hook. MVP: raise. Override per-target to park.
       def wait_for_handle
-        raise "ConnectionPool exhausted (size=#{@size.to_s})"
+        raise "ConnectionPool exhausted (size=#{@size})"
       end
 
       # Observability — useful for `pool.healthy?`-style assertions

@@ -45,7 +45,7 @@ module Tep
   # worth a line. The summary keeps Puma's shape whatever happens.
   def self.log_dispatch_error(verb, path, e)
     tag = "[#{Tep.display_name}]"
-    warn("#{tag} 500 #{verb} #{path} -- #{e.class.to_s}: #{e.message}")
+    warn("#{tag} 500 #{verb} #{path} -- #{e.class}: #{e.message}")
     frames = e.backtrace
     return if frames.nil?
 
@@ -64,7 +64,7 @@ module Tep
 
     def run(port, workers, quiet)
       unless quiet
-        puts "#{Tep.display_name} (#{RUBY_ENGINE}) listening on http://0.0.0.0:#{port.to_s}, pid #{Sock.sphttp_getpid.to_s}"
+        puts "#{Tep.display_name} (#{RUBY_ENGINE}) listening on http://0.0.0.0:#{port}, pid #{Sock.sphttp_getpid}"
         puts "  blocking accept loop, one request at a time per process; " \
              "processes: " + Tep.processes_desc(workers)
       end
@@ -72,7 +72,7 @@ module Tep
       if workers <= 1
         sfd = Sock.sphttp_listen(port, 0)
         if sfd.negative?
-          warn "#{Tep.display_name}: cannot bind to port #{port.to_s} (already in use?)"
+          warn "#{Tep.display_name}: cannot bind to port #{port} (already in use?)"
           exit(1)
         end
         worker_loop(sfd)
@@ -87,7 +87,7 @@ module Tep
         if pid.zero?
           sfd = Sock.sphttp_listen(port, 1)
           if sfd.negative?
-            puts "#{Tep.display_name}: worker #{Sock.sphttp_getpid.to_s} bind failed"
+            puts "#{Tep.display_name}: worker #{Sock.sphttp_getpid} bind failed"
             exit(1)
           end
           worker_loop(sfd)
@@ -233,7 +233,7 @@ module Tep
 
     def build_head(req, res)
       reason = Tep.reason(res.status)
-      head = "#{req.http_version} #{res.status.to_s} #{reason}\r\n"
+      head = "#{req.http_version} #{res.status} #{reason}\r\n"
       res.headers.each do |k, v|
         head << "#{k}: #{v}\r\n"
       end
@@ -248,7 +248,7 @@ module Tep
 
     def send_simple(client, status, msg)
       reason = Tep.reason(status)
-      body = "<h1>#{status.to_s} #{reason}</h1><p>#{msg}</p>\n"
+      body = "<h1>#{status} #{reason}</h1><p>#{msg}</p>\n"
       head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" \
              "Content-Type: text/html; charset=utf-8\r\n" \
              "Content-Length: " + body.length.to_s + "\r\n" \

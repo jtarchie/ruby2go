@@ -182,7 +182,7 @@ module ActionCable
     payload.each do |key, value|
       out += "," unless first
       first = false
-      out = "#{out}#{JSON.generate(key.to_s)}:#{value.to_s}"
+      out = "#{out}#{JSON.generate(key.to_s)}:#{value}"
     end
     "#{out}}"
   end

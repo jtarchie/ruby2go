@@ -271,7 +271,7 @@ module ActionController
     # non-string message (Rails would allow one) is handed back verbatim
     # rather than guessed at.
     def self.json_string(value)
-      "\"#{value.to_s}\""
+      "\"#{value}\""
     end
 
     def self.json_value(json)

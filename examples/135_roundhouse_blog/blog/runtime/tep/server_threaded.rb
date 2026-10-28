@@ -69,11 +69,11 @@ module Tep
       def run(port, workers, quiet)
         sfd = Sock.sphttp_listen(port, workers > 1 ? 1 : 0)
         if sfd.negative?
-          warn "#{Tep.display_name}: cannot bind to port #{port.to_s} (already in use?)"
+          warn "#{Tep.display_name}: cannot bind to port #{port} (already in use?)"
           exit(1)
         end
         unless quiet
-          puts "#{Tep.display_name} (#{RUBY_ENGINE}) listening on http://0.0.0.0:#{port.to_s}, pid #{Sock.sphttp_getpid.to_s}"
+          puts "#{Tep.display_name} (#{RUBY_ENGINE}) listening on http://0.0.0.0:#{port}, pid #{Sock.sphttp_getpid}"
           puts "  one green thread per connection; OS workers: #{Tep.os_workers_desc}; processes: #{Tep.processes_desc(workers)}"
           $stdout.flush
         end
@@ -240,7 +240,7 @@ module Tep
           res.headers["Transfer-Encoding"] = "chunked"
           res.headers["Content-Type"] = "text/event-stream" unless res.headers.key?("Content-Type")
           reason = Tep.reason(res.status)
-          head = "#{req.http_version} #{res.status.to_s} #{reason}\r\n"
+          head = "#{req.http_version} #{res.status} #{reason}\r\n"
           res.headers.each do |k, v|
             head << "#{k}: #{v}\r\n"
           end
@@ -258,7 +258,7 @@ module Tep
         # Default Content-Type for inline-body responses.
         res.headers["Content-Type"] = "text/html; charset=utf-8" if res.file_path.length.zero? && res.body.length.positive? && !res.headers.key?("Content-Type")
         reason = Tep.reason(res.status)
-        head = "#{req.http_version} #{res.status.to_s} #{reason}\r\n"
+        head = "#{req.http_version} #{res.status} #{reason}\r\n"
         res.headers.each do |k, v|
           head << "#{k}: #{v}\r\n"
         end
@@ -272,13 +272,13 @@ module Tep
                 end
         if res.file_path.length.positive?
           fs = Sock.sphttp_filesize(res.file_path)
-          head << "Content-Length: #{fs.to_s}\r\n\r\n"
+          head << "Content-Length: #{fs}\r\n\r\n"
           Sock.sphttp_write_str(client, head)
           Sock.sphttp_sendfile(client, res.file_path)
         else
           # BYTES, both times: `length` counts characters, and
           # `write_str` crosses the FFI as a NUL-terminated C string.
-          head << "Content-Length: #{res.body.bytesize.to_s}\r\n\r\n"
+          head << "Content-Length: #{res.body.bytesize}\r\n\r\n"
           Sock.sphttp_write_str(client, head)
           Sock.sphttp_write_bytes(client, res.body, res.body.bytesize) if res.body.bytesize.positive?
         end

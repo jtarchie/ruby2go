@@ -187,7 +187,7 @@ module ActionController
       verified = ActionController::MessageVerifier.verified(
         Rails.application.secret_key_base,
         ActionController::MessageVerifier::SIGNED_COOKIE_SALT,
-        raw, "cookie.#{key.to_s}", true
+        raw, "cookie.#{key}", true
       )
       verified == "" ? nil : verified
     end
@@ -202,7 +202,7 @@ module ActionController
         Rails.application.secret_key_base,
         ActionController::MessageVerifier::SIGNED_COOKIE_SALT,
         ActionController::SignedCookieJar.value_of(value),
-        "cookie.#{key.to_s}", true
+        "cookie.#{key}", true
       )
       @jar.raw_set(key, signed)
       value

@@ -625,7 +625,7 @@ while i < ARGV.length
   end
 end
 if port <= 0 || port > 65_535
-  warn "invalid port: #{port.to_s}"
+  warn "invalid port: #{port}"
   exit(1)
 end
 Main.configure_default_adapter!

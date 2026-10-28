@@ -23,7 +23,7 @@ module ActiveStorage
     end
 
     def path_for(key)
-      "#{root}/#{key[0, 2].to_s}/#{key[2, 2].to_s}/#{key}"
+      "#{root}/#{key[0, 2]}/#{key[2, 2]}/#{key}"
     end
 
     # `mkdir -p` for the two-level fan-out, one segment at a time:
@@ -41,7 +41,7 @@ module ActiveStorage
     end
 
     def upload(key, data)
-      ensure_dir("#{root}/#{key[0, 2].to_s}/#{key[2, 2].to_s}")
+      ensure_dir("#{root}/#{key[0, 2]}/#{key[2, 2]}")
       File.binwrite(path_for(key), data)
       nil
     end

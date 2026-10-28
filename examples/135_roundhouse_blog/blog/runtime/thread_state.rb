@@ -293,7 +293,7 @@ module TypedStore
     Thread.current[:typed_store_key] = nil
     out = "---\n"
     h.each do |k, v|
-      out += "#{k.to_s}: #{v.nil? ? "" : v.to_s}\n"
+      out += "#{k}: #{v.nil? ? "" : v.to_s}\n"
     end
     out
   end
