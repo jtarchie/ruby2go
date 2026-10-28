@@ -1,29 +1,46 @@
 #!/usr/bin/env ruby
 # Joins spinel's and rugaroo's run.sh results (WORK/res, from ./compare) per suite: totals, then what spinel passes that
 # rugaroo does not, clustered by rugaroo's reason. TOP=n reasons (default 60); LIST=reason-substring prints those examples.
-W = ENV.fetch("WORK")
-def load(path) = File.exist?(path) ? File.readlines(path, chomp: true, encoding: "BINARY").to_h { |l| n, s, r = l.split("\t", 3); [n, [s, r.to_s]] } : nil
-def norm(r) = r.gsub(/\d+/, "N").sub(/^MSPEC-DONE.*/, "assertion failed").sub(/^rc=N .*?(\w+Error|\(\w+\))?$/) { "crash #{$1}" }[0, 100]
+W = ENV.fetch('WORK')
+def load(path)
+  return unless File.exist?(path)
+
+  File.readlines(path, chomp: true, encoding: 'BINARY').to_h do |l|
+    n, s, r = l.split("\t", 3)
+    [n, [s, r.to_s]]
+  end
+end
+
+def norm(r)
+  r.gsub(/\d+/, 'N').sub(/^MSPEC-DONE.*/, 'assertion failed').sub(/^rc=N .*?(\w+Error|\(\w+\))?$/) do
+    "crash #{Regexp.last_match(1)}"
+  end[0, 100]
+end
 gaps = Hash.new { |h, k| h[k] = [] }
 rows = []
 Dir["#{W}/res/spinel-*.tsv"].sort.each do |sp|
-  nm = File.basename(sp, ".tsv").sub("spinel-", "")
-  s, r = load(sp), load("#{W}/res/rugaroo-#{nm}.tsv")
+  nm = File.basename(sp, '.tsv').sub('spinel-', '')
+  s = load(sp)
+  r = load("#{W}/res/rugaroo-#{nm}.tsv")
   next unless r
-  ran = s.reject { |_, v| v[0] == "HARNESS-SKEW" }
+
+  ran = s.reject { |_, v| v[0] == 'HARNESS-SKEW' }
   cnt = ->(h, st) { h.count { |k, v| ran[k] && v[0] == st } }
-  only_sp = ran.select { |k, v| v[0] == "PASS" && r[k] && r[k][0] != "PASS" }
-  only_rb = ran.select { |k, v| v[0] != "PASS" && r[k] && r[k][0] == "PASS" }
-  rows << [nm, ran.size, cnt[s, "PASS"], cnt[r, "PASS"], only_sp.size, only_rb.size]
+  only_sp = ran.select { |k, v| v[0] == 'PASS' && r[k] && r[k][0] != 'PASS' }
+  only_rb = ran.select { |k, v| v[0] != 'PASS' && r[k] && r[k][0] == 'PASS' }
+  rows << [nm, ran.size, cnt[s, 'PASS'], cnt[r, 'PASS'], only_sp.size, only_rb.size]
   only_sp.each_key { |k| gaps["#{r[k][0]}: #{norm(r[k][1])}"] << "#{nm}/#{k}" }
 end
-puts format("%-16s %6s %7s %7s %9s %9s", "suite", "ran", "spinel", "rugaroo", "sp-only", "rb-only")
-rows.each { |x| puts format("%-16s %6d %7d %7d %9d %9d", *x) }
+puts format('%-16s %6s %7s %7s %9s %9s', 'suite', 'ran', 'spinel', 'rugaroo', 'sp-only', 'rb-only')
+rows.each { |x| puts format('%-16s %6d %7d %7d %9d %9d', *x) }
 t = rows.transpose
-puts format("%-16s %6d %7d %7d %9d %9d", "TOTAL", *t[1..].map(&:sum)) unless rows.empty?
-if (want = ENV["LIST"])
+puts format('%-16s %6d %7d %7d %9d %9d', 'TOTAL', *t[1..].map(&:sum)) unless rows.empty?
+if (want = ENV['LIST'])
   gaps.each { |k, v| puts v if k.include?(want) }
   exit
 end
 puts "\n--- spinel passes, rugaroo does not: by rugaroo reason ---"
-gaps.sort_by { |_, v| -v.size }.first(Integer(ENV.fetch("TOP", "60"))).each { |k, v| puts format("%5d  %s   e.g. %s", v.size, k, v.first(2).join(", ")) }
+gaps.sort_by do |_, v|
+  -v.size
+end.first(Integer(ENV.fetch('TOP',
+                            '60'))).each { |k, v| puts format('%5d  %s   e.g. %s', v.size, k, v.first(2).join(', ')) }

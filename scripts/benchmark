@@ -19,15 +19,16 @@
 #
 # The numbers in README.md come from this, on one machine: a rough ratio, wall-clock only.
 
-require "fileutils"
-require "open3"
-require "tmpdir"
+require 'fileutils'
+require 'open3'
+require 'tmpdir'
 
-ROOT = File.expand_path("..", __dir__)
-RUNS = Integer(ENV.fetch("RUNS", "5"))
+ROOT = File.expand_path('..', __dir__)
+RUNS = Integer(ENV.fetch('RUNS', '5'))
 WARMUP = 1
 ALL = %w[ruby yjit rugaroo spinel crystal go].freeze
-LABELS = { "ruby" => "MRI", "yjit" => "MRI+YJIT", "rugaroo" => "rugaroo", "spinel" => "spinel", "crystal" => "Crystal", "go" => "Go" }.freeze
+LABELS = { 'ruby' => 'MRI', 'yjit' => 'MRI+YJIT', 'rugaroo' => 'rugaroo', 'spinel' => 'spinel', 'crystal' => 'Crystal',
+           'go' => 'Go' }.freeze
 
 def median(values)
   sorted = values.sort
@@ -40,7 +41,7 @@ def time_once(cmd)
   pid = Process.spawn(*cmd, out: File::NULL, err: File::NULL, chdir: ROOT)
   _, status = Process.wait2(pid)
   elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
-  abort "#{cmd.join(" ")}: #{status.inspect}; a crash is not a fast run" unless status.success?
+  abort "#{cmd.join(' ')}: #{status.inspect}; a crash is not a fast run" unless status.success?
 
   elapsed
 end
@@ -51,7 +52,7 @@ def output_of(cmd)
 end
 
 def which(name)
-  ENV["PATH"].split(File::PATH_SEPARATOR).map { |d| File.join(d, name) }.find { |p| File.executable?(p) }
+  ENV['PATH'].split(File::PATH_SEPARATOR).map { |d| File.join(d, name) }.find { |p| File.executable?(p) }
 end
 
 def quiet(*cmd, **opts)
@@ -61,77 +62,83 @@ def quiet(*cmd, **opts)
 end
 
 # INT_OVERFLOW (or another variable) as mode for every workload, or mode:name,name for some
-def int_overflow(name, var = "INT_OVERFLOW")
-  mode, names = ENV.fetch(var, "").split(":", 2)
-  mode if mode && !mode.empty? && (names.nil? || names.split(",").include?(name))
+def int_overflow(name, var = 'INT_OVERFLOW')
+  mode, names = ENV.fetch(var, '').split(':', 2)
+  mode if mode && !mode.empty? && (names.nil? || names.split(',').include?(name))
 end
 
 def rugaroo_tool(tmp)
-  return ENV["RUGAROO"] if ENV["RUGAROO"]
+  return ENV['RUGAROO'] if ENV['RUGAROO']
 
-  bin = File.join(tmp, "rugaroo")
-  system("go", "build", "-o", bin, "./cmd/rugaroo", chdir: ROOT, exception: true)
+  bin = File.join(tmp, 'rugaroo')
+  system('go', 'build', '-o', bin, './cmd/rugaroo', chdir: ROOT, exception: true)
   bin
 end
 
 # builders: name, src, out dir → the command to time, or nil (no port, or the build failed)
 def builders(tmp)
-  spinel = ENV["SPINEL"] || which("spinel")
-  crystal = which("crystal")
-  go = which("go")
+  spinel = ENV['SPINEL'] || which('spinel')
+  crystal = which('crystal')
+  go = which('go')
   rugaroo = nil
   {
-    "ruby" => ->(_name, src, _dir) { ["ruby", src] },
-    "yjit" => ->(_name, src, _dir) { ["ruby", "--yjit", src] },
-    "rugaroo" => lambda do |name, src, dir|
+    'ruby' => ->(_name, src, _dir) { ['ruby', src] },
+    'yjit' => ->(_name, src, _dir) { ['ruby', '--yjit', src] },
+    'rugaroo' => lambda do |name, src, dir|
       rugaroo ||= rugaroo_tool(tmp)
       bin = File.join(dir, "rugaroo_#{name}")
-      trace = File.read(src).match?(/^# trace: /) ? ["-trace"] : [] # a gem that loads by computed name (example 123's kramdown)
+      trace = File.read(src).match?(/^# trace: /) ? ['-trace'] : [] # a gem that loads by computed name (example 123's kramdown)
       mode = (m = int_overflow(name)) ? ["--int-overflow=#{m}"] : [] # a suite without the magic comment
-      nil_check = int_overflow(name, "NIL_CHECK")
+      nil_check = int_overflow(name, 'NIL_CHECK')
       mode << "--nil-check=#{nil_check}" if nil_check
-      quiet(rugaroo, "build", *trace, *mode, "-o", bin, src, chdir: ROOT) ? [bin] : nil
+      quiet(rugaroo, 'build', *trace, *mode, '-o', bin, src, chdir: ROOT) ? [bin] : nil
     end,
-    "spinel" => lambda do |name, src, dir|
+    'spinel' => lambda do |name, src, dir|
       next nil unless spinel
 
       bin = File.join(dir, "spinel_#{name}")
       mode = File.read(src)[/^# int_overflow: (\S+)/, 1] || int_overflow(name) # rugaroo reads the magic comment itself; spinel takes the flag
-      quiet(spinel, src, *(mode ? ["--int-overflow=#{mode}"] : []), "-o", bin, chdir: ROOT) ? [bin] : nil
+      [bin] if quiet(spinel, src, *(mode ? ["--int-overflow=#{mode}"] : []), '-o', bin, chdir: ROOT)
     end,
-    "crystal" => lambda do |name, _src, dir|
+    'crystal' => lambda do |name, _src, dir|
       port = File.join(ROOT, "benchmarks/crystal/#{name}.cr")
       next nil unless crystal && File.exist?(port)
 
       bin = File.join(dir, "crystal_#{name}")
-      quiet(crystal, "build", "--release", "--no-debug", "-o", bin, port, chdir: ROOT) ? [bin] : nil
+      quiet(crystal, 'build', '--release', '--no-debug', '-o', bin, port, chdir: ROOT) ? [bin] : nil
     end,
-    "go" => lambda do |name, _src, dir|
-      next nil unless go && File.directory?(File.join(ROOT, "benchmarks/go", name))
+    'go' => lambda do |name, _src, dir|
+      next nil unless go && File.directory?(File.join(ROOT, 'benchmarks/go', name))
 
       bin = File.join(dir, "go_#{name}")
-      quiet(go, "build", "-o", bin, "./#{name}", chdir: File.join(ROOT, "benchmarks/go")) ? [bin] : nil
-    end,
+      quiet(go, 'build', '-o', bin, "./#{name}", chdir: File.join(ROOT, 'benchmarks/go')) ? [bin] : nil
+    end
   }
 end
 
-cols = ENV.fetch("COLS", ALL.join(",")).split(",")
-cols.unshift("ruby") unless cols.include?("ruby")
-bench = File.expand_path(ENV.fetch("BENCH_DIR", File.join(ROOT, "benchmarks"))) # another suite: spinel's benchmark/ (BENCHMARKS.md)
-wanted = ARGV.empty? ? Dir[File.join(bench, "*.rb")] : ARGV.map { |n| File.join(bench, "#{File.basename(n, ".rb")}.rb") }
+cols = ENV.fetch('COLS', ALL.join(',')).split(',')
+cols.unshift('ruby') unless cols.include?('ruby')
+bench = File.expand_path(ENV.fetch('BENCH_DIR', File.join(ROOT, 'benchmarks'))) # another suite: spinel's benchmark/ (BENCHMARKS.md)
+wanted = if ARGV.empty?
+           Dir[File.join(bench, '*.rb')]
+         else
+           ARGV.map do |n|
+             File.join(bench, "#{File.basename(n, '.rb')}.rb")
+           end
+         end
 
 rows = {}
-Dir.mktmpdir("rugaroo-bench-") do |dir|
+Dir.mktmpdir('rugaroo-bench-') do |dir|
   build = builders(dir)
   wanted.sort.each do |src|
-    name = File.basename(src, ".rb")
-    expected = output_of(["ruby", src])
+    name = File.basename(src, '.rb')
+    expected = output_of(['ruby', src])
     cmds = {}
     cols.each do |col|
       cmd = build.fetch(col).call(name, src, dir)
       if cmd.nil?
         warn "#{name}: no #{col} build"
-      elsif col != "ruby" && output_of(cmd) != expected
+      elsif col != 'ruby' && output_of(cmd) != expected
         warn "#{name}: #{col} output differs from ruby; left out"
       else
         cmds[col] = cmd
@@ -148,26 +155,34 @@ Dir.mktmpdir("rugaroo-bench-") do |dir|
   end
 end
 
-abort "no workloads ran" if rows.empty?
+abort 'no workloads ran' if rows.empty?
 
-fmt = ->(t) { t.nil? ? "-" : format(t < 0.1 ? "%.3fs" : "%.2fs", t) }
+fmt = lambda { |t|
+  if t.nil?
+    '-'
+  else
+    format(t < 0.1 ? '%.3fs' : '%.2fs', t)
+  end
+}
 # total per column over the rows it ran; vs MRI is MRI's total over those same rows
 totals = cols.to_h { |c| [c, rows.values.any? { |r| r[c] } ? rows.values.sum { |r| r[c] || 0.0 } : nil] }
 vs = cols.to_h do |c|
   ran = rows.values.select { |r| r[c] }
-  [c, ran.empty? ? nil : ran.sum { |r| r["ruby"] } / ran.sum { |r| r[c] }]
+  [c, ran.empty? ? nil : ran.sum { |r| r['ruby'] } / ran.sum { |r| r[c] }]
 end
 
-if ENV["MARKDOWN"]
-  puts "| workload | #{cols.map { |c| LABELS[c] }.join(" | ")} |"
-  puts "|---|#{cols.map { "---:" }.join("|")}|"
-  rows.each { |name, r| puts "| #{name} | #{cols.map { |c| fmt[r[c]] }.join(" | ")} |" }
-  puts "| total (rows run) | #{cols.map { |c| fmt[totals[c]] }.join(" | ")} |"
-  puts "| vs MRI | #{cols.map { |c| vs[c] ? format("%.1fx", vs[c]) : "-" }.join(" | ")} |"
+if ENV['MARKDOWN']
+  puts "| workload | #{cols.map { |c| LABELS[c] }.join(' | ')} |"
+  puts "|---|#{cols.map { '---:' }.join('|')}|"
+  rows.each { |name, r| puts "| #{name} | #{cols.map { |c| fmt[r[c]] }.join(' | ')} |" }
+  puts "| total (rows run) | #{cols.map { |c| fmt[totals[c]] }.join(' | ')} |"
+  puts "| vs MRI | #{cols.map { |c| vs[c] ? format('%.1fx', vs[c]) : '-' }.join(' | ')} |"
 else
   width = [rows.keys.map(&:length).max, 16].max
-  puts format("%-#{width}s %s", "", cols.map { |c| format("%9s", LABELS[c]) }.join(" "))
-  rows.each { |name, r| puts format("%-#{width}s %s", name, cols.map { |c| format("%9s", fmt[r[c]]) }.join(" ")) }
-  puts format("%-#{width}s %s", "total (rows run)", cols.map { |c| format("%9s", fmt[totals[c]]) }.join(" "))
-  puts format("%-#{width}s %s", "vs MRI", cols.map { |c| format("%9s", vs[c] ? format("%.1fx", vs[c]) : "-") }.join(" "))
+  puts format("%-#{width}s %s", '', cols.map { |c| format('%9s', LABELS[c]) }.join(' '))
+  rows.each { |name, r| puts format("%-#{width}s %s", name, cols.map { |c| format('%9s', fmt[r[c]]) }.join(' ')) }
+  puts format("%-#{width}s %s", 'total (rows run)', cols.map { |c| format('%9s', fmt[totals[c]]) }.join(' '))
+  puts format("%-#{width}s %s", 'vs MRI', cols.map { |c|
+    format('%9s', vs[c] ? format('%.1fx', vs[c]) : '-')
+  }.join(' '))
 end

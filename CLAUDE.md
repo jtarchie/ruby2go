@@ -37,6 +37,7 @@ go test -run '^$' -fuzz FuzzTranslateRegexp ./internal/compiler    # FuzzGoMetho
 go run ./cmd/rugaroo stubs && go vet -tags rugaroo_prelude ./prelude/go   # type-check prelude/go helpers against generated stubs (decision 154; TestPreludeGo does the same)
 go test ./internal/rbs              # RBS parser unit tests
 golangci-lint run ./...             # repo lint (.golangci.yml)
+BUNDLE_GEMFILE=gemfiles/rubocop.gemfile bundle exec rubocop                 # Ruby lint, default cops (.rubocop.yml). Never `-a`/`-A` on testdata/, examples/, prelude/, benchmarks/: rugaroo reads their exact syntax (`#:` comments, `%x{}` Go bodies, param names) and fixtures pin constructs; .rubocop_todo.yml excludes them per cop. `-a` is fine on scripts/ and cmd/
 govulncheck ./...                   # known vulnerabilities in deps/std the code reaches; needs network, so not part of go test (decision 371)
 go run ./cmd/rugaroo run examples/NN_x/main.rb        # transpile, build, run; warnings go to stderr
 go run ./cmd/rugaroo run --int-overflow=promote x.rb  # Integer past 64 bits: raise (default), wrap, or promote to a Bignum; a `# int_overflow: promote` line in the file does the same (decision 372)

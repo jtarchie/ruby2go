@@ -1,0 +1,16 @@
+inherit_from: .rubocop_todo.yml
+
+AllCops:
+  TargetRubyVersion: 4.0
+  Exclude:
+    - gems/**/*
+    - vendored/**/*
+    - dist/**/*
+    - main/**/*
+    - .wrangler/**/*
+    - node_modules/**/*
+    - overrides/brew/work/**/*
+
+# The prelude's `#:` / `#[T]` comments are read by the compiler.
+Layout/LeadingCommentSpace:
+  AllowRBSInlineAnnotation: true
