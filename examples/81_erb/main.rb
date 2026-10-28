@@ -29,7 +29,7 @@ def receipt(customer, items) = RECEIPT.result(binding)
 items = [Item.new("tea", 3.5), Item.new("scone", 2.25)]
 puts receipt("Ada", items)
 
-greeting = ERB.new(%q(Hello <%= name %>, you have <%= count %> message<%= count == 1 ? "" : "s" %>.))
+greeting = ERB.new('Hello <%= name %>, you have <%= count %> message<%= count == 1 ? "" : "s" %>.')
 puts greeting.result_with_hash(name: "Grace", count: 3)
 puts greeting.result_with_hash(name: "Linus", count: 1)
 

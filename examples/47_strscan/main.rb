@@ -70,12 +70,12 @@ p "a  b\tc\n".shellsplit, Shellwords.shellwords(%q{"esc \" \$ \\ \a"})
 p Shellwords.escape("it's a $test"), "".shellescape, "multi\nline".shellescape, "héllo".shellescape
 p ["ls", "-la", "a b"].shelljoin, Shellwords.join(["x", "y;z"])
 begin
-  Shellwords.split(%q{echo 'oops})
+  Shellwords.split("echo 'oops")
 rescue ArgumentError => e
   puts e.message
 end
 begin
-  Shellwords.split(%q{a "b})
+  Shellwords.split('a "b')
 rescue ArgumentError => e
   puts e.message
 end
