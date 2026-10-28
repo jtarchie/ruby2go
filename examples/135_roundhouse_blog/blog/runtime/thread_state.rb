@@ -220,7 +220,7 @@ module ActiveJob
 
   def self.drain
     ran = 0
-    while true
+    loop do
       work = nil
       QUEUE_LOCK.synchronize do
         work = PENDING.shift if PENDING.length > 0

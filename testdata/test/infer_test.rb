@@ -369,7 +369,7 @@ module InferTests
         @root = RecNode.new(key, nil, nil)
       else
         t = @root
-        while true
+        loop do
           if key < t.key
             l = t.left
             if l.nil?
@@ -394,7 +394,7 @@ module InferTests
       t = @root
       return nil if t.nil?
 
-      while true
+      loop do
         l = t.left
         break if l.nil?
 

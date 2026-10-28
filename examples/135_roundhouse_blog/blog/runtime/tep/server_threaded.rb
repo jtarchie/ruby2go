@@ -128,7 +128,7 @@ module Tep
       def self.run_worker(sfd)
         Sock.sphttp_set_nonblock(sfd)
         lio = IO.for_fd(sfd, autoclose: false)
-        while true
+        loop do
           break if Sock.sphttp_shutdown_requested != 0
 
           ready = lio.wait_readable(1)

@@ -57,7 +57,7 @@ module Tep
         # frame forward via byteslice. Replaces the old static recv buffer
         # + per-byte C accessor (sphttp.c is retired — matz/spinel#1466).
         inbuf = +""
-        while true
+        loop do
           ready = @io.wait_readable(@idle_timeout_seconds)
           if ready.nil?
             # Timeout: close 1001 going-away.
@@ -75,7 +75,7 @@ module Tep
           inbuf += chunk
 
           # Parse + dispatch every complete frame the buffer now holds.
-          while true
+          loop do
             # bytesize, not length: inbuf is masked binary, and char-count
             # arithmetic under-reports avail (complete frames report "need")
             # and truncates the carried tail after a parse (stream

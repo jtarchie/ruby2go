@@ -262,7 +262,7 @@ module Main
   # inline is that a job's latency and a job's failure both stop
   # belonging to a request.
   def self.job_loop
-    while true
+    loop do
       sleep(JOB_POLL_INTERVAL)
       Db.with_connection { ActiveJob.drain } if ActiveJob.pending_count > 0
     end

@@ -141,7 +141,7 @@ module Tep
       # Accept loop. Each accepted connection becomes its own fiber
       # that closes over the just-accepted `client` fd.
       def self.accept_loop(sfd)
-        while true
+        loop do
           # SIGTERM/SIGINT: sphttp's term flag is set by the signal
           # handler; check before parking on io_wait so we don't sleep
           # past a shutdown request. The 1s io_wait timeout below

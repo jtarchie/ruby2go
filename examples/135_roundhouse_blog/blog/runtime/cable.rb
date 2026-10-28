@@ -315,7 +315,7 @@ module Cable
   # whoever opens the next socket, under the same lock, which is a race
   # for nothing.
   def self.heartbeat_loop
-    Cable.beat_cycle while true
+    loop { Cable.beat_cycle }
     0
   end
 

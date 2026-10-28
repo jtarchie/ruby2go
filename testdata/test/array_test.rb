@@ -415,7 +415,7 @@ module ArrayTests
     #: () { (Integer) -> void } -> void
     def each
       n = 0
-      while true
+      loop do
         yield n
         n += 1
       end
@@ -435,7 +435,7 @@ module ArrayTests
     # unannotated, and it rescues around yield: a closure, adapted for Enumerable
     def each
       n = 0
-      while true
+      loop do
         n += 1
         begin
           yield n
