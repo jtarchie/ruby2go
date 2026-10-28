@@ -370,7 +370,7 @@ module UnionTests
     def maybe(i) = if i > 1
                      i
                    else
-  (i.zero? ? nil : "s")
+                     (i.zero? ? nil : "s")
                    end
 
     def test_or_and_on_unions

@@ -111,7 +111,7 @@ module Base64
     while i < n
       c = std[i]
       out << if c == "+"
-        "-"
+               "-"
       elsif c == "/"
         "_"
       else
@@ -150,7 +150,7 @@ module Base64
     while i < n
       c = s[i]
       std << if c == "-"
-        "+"
+               "+"
       elsif c == "_"
         "/"
       else

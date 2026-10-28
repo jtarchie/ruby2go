@@ -184,7 +184,7 @@ module Tep
           b = s.getbyte(pos + i)
           mask_byte = 0
           mask_byte = if (i & 3) == 0
-            m0
+                        m0
           elsif (i & 3) == 1
             m1
           elsif (i & 3) == 2

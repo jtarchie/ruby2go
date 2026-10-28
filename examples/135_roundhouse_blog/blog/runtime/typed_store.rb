@@ -47,14 +47,14 @@ module TypedStore
       h[key] = if raw == "true"
                  true
                elsif raw == "false"
-        false
+                 false
                elsif raw == raw.to_i.to_s
-        raw.to_i
+                 raw.to_i
                elsif raw.length >= 2 && ((raw[0, 1] == "\"" && raw[raw.length - 1, 1] == "\"") ||
                                 (raw[0, 1] == "'" && raw[raw.length - 1, 1] == "'"))
-        raw[1, raw.length - 2].to_s
+                 raw[1, raw.length - 2].to_s
                else
-        raw
+                 raw
                end
     end
     @cache_key = s

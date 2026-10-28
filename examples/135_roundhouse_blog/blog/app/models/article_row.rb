@@ -53,12 +53,12 @@ class ArticleRow
     instance.title = if row["title"].nil?
                        nil
                      else
-      (row["title"]).nil? ? nil : (row["title"]).to_s
+                       (row["title"]).nil? ? nil : (row["title"]).to_s
                      end
     instance.body = if row["body"].nil?
                       nil
                     else
-      (row["body"]).nil? ? nil : (row["body"]).to_s
+                      (row["body"]).nil? ? nil : (row["body"]).to_s
                     end
     instance.created_at = (row["created_at"]).to_s
     instance.updated_at = (row["updated_at"]).to_s

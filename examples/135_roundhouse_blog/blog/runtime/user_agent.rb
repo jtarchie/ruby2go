@@ -244,7 +244,7 @@ class UserAgent
       if named.empty?
         app.nil? ? "" : app.product
       else
-  named
+        named
       end
     else
       app.nil? ? "" : app.product
@@ -280,7 +280,7 @@ class UserAgent
       if v.empty?
         app.nil? ? "" : app.version
       else
-  v
+        v
       end
     else
       app.nil? ? "" : app.version
@@ -401,11 +401,11 @@ class UserAgent
     index = if second == "U"
               2
             elsif lead.match?(/\AWindows /) || lead.match?(/\AAndroid/)
-      0
+              0
             elsif lead == "Mobile"
-      -1
+              -1
             else
-      1
+              1
             end
     return "" if index < 0
     slot = app.comment[index]

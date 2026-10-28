@@ -1544,7 +1544,7 @@ module HashTests
       assert_equal false, look_h["b"].nil?
       branch = ""
       branch = if look_h["a"]
-        "truthy"
+                 "truthy"
       else
         "falsy"
                end

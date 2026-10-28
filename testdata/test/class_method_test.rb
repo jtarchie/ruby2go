@@ -37,7 +37,7 @@ module ClassMethodTests
     out = {} #: Hash[String, untyped]
     h.each do |k, v|
       out[k] = if v.is_a?(Hash)
-        ClassMethodTests.copy(v)
+                 ClassMethodTests.copy(v)
       else
         v
                end
@@ -50,7 +50,7 @@ module ClassMethodTests
     out = {} #: Hash[String, String]
     h.each do |k, v|
       out[k] = if v.is_a?(Integer)
-        (v + 1).to_s
+                 (v + 1).to_s
       else
         v
                end

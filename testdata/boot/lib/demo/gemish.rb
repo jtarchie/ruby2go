@@ -174,7 +174,7 @@ module Demo
     def tab_for(n) = if n.empty?
                        nil
                      else
-  (n == "x" ? GemTab.empty : GemAbstractTab.empty)
+                       (n == "x" ? GemTab.empty : GemAbstractTab.empty)
                      end
 
     # A yield inside a block, its value the method's (decision 226).

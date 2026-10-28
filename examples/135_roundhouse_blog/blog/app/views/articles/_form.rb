@@ -8,7 +8,7 @@ module Views
       form_method = if article.persisted?
                       :patch
                     else
-        :post
+                      :post
                     end
       io << "<form action=\"#{ActionView::ViewHelpers.html_escape(if article.persisted?
                                                                     RouteHelpers.article_path(article.id)

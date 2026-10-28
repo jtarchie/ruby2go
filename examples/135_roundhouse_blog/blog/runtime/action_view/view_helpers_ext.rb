@@ -554,7 +554,7 @@ module ActionView
                   # all — matching the gem's namespace rule. A
                   # self-closing root (`<svg/>`) contains nothing.
                   i = if raw[raw.length - 1, 1].to_s == "/"
-                    after
+                        after
                   else
                     sanitize_foreign_end(s, after, name)
                       end

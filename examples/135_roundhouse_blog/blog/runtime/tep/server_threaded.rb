@@ -292,7 +292,7 @@ module Tep
           head << "Set-Cookie: " + line + "\r\n"
         end
         head << if keep_alive
-          "Connection: keep-alive\r\n"
+                  "Connection: keep-alive\r\n"
         else
           "Connection: close\r\n"
                 end

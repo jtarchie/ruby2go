@@ -241,7 +241,7 @@ module Tep
           res.headers["Content-Type"] = "application/octet-stream"
         end
         res.headers["Connection"] = if keep_alive
-          "keep-alive"
+                                      "keep-alive"
         else
           "close"
                                     end
@@ -259,7 +259,7 @@ module Tep
       # server_scheduled.rb#write_response for the failure this caused.
       res.headers["Content-Length"] = res.body.bytesize.to_s
       res.headers["Connection"] = if keep_alive
-        "keep-alive"
+                                    "keep-alive"
       else
         "close"
                                   end

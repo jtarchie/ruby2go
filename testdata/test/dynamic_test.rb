@@ -476,7 +476,7 @@ def sent_area(s) = s.send(:area).inspect
 def dynamic_pick(n) = if n.zero?
                         nil
                       else
-  (n.positive? ? DynamicTests::Sq.new("p") : DynamicTests::Blob.new("q"))
+                        (n.positive? ? DynamicTests::Sq.new("p") : DynamicTests::Blob.new("q"))
                       end
 
 #: (untyped) -> String

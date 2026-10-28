@@ -499,7 +499,7 @@ end
 #: (bool) -> Integer
 def both_branches(flag)
   a = if flag
-    1
+        1
   else
     2
       end
@@ -1028,7 +1028,7 @@ end
 #: (Integer) -> String
 def size_word(n)
   word = if n > 100
-    "large"
+           "large"
   elsif n > 10
     "medium"
   else
@@ -1041,11 +1041,11 @@ end
 def control_weight(s)
   w = case s
       when :a
-    1
+        1
       when :b
-    2
+        2
   else
-    0
+        0
       end
   w * 10
 end
@@ -1068,7 +1068,7 @@ end
 #: (Integer) -> String
 def nil_first(n)
   label = if n > 0
-    nil
+            nil
   else
     "non-positive"
           end
@@ -1276,7 +1276,7 @@ def joined(out, n)
   y = nil if n > 5
   out << y.inspect
   label = if n > 0
-    "pos"
+            "pos"
           end
   out << label.inspect
 end
@@ -1827,14 +1827,14 @@ module ControlTests
       hi = 0
       pairs = [[1, 9], [2, 8]] #: Array[[Integer, Integer]]
       pairs.each do |pair| 
-        lo = pair[1]
+  lo = pair[1]
         hi = pair[0]
 end
       assert_equal 8, lo
       assert_equal 2, hi
       ww = 0
       res = [5].map do |x| 
-              ww = x
+  ww = x
               z = x * 2; z
 end
       assert_equal 5, ww
@@ -2495,7 +2495,7 @@ end
       nested = if x > 1
                  x > 2 ? "gt2" : "eq2"
                else
-  "le1"
+                 "le1"
                end
       assert_equal "gt2", nested
       assert_equal "arg if", (x > 1 ? "arg if" : "arg else")
@@ -2608,7 +2608,7 @@ end
         got << "found #{m + 1}"
       end
       got << if (m2 = h["zz"])
-        "never #{m2}"
+               "never #{m2}"
       else
         "missing #{m2.inspect}"
              end
@@ -2621,12 +2621,12 @@ end
       assert_equal "b", (if x > 5
                            "a"
                          else
-  x > 3 ? "b" : "c"
+                           x > 3 ? "b" : "c"
                          end)
       assert_equal "c", (if x > 5
                            "a"
                          else
-  x > 4 ? "b" : "c"
+                           x > 4 ? "b" : "c"
                          end)
       assert_equal "even big", (x.even? && x > 2 ? "even big" : "other")
     end
@@ -3731,7 +3731,7 @@ end
       end
       assert_equal 20, last
       msg = if i.zero?
-        "zero"
+              "zero"
       else
         "i=#{i}"
             end
@@ -4734,7 +4734,7 @@ end
       rescue
         0
           else
-        20
+            20
       end
       assert_equal 20, v
     end
@@ -5391,7 +5391,7 @@ end
   CONTROL_PICKED = if (control_pick = "").empty? && (control_pick = "/tmp").empty?
                      control_pick.upcase
                    else
-    control_pick
+                     control_pick
                    end.freeze
 
   class ControlBeginValue

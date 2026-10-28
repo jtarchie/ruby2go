@@ -204,7 +204,7 @@ module CgiIo
     s.to_s.each_byte do |b|
       out << if (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
                 b == 45 || b == 46 || b == 95 || b == 126
-        b.chr
+               b.chr
       else
         format("%%%02X", b)
              end

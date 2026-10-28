@@ -48,7 +48,7 @@ module Zlib
           crc = if (crc & 1) == 1
                   (crc >> 1) ^ 0xEDB88320
                 else
-            crc >> 1
+                  crc >> 1
                 end
           j += 1
         end

@@ -221,11 +221,11 @@ module ActionController
       close = if comma.nil?
                 brace
               else
-  (if brace.nil?
-     comma
-   else
-    (comma < brace ? comma : brace)
-   end)
+                (if brace.nil?
+                   comma
+                 else
+                   (comma < brace ? comma : brace)
+                 end)
               end
       return "" if close.nil?
       envelope[rest, close - rest]

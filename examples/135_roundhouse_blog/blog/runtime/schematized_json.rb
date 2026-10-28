@@ -137,7 +137,7 @@ module SchematizedJson
       if c == "\\"
         e = s[i + 1, 1].to_s
         out = if e == "n"
-          out + "\n"
+                out + "\n"
         elsif e == "r"
           out + "\r"
         elsif e == "t"

@@ -1088,7 +1088,7 @@ module ArrayTests
       assert_equal true, idx_opt[9].nil?
       branch = ""
       branch = if (hole = idx_opt[1])
-        "truthy #{hole.inspect}"
+                 "truthy #{hole.inspect}"
       else
         "falsy"
                end
@@ -2973,7 +2973,7 @@ module ArrayTests
         out << a.pop
       end
       out << if a.empty?
-        0
+               0
       else
         a.shift
              end

@@ -128,7 +128,7 @@ module ActionCable
       Broadcasts.log.each do |entry|
         next if entry[:stream] != stream
         out << if entry[:action] == :message
-          entry[:payload].to_s
+                 entry[:payload].to_s
         else
           JSON.generate(Broadcasts.render_fragment(
                                  action: entry[:action],

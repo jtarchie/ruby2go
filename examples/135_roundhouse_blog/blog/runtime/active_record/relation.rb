@@ -132,7 +132,7 @@ module ActiveRecord
       sql = if condition.is_a?(Hash)
               hash_conditions(condition)
             else
-        substitute_binds(condition.to_s, args)
+              substitute_binds(condition.to_s, args)
             end
       return false if sql == ""
       @wheres << (negate ? "NOT (#{sql})" : "(#{sql})")
@@ -172,7 +172,7 @@ module ActiveRecord
         i += 1
       end
       @records = if sort_in_place!(sorted, terms)
-        sorted
+                   sorted
                  end
       self
     end
@@ -907,7 +907,7 @@ module ActiveRecord
                   end
                   parts.join(", ")
                 else
-        updates.to_s
+                  updates.to_s
                 end
       sql = "UPDATE #{@table} SET #{set_sql}#{scoped_write_where}"
       ActiveRecord.adapter.execute_ddl(sql)

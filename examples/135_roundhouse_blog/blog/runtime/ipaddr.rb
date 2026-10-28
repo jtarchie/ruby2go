@@ -223,7 +223,7 @@ class IPAddr
     while i < octets.length
       bit = i * 8
       out << if bit + 8 <= prefix
-        octets[i]
+               octets[i]
       elsif bit >= prefix
         0
       else

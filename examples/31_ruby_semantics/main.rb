@@ -50,7 +50,7 @@ missing = nil #: String?
 puts (missing || 42).inspect, ("yes").inspect, ("fallback").inspect
 
 amount = if values.size > 1
-  "many"
+           "many"
 else
   "few"
          end
