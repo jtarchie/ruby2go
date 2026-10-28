@@ -31,7 +31,7 @@ module Demo
           value = String.new
   
           while i = header.index(/(["\\])/)
-            c = $1
+            c = ::Regexp.last_match(1)
   
             # Append all content until ending quote or escape
             value << header.slice!(0, i)

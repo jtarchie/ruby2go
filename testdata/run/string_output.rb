@@ -188,7 +188,7 @@ exit 3
 
 # $~, $& and $1 at the top level (decision 171); return with two values is an Array
 "ab" =~ /(b)/
-puts $&.inspect, $1.inspect, $~.inspect
+puts Regexp.last_match(0).inspect, Regexp.last_match(1).inspect, $~.inspect
 puts "ab".match?(/(?x) a b /)
 #: () -> [Integer, Integer]
 def string_two_values

@@ -1613,11 +1613,11 @@ B
     end
 
     # $1 and $~ inside a sub/gsub block are that match (decision 241).
-    def string_camel(name) = name.to_s.gsub(/(?:^|_)(.)/) { $1.upcase }
+    def string_camel(name) = name.to_s.gsub(/(?:^|_)(.)/) { ::Regexp.last_match(1).upcase }
 
     def test_gsub_block_last_match
       assert_equal ["FooBar", "a2b4", "x<y>"],
-                   [string_camel(:foo_bar), "a1b2".gsub(/\d/) { ($~[0].to_i * 2).to_s }, "xy".sub(/(y)/) { "<#{$1}>" }]
+                   [string_camel(:foo_bar), "a1b2".gsub(/\d/) { ($~[0].to_i * 2).to_s }, "xy".sub(/(y)/) { "<#{::Regexp.last_match(1)}>" }]
     end
 
     def test_scan_interpolated_groups

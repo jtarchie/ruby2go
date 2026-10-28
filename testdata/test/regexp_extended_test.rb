@@ -59,14 +59,14 @@ module RegexpTests
   # #102: grep/grep_v with a block set $~ for each test, as MRI's
   class RegexpGrepLastMatchTest < Minitest::Test
     def test_grep_block_last_match
-      assert_equal ["b", "b"], ["aba", "aba"].grep(/a(b)a/) { $1 }
+      assert_equal ["b", "b"], ["aba", "aba"].grep(/a(b)a/) { ::Regexp.last_match(1) }
       "z" =~ /z/
-      got = ["abc", "def"].grep(/b/) { |e| [e, $&] }
+      got = ["abc", "def"].grep(/b/) { |e| [e, ::Regexp.last_match(0)] }
       assert_equal [[["abc", "b"]], nil], [got, $~]
       "z" =~ /z/
-      assert_equal [["abc"], "z"], [["abc", "def"].grep(/b/), $&]
+      assert_equal [["abc"], "z"], [["abc", "def"].grep(/b/), ::Regexp.last_match(0)]
       inv = ["abc", "def"].grep_v(/e/) { |e| [e, $~.nil?] }
-      assert_equal [[["abc", true]], "e"], [inv, $&]
+      assert_equal [[["abc", true]], "e"], [inv, ::Regexp.last_match(0)]
     end
 
     # `::Regexp.last_match(n)` reads the frame's $~ as `Regexp.last_match(n)` does (Homebrew's expand_elf_dst).
@@ -229,9 +229,9 @@ module RegexpExtendedTests
       "x" =~ /y/
       assert_nil $~
       $~ = m
-      assert_equal "c", $1
+      assert_equal "c", ::Regexp.last_match(1)
       $~ = nil
-      assert_nil $1
+      assert_nil ::Regexp.last_match(1)
     end
   end
 end
@@ -242,7 +242,7 @@ module RegexpExtendedTests
     def test_match_pos_sets_last_match
       m = /(.).(.)/.match("01234", 1)
       assert_equal ["1", "3"], m&.captures
-      assert_equal "1", $1
+      assert_equal "1", ::Regexp.last_match(1)
       assert_equal "123", $~&.[](0)
     end
 

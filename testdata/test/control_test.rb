@@ -5213,9 +5213,9 @@ x > 4 ? "b" : "c"
     #: (String) -> Array[String?]
     def split_url(location)
       if location =~ %r{\Ahttps?://(.*?)(/.*)}
-        [$1, $2, $&]
+        [::Regexp.last_match(1), ::Regexp.last_match(2), ::Regexp.last_match(0)]
       else
-        [nil, location, $&]
+        [nil, location, ::Regexp.last_match(0)]
       end
     end
 
@@ -5225,7 +5225,7 @@ x > 4 ? "b" : "c"
     end
 
     def test_last_match_in_block
-      assert_equal ["1", nil], %w[x1 y].map { |w| w =~ /(\d)/ ? $1 : nil }
+      assert_equal ["1", nil], %w[x1 y].map { |w| w =~ /(\d)/ ? ::Regexp.last_match(1) : nil }
     end
 
     def test_regexp_on_the_left
@@ -5259,7 +5259,7 @@ x > 4 ? "b" : "c"
     #: (String) -> String?
     def control_quoted(s)
       i = s.index(/(["\\])/)
-      i ? $1 : nil
+      i ? ::Regexp.last_match(1) : nil
     end
 
     def test_index_sets_last_match
@@ -5268,7 +5268,7 @@ x > 4 ? "b" : "c"
 
     def test_match_sets_last_match
       m = "k=v".match(/(\w)=(\w)/)
-      assert_equal ["k", "v", "k"], [$1, $2, m&.[](1)]
+      assert_equal ["k", "v", "k"], [::Regexp.last_match(1), ::Regexp.last_match(2), m&.[](1)]
     end
   end
 
@@ -5671,8 +5671,8 @@ x > 4 ? "b" : "c"
     #: (String | Integer) -> String
     def control_opt(o)
       case o
-      when /\A--\[no-\]([^=]*)/ then "neg #{$1}"
-      when /\A--([^=]*)(=)?/ then "long #{$1} #{$2.inspect}"
+      when /\A--\[no-\]([^=]*)/ then "neg #{::Regexp.last_match(1)}"
+      when /\A--([^=]*)(=)?/ then "long #{::Regexp.last_match(1)} #{::Regexp.last_match(2).inspect}"
       when Integer then "int"
       else "other"
       end
@@ -5759,9 +5759,9 @@ module ControlTests
     def control_parse(markup)
       case markup
       when CONTROL_SQ, CONTROL_DQ
-        $1
+        ::Regexp.last_match(1)
       when CONTROL_INT
-        $1.to_i
+        ::Regexp.last_match(1).to_i
       else
         :var
       end
