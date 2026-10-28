@@ -5005,7 +5005,7 @@ module ObjectTests
     def hits = (@hits = (@hits || 0) + 1)
     #: (String) -> void
     def label=(s)
-      @labels = [] unless @labels
+      @labels ||= []
       @labels << s
     end
     #: () -> Array[String]
