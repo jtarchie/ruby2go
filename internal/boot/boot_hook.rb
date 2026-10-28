@@ -108,7 +108,7 @@ module RugarooBoot
         named = singleton ? owner.attached_object : owner
         m = begin
               owner.instance_method(name)
-            rescue StandardError
+        rescue StandardError
               nil
         end
         from = m && m.original_name != name ? m.owner : nil
@@ -132,7 +132,7 @@ module RugarooBoot
         owner = tp.self
         m = begin
               owner.instance_method(tp.return_value)
-            rescue StandardError
+        rescue StandardError
               next
         end
         singleton = owner.singleton_class?
@@ -179,7 +179,7 @@ module RugarooBoot
 
       nesting = begin
                   b.eval("Module.nesting")
-                rescue StandardError
+      rescue StandardError
                   []
       end
       b.local_variables.each_with_object({}) do |v, out|
@@ -199,7 +199,7 @@ module RugarooBoot
 
           obj = begin
                   mod.const_get(c, false)
-                rescue StandardError
+          rescue StandardError
                   next
           end
           return "#{name}::#{c}" if obj.equal?(value)
@@ -227,7 +227,7 @@ module RugarooBoot
       when nil, true, false, Integer, Symbol then x.inspect
       when Module then if (n = MOD_NAME.bind_call(x)) && begin
                                                         Object.const_get(n)
-                                                      rescue StandardError
+      rescue StandardError
                                                         nil
       end.equal?(x)
   "::#{n}"
@@ -408,7 +408,7 @@ module RugarooBoot
 
           v = begin
                 MOD_CONST_GET.bind_call(owner, c, false)
-              rescue StandardError
+          rescue StandardError
                 next
           end
           next unless v.is_a?(Module) # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
@@ -432,7 +432,7 @@ module RugarooBoot
 
         props = begin
                   k.props
-                rescue StandardError
+        rescue StandardError
                   next
         end
         out[MOD_NAME.bind_call(k)] = props.map do |name, rules|

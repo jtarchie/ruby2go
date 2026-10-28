@@ -2375,7 +2375,7 @@ end
         
           Time.utc(a.fetch(0), a.fetch(1), a.fetch(2), a.fetch(3), a.fetch(4), a.fetch(5))
           ""
-        rescue ArgumentError => e
+      rescue ArgumentError => e
           e.message
         
       end

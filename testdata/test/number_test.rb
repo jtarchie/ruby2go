@@ -2586,7 +2586,7 @@ end
         
           f.call
           nil
-        rescue ZeroDivisionError => e
+      rescue ZeroDivisionError => e
           e.class
         
       end

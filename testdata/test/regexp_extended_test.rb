@@ -143,7 +143,7 @@ module RegexpTests
         
           s.match?(/\Aabc/)
           raised << false
-        rescue ArgumentError
+      rescue ArgumentError
           raised << true
         
       end

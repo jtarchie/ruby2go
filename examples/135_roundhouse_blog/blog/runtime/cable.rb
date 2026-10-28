@@ -502,7 +502,7 @@ module Cable
         
           channel.unsubscribed
           channel.after_unsubscribe
-        rescue StandardError => e
+      rescue StandardError => e
           warn "[cable] unsubscribe raised: " + e.message
         
       end

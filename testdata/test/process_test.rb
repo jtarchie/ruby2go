@@ -21,7 +21,7 @@ module ProcessTests
         
           IO.popen(cmd) { |io| io.read }
           msgs << "no error"
-        rescue ArgumentError => e
+      rescue ArgumentError => e
           msgs << e.message
         
       end
@@ -97,7 +97,7 @@ module ProcessTests
         [-> { Process.spawn(f) }, -> { Process.spawn({}, f) }, -> { Process.spawn(File.join(d, "missing")) }].each do |go|
           
             go.call
-          rescue SystemCallError => e
+        rescue SystemCallError => e
             got << "#{e.class}: #{e.message.gsub(d, "D")}"
           
         end

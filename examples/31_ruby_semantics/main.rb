@@ -8,12 +8,12 @@
 values = [1, 2]
 missing_value = begin
                   values.fetch(5)
-                rescue StandardError
+rescue StandardError
                   -1
 end
 present_value = begin
                   values.fetch(1)
-                rescue StandardError
+rescue StandardError
                   -1
 end
 puts missing_value, present_value
@@ -31,7 +31,7 @@ def maybe(flag)
     raise ArgumentError, "kept" if flag
 
     "body"
-  ensure
+ensure
     return "early" unless flag
   
 end
