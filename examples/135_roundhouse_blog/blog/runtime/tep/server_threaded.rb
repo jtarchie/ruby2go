@@ -243,7 +243,8 @@ module Tep
         # loop, which returns when the connection closes.
         if res.upgrading_ws
           head = Tep::WebSocket::Handshake.build_response(
-            res.ws_accept_key, res.ws_driver.subprotocol)
+            res.ws_accept_key, res.ws_driver.subprotocol
+)
           Sock.sphttp_write_str(client, head)
           res.ws_driver.set_fd(client)
           conn = Tep::WebSocket::Connection.new(res.ws_driver, io)
