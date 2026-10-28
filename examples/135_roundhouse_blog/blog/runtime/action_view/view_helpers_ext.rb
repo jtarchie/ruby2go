@@ -1303,14 +1303,13 @@ module ActionView
         href = href[0, href.length - 1].to_s
         punctuation.push(last)
         opening = auto_link_bracket_opening(last)
-        if opening != "" && auto_link_count(href, opening) > auto_link_count(href, last)
-          # `href << punctuation.pop` in the gem. Split, and the pop is a
-          # STATEMENT: used as a value it types as an Option on the
-          # strict targets, and `last` is the same character anyway.
-          punctuation.pop
-          href = href + last
-          break
-        end
+        next unless opening != "" && auto_link_count(href, opening) > auto_link_count(href, last)
+        # `href << punctuation.pop` in the gem. Split, and the pop is a
+        # STATEMENT: used as a value it types as an Option on the
+        # strict targets, and `last` is the same character anyway.
+        punctuation.pop
+        href = href + last
+        break
       end
       # `&gt;` survives the loop above (`;` is a keeper) and is not part
       # of the URL either — it is the escaped `>` of the markup around
@@ -1421,17 +1420,15 @@ module ActionView
       more = true
       while more
         more = false
-        if s[k, 1].to_s == "."
-          m = k + 1
-          while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
-            m = m + 1
-          end
-          if m > k + 1
-            k = m
-            labels = labels + 1
-            more = true
-          end
+        next unless s[k, 1].to_s == "."
+        m = k + 1
+        while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
+          m = m + 1
         end
+        next unless m > k + 1
+        k = m
+        labels = labels + 1
+        more = true
       end
       return 0 if labels == 0
       k - i

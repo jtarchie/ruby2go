@@ -892,14 +892,13 @@ module ActionView
           if v.is_a?(Hash)
             v.each do |inner_k, inner_v|
               inner_name = inner_k.to_s.tr("_", "-")
-              unless inner_v.nil?
-                # Coerce untyped Hash values to String before
-                # html_escape; html_escape's contract is
-                # `(String) -> String` and the untyped values flowing
-                # through Hash[String, untyped] need explicit
-                # stringification.
-                pairs << " #{name}-#{inner_name}=\"#{html_escape(inner_v.to_s)}\""
-              end
+              next if inner_v.nil?
+              # Coerce untyped Hash values to String before
+              # html_escape; html_escape's contract is
+              # `(String) -> String` and the untyped values flowing
+              # through Hash[String, untyped] need explicit
+              # stringification.
+              pairs << " #{name}-#{inner_name}=\"#{html_escape(inner_v.to_s)}\""
             end
           elsif boolean_attr?(name)
             # A boolean attribute's mere presence is its value — Rails

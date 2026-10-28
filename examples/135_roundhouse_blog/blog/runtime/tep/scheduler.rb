@@ -177,30 +177,29 @@ module Tep
       # the call sites.
       deadline = Sock.sphttp_now_us + (seconds * 1000000).to_i
       while Sock.sphttp_now_us < deadline
-        if !Scheduler.tick(0)
-          # Nothing ready this pass. Compute the next deadline:
-          # min(next_wake, overall_deadline). If any fiber is
-          # parked on I/O, block in poll() until that or the
-          # timer hits.
-          next_at = Scheduler.next_wake
-          gap = deadline - Sock.sphttp_now_us
-          if next_at >= 0
-            tgap = next_at - Sock.sphttp_now_us
-            if tgap < gap
-              gap = tgap
-            end
+        next unless !Scheduler.tick(0)
+        # Nothing ready this pass. Compute the next deadline:
+        # min(next_wake, overall_deadline). If any fiber is
+        # parked on I/O, block in poll() until that or the
+        # timer hits.
+        next_at = Scheduler.next_wake
+        gap = deadline - Sock.sphttp_now_us
+        if next_at >= 0
+          tgap = next_at - Sock.sphttp_now_us
+          if tgap < gap
+            gap = tgap
           end
-          if gap < 0
-            gap = 0
-          end
-          if Scheduler.any_io_waiter
-            # Park in poll for up to `gap` microseconds (poll wants ms).
-            Scheduler.poll_round(gap / 1000)
-          elsif next_at < 0
-            return 0
-          elsif gap > 0
-            sleep(gap / 1000000.0)
-          end
+        end
+        if gap < 0
+          gap = 0
+        end
+        if Scheduler.any_io_waiter
+          # Park in poll for up to `gap` microseconds (poll wants ms).
+          Scheduler.poll_round(gap / 1000)
+        elsif next_at < 0
+          return 0
+        elsif gap > 0
+          sleep(gap / 1000000.0)
         end
       end
       0

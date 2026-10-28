@@ -144,15 +144,14 @@ module Tep
       end
       pairs = s.split("&")
       pairs.each do |pair|
-        if pair.length > 0
-          eq = pair.index("=")
-          if eq.nil?
-            h[Url.unescape(pair)] = +""
-          else
-            k = pair[0, eq]
-            v = pair[eq + 1, pair.length - eq - 1]
-            h[Url.unescape(k)] = Url.unescape(v)
-          end
+        next unless pair.length > 0
+        eq = pair.index("=")
+        if eq.nil?
+          h[Url.unescape(pair)] = +""
+        else
+          k = pair[0, eq]
+          v = pair[eq + 1, pair.length - eq - 1]
+          h[Url.unescape(k)] = Url.unescape(v)
         end
       end
       h

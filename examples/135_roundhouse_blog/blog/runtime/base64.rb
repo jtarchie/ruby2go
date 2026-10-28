@@ -72,11 +72,10 @@ module Base64
       # spinel now raises on (`integer overflow in <<`, e3883499).
       acc = ((acc << 6) | val) & 0xFFFF
       nbits = nbits + 6
-      if nbits >= 8
-        nbits = nbits - 8
-        byte = (acc >> nbits) & 0xFF
-        out << byte.chr
-      end
+      next unless nbits >= 8
+      nbits = nbits - 8
+      byte = (acc >> nbits) & 0xFF
+      out << byte.chr
     end
     out
   end

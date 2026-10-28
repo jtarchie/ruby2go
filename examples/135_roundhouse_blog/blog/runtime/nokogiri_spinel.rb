@@ -124,15 +124,13 @@ module Nokogiri
         return charset if !charset.nil? && charset != ""
         equiv = node["http-equiv"]
         content = node["content"]
-        if !equiv.nil? && equiv.downcase == "content-type" && !content.nil?
-          at = content.downcase.index("charset=")
-          if !at.nil?
-            value = content[at + 8, content.length].to_s.strip
-            semi = value.index(";")
-            value = value[0, semi].to_s if !semi.nil?
-            return value.gsub("\"", "").gsub("'", "").strip if value != ""
-          end
-        end
+        next unless !equiv.nil? && equiv.downcase == "content-type" && !content.nil?
+        at = content.downcase.index("charset=")
+        next unless !at.nil?
+        value = content[at + 8, content.length].to_s.strip
+        semi = value.index(";")
+        value = value[0, semi].to_s if !semi.nil?
+        return value.gsub("\"", "").gsub("'", "").strip if value != ""
       end
       nil
     end

@@ -61,11 +61,10 @@ module Tep
       if cookie_blob.length > 0
         cookie_blob.split(";").each do |pair|
           eq = pair.index("=")
-          if !eq.nil? && eq > 0
-            cname  = pair[0, eq].strip
-            cvalue = pair[eq + 1, pair.length - eq - 1].strip
-            req.cookies[cname] = Url.unescape(cvalue)
-          end
+          next unless !eq.nil? && eq > 0
+          cname  = pair[0, eq].strip
+          cvalue = pair[eq + 1, pair.length - eq - 1].strip
+          req.cookies[cname] = Url.unescape(cvalue)
         end
       end
 
