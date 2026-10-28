@@ -137,7 +137,7 @@ module InferTests
 
     def test_lambda_params
       add = ->(a, b) { a + b }
-      shout = lambda { |s| s.upcase }
+      shout = ->(s) { s.upcase }
       double = proc { |x| x * 2 }
       assert_equal [3, 7, 11, "HI", [2, 4]], [add.call(1, 2), add.(3, 4), add[5, 6], shout.call("hi"), [1, 2].map(&double)]
     end

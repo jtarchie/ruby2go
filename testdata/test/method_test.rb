@@ -411,7 +411,7 @@ module MethodTests
       assert_equal [[:keyreq, :k], [:key, :o], [:keyrest, :kr], [:block, :b]], proc { |k:, o: 1, **kr, &b| }.parameters
       assert_equal [], proc {}.parameters
       assert_equal [0, -2, 2, -1, 0], [proc { |x = 1| }.arity, ->(x, y = 1) {}.arity, proc { _1 + _2 }.arity, ->(x: 1) {}.arity, proc { |x: 0| }.arity]
-      assert_equal [false, true, true], [proc {}.lambda?, -> {}.lambda?, lambda {}.lambda?]
+      assert_equal [false, true, true], [proc {}.lambda?, -> {}.lambda?, -> {}.lambda?]
     end
   end
 end

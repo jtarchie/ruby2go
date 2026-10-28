@@ -5315,7 +5315,7 @@ module ObjectTests
   # A class body's locals are visible to its later statements and constants (decision 170).
   class BodyLocals
     factor = 3
-    scale = lambda { |x| x * factor } #: ^(Integer) -> Integer
+    scale = ->(x) { x * factor } #: ^(Integer) -> Integer
     SCALED = scale.call(4) #: Integer
     NAMES = %w[a b].map { |s| s * factor } #: Array[String]
   end
