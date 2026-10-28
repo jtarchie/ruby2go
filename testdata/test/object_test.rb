@@ -5405,7 +5405,7 @@ def secret = "s3cret"
 
   # rack's multipart MimePart (decision 175).
   class ObjectStructSuperTest < Minitest::Test
-    class Part < Struct.new(:body, :name) #: [String, String?]
+    Part = Struct.new(:body, :name) do #: [String, String?]
       def label = "#{name}=#{body}"
     end
 
@@ -6470,8 +6470,7 @@ module ObjectTests
       def self.build = Struct.new(:b).new(6).b
     end
 
-    class FromStruct < Struct.new(:q) #: [Integer]
-    end
+    FromStruct = Struct.new(:q) #: [Integer]
   end
 
   # A `T | untyped` parameter checks a typed argument against T and discards the result: the argument runs once (#109 D3).

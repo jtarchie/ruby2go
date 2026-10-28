@@ -8,7 +8,7 @@ module Demo
   class Gemish
     Pair = Struct.new :key, :value
 
-    class Part < Struct.new(:body, :name)
+    Part = Struct.new(:body, :name) do
       def label = "#{name}=#{body}"
     end
 
