@@ -659,7 +659,7 @@ module RxjsonTests
         cs << "extra"
         assert_equal 2, cs.size
         assert_equal 1, cm.captures.size
-      
+
     end
 
     # Regexp?: nil, narrowing, &., and a method that may return nil.
@@ -894,7 +894,7 @@ b/
       return unless pm
         assert_equal "#<MatchData \"/posts/42.json\" 1:\"posts\" 2:\"42\" 3:\".json\">", pm.inspect
         assert_equal "posts#42", pm[1].to_s + "#" + pm[2].to_s
-      
+
     end
 
     # Edge matches: an empty group is "", not nil; a repeated group keeps its last iteration.
@@ -916,7 +916,7 @@ b/
       return unless em2
         assert_equal "", em2.pre_match
         assert_equal "abc", em2.post_match
-      
+
     end
 
     # Safe navigation and boolean contexts over MatchData? and Integer?.
@@ -1121,7 +1121,7 @@ b/
         assert_equal "\"a\"", m2_neg[-1].inspect
         assert_equal "nil", m2_neg[-2].inspect
         assert_equal "nil", m2_neg[-3].inspect
-      
+
     end
 
     # /i with multi-character case folds
@@ -1141,7 +1141,7 @@ b/
         assert_equal "nil", m_named[3].inspect
         assert_equal 3, m_named.captures.size
         assert_equal "#<MatchData \"2024-05\" year:\"2024\" mon:\"05\" day:nil>", m_named.inspect
-      
+
     end
 
     # named groups make plain parens non-capturing
@@ -1153,7 +1153,7 @@ b/
         assert_equal "\"x\"", m_plain[1].inspect
         assert_equal "nil", m_plain[2].inspect
         assert_equal "x", m_plain.captures.join(",")
-      
+
     end
 
     # nil captures answer NilClass#to_i/#to_f; =~ on a nil String?

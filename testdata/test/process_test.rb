@@ -18,12 +18,12 @@ module ProcessTests
       msgs = [] #: Array[String]
       cmds = [Array.new, [{ "A" => "b" }]] #: Array[Array[untyped]]
       cmds.each do |cmd|
-        
+
         IO.popen(cmd) { |io| io.read }
         msgs << "no error"
     rescue ArgumentError => e
       msgs << e.message
-        
+
       end
       assert_equal ["wrong number of arguments (given 0, expected 1+)"] * 2, msgs
     end
@@ -95,11 +95,11 @@ module ProcessTests
         File.chmod(0o644, f)
         got = [] #: Array[String]
         [-> { Process.spawn(f) }, -> { Process.spawn({}, f) }, -> { Process.spawn(File.join(d, "missing")) }].each do |go|
-          
+
           go.call
       rescue SystemCallError => e
         got << "#{e.class}: #{e.message.gsub(d, "D")}"
-          
+
         end
         assert_equal ["Errno::EACCES: Permission denied - D/plain"] * 2 + ["Errno::ENOENT: No such file or directory - D/missing"], got
       end
@@ -190,15 +190,15 @@ module ProcessTests
     # The pin list was appended to from any thread without a lock.
     def test_autoclose_false_from_many_threads
       pipes = Array.new(16) { IO.pipe }
-      ts = pipes.map do |r, _w| 
-  Thread.new do 
+      ts = pipes.map do |r, _w|
+  Thread.new do
   50.times { r.autoclose = false }
  true
 end
 end
       ts.each(&:join)
       assert_equal([false] * 16, pipes.map { |r, _w| r.autoclose? })
-      pipes.each do |r, w| 
+      pipes.each do |r, w|
   w.close
  r.close
 end

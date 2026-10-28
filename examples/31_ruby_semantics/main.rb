@@ -27,13 +27,13 @@ end
 
 #: (bool) -> String
 def maybe(flag)
-  
+
   raise ArgumentError, "kept" if flag
 
   "body"
 ensure
   return "early" unless flag
-  
+
 end
 
 puts swallow, maybe(false)

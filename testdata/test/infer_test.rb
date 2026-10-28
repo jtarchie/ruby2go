@@ -208,7 +208,7 @@ module InferTests
   end
 
   class InitPass < InitBase
-    
+
   end
 
   class InitInheritTest < Minitest::Test

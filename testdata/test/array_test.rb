@@ -58,11 +58,11 @@ end
 #: (Array[Integer], Array[String]) { (Integer) -> void } -> void
 def safe_each(nums, log)
   nums.each do |n|
-    
+
     yield n
 rescue ZeroDivisionError => e
   log << "rescued #{e.message}"
-    
+
   end
 end
 
@@ -464,11 +464,11 @@ module ArrayTests
     #: () { (Integer) -> void } -> void
     def each
       [1, 2].each do |x|
-        
+
         yield x
     rescue ZeroDivisionError
       @log << "rescued"
-        
+
       end
     end
   end

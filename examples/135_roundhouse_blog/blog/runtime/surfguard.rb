@@ -132,11 +132,11 @@ module Surfguard
   # The classification core, over the spelling a caller has: a String.
   # Errs closed — an address it cannot parse is blocked.
   def self.blocked_address?(ip)
-    
+
     blocked_ipaddr?(IPAddr.new(ip))
 rescue IPAddr::InvalidAddressError
   true
-    
+
   end
 
   # The same question over a parsed address. Branch order is the gem's:
@@ -177,11 +177,11 @@ rescue IPAddr::InvalidAddressError
   # the DNS call above sits in a method body where its own rescue can
   # reach it.
   def self.ip_literal(host)
-    
+
     IPAddr.new(host)
 rescue IPAddr::InvalidAddressError
   nil
-    
+
   end
 
   def self.disallowed_ipv4?(ipaddr)

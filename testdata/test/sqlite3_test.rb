@@ -176,13 +176,13 @@ module Sqlite3Tests
 
     def test_transactions
       db = seeded
-      assert_equal(7, db.transaction do |d| 
+      assert_equal(7, db.transaction do |d|
   d.execute("insert into t (name) values ('tx')")
  7
 end)
       refute db.transaction_active?
       e = assert_raises(RuntimeError) do
-        db.transaction do 
+        db.transaction do
   db.execute("insert into t (name) values ('rb')")
  raise "boom"
 end

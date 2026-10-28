@@ -65,7 +65,7 @@ rescue ThreadError => e
   puts "exit without enter: #{e.message}"
 end
 
-t = Thread.new do 
+t = Thread.new do
   Thread.current[:name] = "worker"
  Thread.current[:name]
 end

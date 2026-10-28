@@ -1894,7 +1894,7 @@ module ObjectTests
 
   class MtBox < MtNode
     #: () -> void
-    
+
   end
 
   # Method-name tables (decision 77): public_instance_methods/instance_methods
@@ -5857,12 +5857,12 @@ module ObjectTests
 
   class SuperBlkPass < SuperBlkRes
     #: (String) ?{ () -> String } -> void
-    
+
   end
 
   class SuperBlkImplicit < SuperBlkRes
     #: (String) ?{ () -> String } -> void
-    
+
   end
 
   class ObjectSuperBlockTest < Minitest::Test

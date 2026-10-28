@@ -455,7 +455,7 @@ module PatternTests
       v = [1, 2] #: Array[Integer]
       return unless v in [_one] | [_, _]
         assert_nil _one
-      
+
     end
 
     def test_member_named_deconstruct_is_what_the_pattern_reads

@@ -1787,7 +1787,7 @@ module StdlibTests
     def test_new_thread_joins_creators_group
       g = ThreadGroup.new
       q = Queue.new #: Queue[Integer]
-      t = Thread.new do 
+      t = Thread.new do
   q.pop
  Thread.new { 1 }.group.equal?(g)
 end
@@ -1947,7 +1947,7 @@ end
     end
 
     def test_popen_write
-      assert_equal "a\nb\n", IO.popen("sort", "r+") { |io| 
+      assert_equal "a\nb\n", IO.popen("sort", "r+") { |io|
   io.write("b\na\n")
  io.close_write
  io.read
@@ -2372,12 +2372,12 @@ end
 
     def test_out_of_range_messages
       msgs = [[2008, 1, 0, 0, 0, 0], [2008, 1, 1, -1, 0, 0], [2008, 1, 1, 25, 0, 0], [2008, 1, 1, 0, 60, 0], [2008, 1, 1, 0, 0, -1], [2008, 1, 1, 0, 0, 61], [2008, 1, 1, 0, 0, 64]].map do |a|
-        
+
         Time.utc(a.fetch(0), a.fetch(1), a.fetch(2), a.fetch(3), a.fetch(4), a.fetch(5))
         ""
     rescue ArgumentError => e
       e.message
-        
+
       end
       assert_equal ["mday out of range", "argument out of range", "hour out of range", "min out of range", "argument out of range", "sec out of range", "argument out of range"], msgs
     end

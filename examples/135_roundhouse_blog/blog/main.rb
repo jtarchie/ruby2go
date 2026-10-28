@@ -536,7 +536,7 @@ module Main
       else
         Main.set_flash_cookie(res, session_cookie, session_out)
       end
-    
+
   end
 
   # Flash cookies are HttpOnly + Path=/; the read side is server-only

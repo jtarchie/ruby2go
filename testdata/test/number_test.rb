@@ -2418,7 +2418,7 @@ module NumberTests
 
     def test_range_each_stops_at_max
       n = 0
-      (MX - 1..MX).each do |_i| 
+      (MX - 1..MX).each do |_i|
   n += 1
  break if n > 5
 end
@@ -2433,8 +2433,8 @@ end
 
     def test_endless_range_past_max
       a = [] #: Array[Integer]
-      r = number_class_of do 
-  (MX - 1..).each do |i| 
+      r = number_class_of do
+  (MX - 1..).each do |i|
   a << i
  break if a.size >= 3
 end
@@ -2457,17 +2457,17 @@ end
 
     def test_upto_downto_step_stop_at_the_bound
       n = 0
-      (MX - 1).upto(MX) do |_i| 
+      (MX - 1).upto(MX) do |_i|
   n += 1
  break if n > 5
 end
       m = 0
-      (MN + 1).downto(MN) do |_i| 
+      (MN + 1).downto(MN) do |_i|
   m += 1
  break if m > 5
 end
       k = 0
-      (MX - 1).step(MX, 1) do |_i| 
+      (MX - 1).step(MX, 1) do |_i|
   k += 1
  break if k > 5
 end
@@ -2583,12 +2583,12 @@ end
 
     def test_zero_modulus
       zd = [-> { 1.0 % 0 }, -> { 1.0 % 0.0 }, -> { 10 % 0.0 }, -> { 1.0.divmod(0.0) }, -> { 10.divmod(0.0) }, -> { 1.0.modulo(0.0) }].map do |f|
-        
+
         f.call
         nil
     rescue ZeroDivisionError => e
       e.class
-        
+
       end
       assert_equal [ZeroDivisionError] * 6, zd
     end

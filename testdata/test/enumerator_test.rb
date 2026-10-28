@@ -221,7 +221,7 @@ module EnumeratorTests
     def test_yielder_forms
       words = Enumerator.new { |y| %w[a b].each(&y) }
       assert_equal %w[a b], words.to_a
-      procs = Enumerator.new do |y| 
+      procs = Enumerator.new do |y|
   y << 0
  y.to_proc.call(5)
 end
@@ -292,7 +292,7 @@ end
 
     def test_laziness
       pulled = []
-      firsts = (1..).lazy.map do |x| 
+      firsts = (1..).lazy.map do |x|
   pulled << x
  x
 end.select(&:odd?).first(2)
@@ -484,7 +484,7 @@ end.select(&:odd?).first(2)
       assert_kind_of(Enumerator::Lazy, (1..3).lazy.collect_concat { |x| [x] })
       assert_kind_of(Enumerator::Lazy, (1..3).lazy.collect { |x| x })
       pulled = []
-      first = (1..).lazy.map do |x| 
+      first = (1..).lazy.map do |x|
   pulled << x
  x
 end.grep(Integer).first(2)

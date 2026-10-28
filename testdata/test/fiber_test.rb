@@ -91,7 +91,7 @@ module FiberTests
       refute late.alive?
 
       in_thread = Thread.new do
-        f = Fiber.new do 
+        f = Fiber.new do
   Fiber.yield Fiber.current.alive?
  :done
 end

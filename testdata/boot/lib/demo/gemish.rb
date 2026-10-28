@@ -530,7 +530,7 @@ class DemoBlocked
 end
 
 class DemoThen < DemoBlocked
-  
+
 end
 
 class DemoExec
@@ -636,7 +636,7 @@ class DemoFallbackExec
     fallback_action(*args, &task)
   end
 
-  def go = ns_execute(5) do |x| 
+  def go = ns_execute(5) do |x|
   @log << x
  x * 2
 end
@@ -859,7 +859,7 @@ class DemoTaskBase
 end
 
 class DemoThenTask < DemoTaskBase
-  
+
 end
 
 # concurrent-ruby's ExecutorService#post(*args, &task): RubyExecutorService's override keeps `&task` as a value, so

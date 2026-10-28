@@ -397,7 +397,7 @@ module UnionTests
       assert_in_delta 5.0, 10 * union_num(false)
       assert_in_delta 5.0, 10.0 / union_num(true)
       order = [] #: Array[String]
-      pick = lambda { |s| 
+      pick = lambda { |s|
   order << s
  s
 }
