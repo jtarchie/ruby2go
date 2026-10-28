@@ -387,7 +387,7 @@ B
       assert_equal "03.14|ab  |ff|FF|10|101|0xff|0b101|+3| 3|1.234568e+04|1.200000E-04|1.23457e+06|100000|0.0001|A|h|%|nil|sym", format("%05.2f|%-4s|%x|%X|%o|%b|%#x|%#b|%+d|% d|%e|%E|%g|%g|%g|%c|%c|%%|%p|%s", 3.14159, "ab", 255, 255, 8, 5, 255, 5, 3, 3, 12345.678, 0.00012, 1234567.0, 100000.0, 0.0001, 65, "hey", nil, :sym)
       assert_equal "hi        |     there|ab| 99.5%", format("%-10s|%10s|%.2s|%5.1f%%", "hi", "there", "abc", 99.5)
       assert_equal "x and 002.2", format("%<a>s and %<b>05.1f", a: "x", b: 2.25)
-      assert_equal "1-", format("%{a}-%{b}", a: 1, b: nil)
+      assert_equal "1-", format("%<a>s-%<b>s", a: 1, b: nil)
       assert_equal "    1|2   |", format("%*d|%-*d|", 5, 1, 4, 2)
       assert_equal "3", format("%d", 3.99)
       assert_equal "26", format("%d", "0x1A") # a String argument follows Kernel#Integer's rules
@@ -1688,7 +1688,7 @@ B
       $stderr = buf
       $VERBOSE = true
       format("test", 1)
-      format("%{a}", { a: 1, b: 2 })
+      format("%<a>s", { a: 1, b: 2 })
       out = buf.string
       $stderr = err
       $VERBOSE = verbose
@@ -1948,7 +1948,7 @@ module StringTests
         ["%8.3x", 255, "     0ff"],
       ] #: Array[Array[untyped]]
       assert_equal rows.map { |r| r[2] }, rows.map { |r| format(String(r[0]), r[1]) }
-      assert_equal ["1:ab", "<s|7>", "{a: 1}"], [format("%d:%s", 1, "ab"), format("<%{a}|%<b>d>", a: "s", b: 7), format("%s", { a: 1 })]
+      assert_equal ["1:ab", "<s|7>", "{a: 1}"], [format("%d:%s", 1, "ab"), format("<%<a>s|%<b>d>", a: "s", b: 7), format("%s", { a: 1 })]
     end
   end
 end
