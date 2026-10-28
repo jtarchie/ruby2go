@@ -55,12 +55,12 @@ module Tep
   # worth a line. The summary keeps Puma's shape whatever happens.
   def self.log_dispatch_error(verb, path, e)
     tag = "[" + Tep.display_name + "]"
-    $stderr.puts(tag + " 500 " + verb + " " + path + " -- " +
+    warn(tag + " 500 " + verb + " " + path + " -- " +
                  e.class.to_s + ": " + e.message)
     frames = e.backtrace
     if !frames.nil?
       frames.each do |frame|
-        $stderr.puts(tag + "        " + frame)
+        warn(tag + "        " + frame)
       end
     end
   end
@@ -84,7 +84,7 @@ module Tep
       if workers <= 1
         sfd = Sock.sphttp_listen(port, 0)
         if sfd < 0
-          $stderr.puts Tep.display_name + ": cannot bind to port " +
+          warn Tep.display_name + ": cannot bind to port " +
                        port.to_s + " (already in use?)"
           exit(1)
         end

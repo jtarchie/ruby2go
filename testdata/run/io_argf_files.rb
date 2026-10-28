@@ -28,5 +28,5 @@ end
 p $stdout.sync, STDERR.sync, $stdin.sync
 $stdout.sync = true
 p $stdout.sync
-STDERR.puts "after sync"
+warn "after sync"
 puts "ordered"

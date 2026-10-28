@@ -1057,7 +1057,7 @@ module Db
       # A replay is not a round trip: the capture log (Rails' SQLCounter
       # ignores CACHE events too) and the trace both say so.
       if @sql_trace
-        $stderr.puts "  CACHE " + sql
+        warn "  CACHE " + sql
       end
       return handle
     end
@@ -1088,7 +1088,7 @@ module Db
   def self.record_query(sql)
     @query_log.push(sql) unless @query_log.nil?
     if @sql_trace
-      $stderr.puts "  SQL " + sql
+      warn "  SQL " + sql
     end
   end
 

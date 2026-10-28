@@ -281,7 +281,7 @@ module Main
     # Under RH_SQL_TRACE the request line brackets its queries, so a
     # tally script can attribute each SQL line to the request that ran it.
     if Db.sql_trace?
-      $stderr.puts "-- " + req.verb + " " + req.path
+      warn "-- " + req.verb + " " + req.path
     end
 
     # Action Cable: upgrade /cable to a WebSocket and hand off to the
@@ -629,12 +629,12 @@ while i < ARGV.length
     workers = ARGV[i + 1].to_i
     i += 2
   else
-    $stderr.puts "unknown option: " + arg + " (try --help)"
+    warn "unknown option: " + arg + " (try --help)"
     exit(1)
   end
 end
 if port <= 0 || port > 65535
-  $stderr.puts "invalid port: " + port.to_s
+  warn "invalid port: " + port.to_s
   exit(1)
 end
 Main.configure_default_adapter!

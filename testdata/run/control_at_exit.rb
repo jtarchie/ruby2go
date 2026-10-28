@@ -9,7 +9,7 @@ at_exit do
   puts "third"
   exit 5
 end
-at_exit { $stderr.puts "stderr handler" }
+at_exit { warn "stderr handler" }
 
 def boom
   raise ArgumentError, "main failed"

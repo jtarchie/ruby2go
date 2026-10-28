@@ -59,7 +59,7 @@ end
 
 $stdout.puts "via $stdout"
 STDOUT.print "via ", "STDOUT\n"
-$stderr.puts "to stderr"
+warn "to stderr"
 STDERR.print "also ", "stderr\n"
 warn "warned", "twice"
 $stdout << "chained" << " <<\n"

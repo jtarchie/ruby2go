@@ -60,7 +60,7 @@ module Tep
           # is another process already bound to the port, and silently
           # returning here (the caller discards the code) made the
           # binary look like it started and immediately vanished.
-          $stderr.puts Tep.display_name + ": cannot bind to port " +
+          warn Tep.display_name + ": cannot bind to port " +
                        port.to_s + " (already in use?)"
           exit(1)
         end

@@ -69,7 +69,7 @@ module Tep
       def run(port, workers, quiet)
         sfd = Sock.sphttp_listen(port, workers > 1 ? 1 : 0)
         if sfd < 0
-          $stderr.puts Tep.display_name + ": cannot bind to port " +
+          warn Tep.display_name + ": cannot bind to port " +
                        port.to_s + " (already in use?)"
           exit(1)
         end
