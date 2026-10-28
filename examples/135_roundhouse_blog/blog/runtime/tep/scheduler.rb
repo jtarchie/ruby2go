@@ -274,8 +274,8 @@ module Tep
       Tep::APP.sched_io_mode[idx]  = mode
       Tep::APP.sched_io_ready[idx] = 0
       Tep::APP.sched_wake_at[idx] = if timeout_seconds < 0
-        # "Wait forever for I/O": -1 would mean "ready now" to the
-        # tick picker, so use a far-future wake_at as the sentinel.
+                                      # "Wait forever for I/O": -1 would mean "ready now" to the
+                                      # tick picker, so use a far-future wake_at as the sentinel.
                                       Sock.sphttp_now_us + 86_400 * 1_000_000
                                     else
         Sock.sphttp_now_us + (timeout_seconds * 1_000_000).to_i
