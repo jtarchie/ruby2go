@@ -301,9 +301,9 @@ module ActionView
       # METHOD, uncalled. `!<function reference>` is always false, so
       # this branch never ran under TypeScript and every record looked
       # persisted. A silent wrong answer, not a crash.
-      if !record.persisted?()
+      if !record.persisted?
         if suffix.nil?
-          "new_#{record.dom_prefix()}"
+          "new_#{record.dom_prefix}"
         else
           # MEASURED against Rails 8.1, not assumed: the suffix REPLACES
           # `new` rather than stacking with it. Rails' `dom_id` falls
@@ -311,7 +311,7 @@ module ActionView
           # no id, so `dom_id(Article.new, :comments_count)` is
           # `comments_count_article` — not `comments_count_new_article`,
           # which is what this branch said before the oracle run.
-          "#{suffix}_#{record.dom_prefix()}"
+          "#{suffix}_#{record.dom_prefix}"
         end
       elsif suffix.nil?
         # `dom_id(article)` -> "article_3". `dom_record_key()`, not
@@ -324,11 +324,11 @@ module ActionView
         # per model (`push_dom_record_key_method`): `@id.to_s` by
         # default, the model's own `to_key.join("_")` when it defines
         # one. Parens for the same TS-emit reason as `dom_prefix()`.
-        "#{record.dom_prefix()}_#{record.dom_record_key()}"
+        "#{record.dom_prefix}_#{record.dom_record_key}"
       else
         # `dom_id(article, :comments_count)` -> "comments_count_article_3"
         # (Rails order: suffix BEFORE model name in the resulting id.)
-        "#{suffix}_#{record.dom_prefix()}_#{record.dom_record_key()}"
+        "#{suffix}_#{record.dom_prefix}_#{record.dom_record_key}"
       end
     end
   
