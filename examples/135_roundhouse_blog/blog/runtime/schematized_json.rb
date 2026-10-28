@@ -131,15 +131,16 @@ module SchematizedJson
       c = s[i, 1].to_s
       if c == "\\"
         e = s[i + 1, 1].to_s
-        out = if e == "n"
+        out = case e
+              when "n"
                 out + "\n"
-              elsif e == "r"
+              when "r"
           out + "\r"
-              elsif e == "t"
+              when "t"
           out + "\t"
-              elsif e == "b"
+              when "b"
           out + "\b"
-              elsif e == "f"
+              when "f"
           out + "\f"
               else
           out + e
@@ -224,11 +225,12 @@ module SchematizedJson
     value.each do |k, v|
       key = k.to_s
       type = schema.key?(key) ? schema[key] : ""
-      if type == "boolean"
+      case type
+      when "boolean"
         out = write_boolean(out, key, v.to_s != "0" && v.to_s != "" && v.to_s != "false")
-      elsif type == "integer"
+      when "integer"
         out = write_integer(out, key, v.to_i)
-      elsif type == "string"
+      when "string"
         out = write_string(out, key, v.to_s)
       else
         raise NoMethodError, "undefined method '" + key + "=' for the json column's schema"

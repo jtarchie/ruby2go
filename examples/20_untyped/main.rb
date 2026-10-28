@@ -6,11 +6,12 @@
 def render(resource)
   return "none" unless resource
 
-  if resource.is_a?(Array)
+  case resource
+  when Array
     "[" + resource.map { |r| render(r) }.join(",") + "]"
-  elsif resource.is_a?(Integer)
+  when Integer
     "int:#{resource + 1}"
-  elsif resource.is_a?(String)
+  when String
     "str:#{resource.upcase}"
   else
     "<#{resource}>"

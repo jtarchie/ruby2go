@@ -103,17 +103,18 @@ module Tep
       # Route a parsed frame to the right handler.
       def self.dispatch_frame(driver, frame)
         op = frame.opcode
-        if op == Tep::WebSocket::OPCODE_TEXT
+        case op
+        when Tep::WebSocket::OPCODE_TEXT
           Connection.dispatch_message(driver, frame.payload, true)
-        elsif op == Tep::WebSocket::OPCODE_BINARY
+        when Tep::WebSocket::OPCODE_BINARY
           Connection.dispatch_message(driver, frame.payload, false)
-        elsif op == Tep::WebSocket::OPCODE_PING
+        when Tep::WebSocket::OPCODE_PING
           # Auto-pong with the ping's payload (§5.5.3).
           driver.pong(frame.payload)
           Connection.dispatch_ping(driver, frame.payload)
-        elsif op == Tep::WebSocket::OPCODE_PONG
+        when Tep::WebSocket::OPCODE_PONG
           Connection.dispatch_pong(driver, frame.payload)
-        elsif op == Tep::WebSocket::OPCODE_CLOSE
+        when Tep::WebSocket::OPCODE_CLOSE
           code = 0
           reason = +""
           # bytesize/getbyte/byteslice: the close payload is binary (2-byte

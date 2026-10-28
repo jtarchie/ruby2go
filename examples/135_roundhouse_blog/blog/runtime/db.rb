@@ -257,17 +257,18 @@ class QcEntry
     i = 0
     while i < @ncols
       t = SQL.sqlite3_column_type(stmt, i)
-      if t == SQL::NULL_TYPE
+      case t
+      when SQL::NULL_TYPE
         @kinds.push(0)
         @ints.push(0)
         @floats.push(0.0)
         @texts.push("")
-      elsif t == SQL::INTEGER_TYPE
+      when SQL::INTEGER_TYPE
         @kinds.push(1)
         @ints.push(SQL.sqlite3_column_int(stmt, i))
         @floats.push(0.0)
         @texts.push("")
-      elsif t == SQL::FLOAT_TYPE
+      when SQL::FLOAT_TYPE
         @kinds.push(2)
         @ints.push(0)
         @floats.push(SQL.sqlite3_column_double(stmt, i))
@@ -1195,11 +1196,12 @@ module Db
       stmt = p
     end
     t = SQL.sqlite3_column_type(stmt, i)
-    if t == SQL::NULL_TYPE
+    case t
+    when SQL::NULL_TYPE
       nil
-    elsif t == SQL::INTEGER_TYPE
+    when SQL::INTEGER_TYPE
       SQL.sqlite3_column_int(stmt, i)
-    elsif t == SQL::FLOAT_TYPE
+    when SQL::FLOAT_TYPE
       SQL.sqlite3_column_double(stmt, i)
     else
       # The FFI's `:str` return is already a GC string of its own

@@ -192,13 +192,14 @@ end
 
 #: (untyped) -> String
 def dynamic_walk(v)
-  if v.is_a?(Array)
+  case v
+  when Array
     v.map { |e| e.to_s }.join("+")
-  elsif v.is_a?(Hash)
+  when Hash
     out = [] #: Array[String]
     v.each { |k, x| out << "#{k}=#{x}" }
     out.join(",")
-  elsif v.is_a?(DynamicTests::Geo::Pt)
+  when DynamicTests::Geo::Pt
     "pt #{v.x}"
   else
     "leaf"

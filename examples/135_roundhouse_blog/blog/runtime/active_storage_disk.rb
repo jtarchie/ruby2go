@@ -68,11 +68,12 @@ module ActiveStorage
     # from a direct upload. Anything else — including the bare filename
     # a urlencoded form posts for a file field — attaches nothing.
     def self.from_attachable(value)
-      if value.is_a?(ActionDispatch::Http::UploadedFile)
+      case value
+      when ActionDispatch::Http::UploadedFile
         Blob.create_and_upload!(value.read, value.original_filename, value.content_type)
-      elsif value.is_a?(ActiveStorage::Blob)
+      when ActiveStorage::Blob
         value
-      elsif value.is_a?(String)
+      when String
         Blob.find_signed(value)
       end
     end

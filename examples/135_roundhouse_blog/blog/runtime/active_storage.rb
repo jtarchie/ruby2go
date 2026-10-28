@@ -104,13 +104,14 @@ module ActiveStorage
   # webp), and PNG for anything else (tiff, bmp, heic, …) — Rails'
   # `default_variant_format`.
   def self.format_for_content_type(content_type)
-    if content_type == "image/png"
+    case content_type
+    when "image/png"
       "png"
-    elsif content_type == "image/jpeg"
+    when "image/jpeg"
       "jpg"
-    elsif content_type == "image/gif"
+    when "image/gif"
       "gif"
-    elsif content_type == "image/webp"
+    when "image/webp"
       "webp"
     else
       "png"

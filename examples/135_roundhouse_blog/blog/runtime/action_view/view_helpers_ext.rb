@@ -301,7 +301,8 @@ module ActionView
       n = s.length
       while i < n
         c = s[i, 1].to_s
-        if c == "<"
+        case c
+        when "<"
           if s[i, 4] == "<!--"
             close = s.index("-->", i + 4)
             # An unterminated comment eats the remainder, as in Rails.
@@ -313,10 +314,10 @@ module ActionView
             out += "&lt;"
             i += 1
           end
-        elsif c == ">"
+        when ">"
           out += "&gt;"
           i += 1
-        elsif c == "&"
+        when "&"
           len = entity_reference_length(s, i)
           if len == 0
             out += "&amp;"
@@ -521,7 +522,8 @@ module ActionView
       n = s.length
       while i < n
         c = s[i, 1].to_s
-        if c == "<"
+        case c
+        when "<"
           if s[i, 4] == "<!--"
             close = s.index("-->", i + 4)
             i = close.nil? ? n : close + 3
@@ -585,10 +587,10 @@ module ActionView
             out += "&lt;"
             i += 1
           end
-        elsif c == ">"
+        when ">"
           out += "&gt;"
           i += 1
-        elsif c == "&"
+        when "&"
           len = entity_reference_length(s, i)
           if len == 0
             out += "&amp;"
@@ -742,13 +744,14 @@ module ActionView
       n = t.length
       while i < n
         c = t[i, 1].to_s
-        if c == "<"
+        case c
+        when "<"
           out += "&lt;"
           i += 1
-        elsif c == ">"
+        when ">"
           out += "&gt;"
           i += 1
-        elsif c == "&"
+        when "&"
           len = entity_reference_length(t, i)
           if len == 0
             out += "&amp;"
