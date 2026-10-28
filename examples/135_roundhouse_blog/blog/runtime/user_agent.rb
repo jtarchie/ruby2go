@@ -560,6 +560,7 @@ class PlatformAgent
   end
 
   private
+
     def match?(pattern)
       s = @user_agent_string
       s.nil? ? false : s.match?(pattern)

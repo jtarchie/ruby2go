@@ -3144,7 +3144,9 @@ module DynamicTests
     def speak = "#{@name} speaks"
     #: (Integer) -> Integer
     def twice(n) = n * 2
+
     private
+
     #: () -> String
     def secret = "shh"
   end

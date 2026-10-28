@@ -357,6 +357,7 @@ class IPAddr
   end
 
   private
+
     # The IPv4 rules, applied at `at` so the mapped form reuses them.
     def v4_loopback?(at)
       @octets[at] == 127
