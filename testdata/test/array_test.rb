@@ -2462,7 +2462,7 @@ module ArrayTests
   # Array#*: repeat by an Integer, join by a String (also through an untyped value)
   class ArrayMulTest < Minitest::Test
     def test_mul
-      assert_equal [[1, 2, 1, 2], [], "1,2", []], [[1, 2] * 2, [] * 3, [1, 2] * ",", ["a"] * 0]
+      assert_equal [[1, 2, 1, 2], [], "1,2", []], [[1, 2] * 2, [] * 3, [1, 2].join(","), ["a"] * 0]
       e = assert_raises(ArgumentError) { [1] * -1 }
       assert_equal "negative argument", e.message
       x = [3] #: untyped
