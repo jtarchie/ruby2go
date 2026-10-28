@@ -130,7 +130,7 @@ module HttpStub
     h = {}
     STUB_HEADER_LINES[i].split("\n").each do |line|
       ci = line.index(":")
-      h[line[0, ci]] = line[(ci + 1)..-1].to_s unless ci.nil?
+      h[line[0, ci]] = line[(ci + 1)..].to_s unless ci.nil?
     end
     h
   end
