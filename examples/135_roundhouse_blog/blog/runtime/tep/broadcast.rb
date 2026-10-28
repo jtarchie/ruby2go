@@ -76,12 +76,10 @@ module Tep
         subs = Tep::APP.broadcast_subs
         i = subs.length - 1
         while i >= 0
-          if subs[i].fd == fd
-            if subs[i].topic == topic
+          if (subs[i].fd == fd) && (subs[i].topic == topic)
               subs.delete_at(i)
               dropped += 1
             end
-          end
           i -= 1
         end
       end
