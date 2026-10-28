@@ -1039,7 +1039,6 @@ module Db
     raise ActiveRecord::RecordNotUnique, msg if Db.unique_violation?(msg)
 
     raise "Db.exec failed (#{rc}): #{msg} — sql: #{sql}"
-
   end
 
   # A UNIQUE-index violation is `ActiveRecord::RecordNotUnique`, not

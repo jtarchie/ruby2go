@@ -52,7 +52,6 @@ module Tep
     frames.each do |frame|
       warn("#{tag}        #{frame}")
     end
-
   end
 
   class Server

@@ -197,7 +197,6 @@ class Comment < ApplicationRecord
 
     @__t_created_at = nil
     @created_at_raw = now
-
   end
 
   def self._adapter_find_by_id(id)
@@ -410,7 +409,6 @@ class Comment < ApplicationRecord
 
     @article_cache.save
     @article_id = @article_cache.id
-
   end
 
   def before_validation

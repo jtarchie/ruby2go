@@ -101,7 +101,6 @@ end
 
 #: (Array[String], Integer) -> Integer
 def tail_ret(out, n)
-
   return 5 if n == 1
   raise "x" if n == 2
 
@@ -110,7 +109,6 @@ rescue StandardError
   -1
 ensure
   out << "ens #{n}"
-
 end
 
 #: (Array[String], Integer) -> void
@@ -551,14 +549,12 @@ end
 
 #: (Array[Integer], Integer) -> void
 def rescued(out, n)
-
   got = n
   raise ArgumentError, "big" if n > 1
 
   out << twice(got)
 rescue ArgumentError
   out << twice(got)
-
 end
 
 #: (Array[String]) -> void
@@ -608,7 +604,6 @@ end
 
 #: (Integer) -> String
 def cased(n)
-
   case n
   when 1 then return "one"
   when 2 then raise ArgumentError, "two"
@@ -616,7 +611,6 @@ def cased(n)
   "other"
 rescue ArgumentError => e
   "err #{e.message}"
-
 end
 
 # while as the last statement of a value method, a void method and a block
@@ -894,7 +888,6 @@ end
 
 #: () -> String
 def outer
-
   begin
     raise ControlTests::Fatal, "deep"
   rescue StandardError => e
@@ -902,7 +895,6 @@ def outer
   end
 rescue Exception => e
   "outer caught #{e.class} #{e.message}"
-
 end
 
 #: (Array[String], bool) -> Integer
@@ -1032,11 +1024,9 @@ end
 
 #: (String) -> Integer
 def control_safe_fetch(k)
-
   { "a" => 1 }.fetch(k)
 rescue StandardError
   -1
-
 end
 
 # Helpers for the checks that were control_locals.rb.
