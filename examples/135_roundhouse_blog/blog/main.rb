@@ -530,13 +530,13 @@ module Main
     # lazily-created tokens are captured, and on redirects too (login
     # sets `session[:u]` then 302s).
     session_out = controller.session.to_cookie
-    if session_out != session_in
+    return unless session_out != session_in
       if session_out == ""
         Main.clear_flash_cookie(res, session_cookie)
       else
         Main.set_flash_cookie(res, session_cookie, session_out)
       end
-    end
+    
   end
 
   # Flash cookies are HttpOnly + Path=/; the read side is server-only

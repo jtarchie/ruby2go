@@ -176,10 +176,10 @@ class Article < ApplicationRecord
       @__t_updated_at = nil
       @updated_at_raw = now
     end
-    if creating && (@created_at_raw.nil? || (@created_at_raw || "").empty?)
+    return unless creating && (@created_at_raw.nil? || (@created_at_raw || "").empty?)
       @__t_created_at = nil
       @created_at_raw = now
-    end
+    
   end
 
   def self._adapter_find_by_id(id)
@@ -311,10 +311,10 @@ class Article < ApplicationRecord
   def validate
     errors << "Title can't be blank" if @title.nil? || (@title || "").empty?
     errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
-    unless @body.nil?
+    return if @body.nil?
       len = @body.length
       errors << "Body is too short (minimum is 10 characters)" if len < 10
-    end
+    
   end
 
   def comments

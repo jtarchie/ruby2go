@@ -1032,12 +1032,12 @@ module Db
     conn.qc_clear
     h = conn.dbh
     rc = SQL.sqlite3_exec(h, sql, nil, nil, nil)
-    if rc != SQL::OK
+    return unless rc != SQL::OK
       msg = SQL.sqlite3_errmsg(h)
       raise ActiveRecord::RecordNotUnique, msg if Db.unique_violation?(msg)
 
       raise "Db.exec failed (" + rc.to_s + "): " + msg + " — sql: " + sql
-    end
+    
   end
 
   # A UNIQUE-index violation is `ActiveRecord::RecordNotUnique`, not

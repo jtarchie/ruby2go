@@ -48,11 +48,11 @@ module Tep
     warn(tag + " 500 " + verb + " " + path + " -- " +
                  e.class.to_s + ": " + e.message)
     frames = e.backtrace
-    unless frames.nil?
+    return if frames.nil?
       frames.each do |frame|
         warn(tag + "        " + frame)
       end
-    end
+    
   end
 
   class Server

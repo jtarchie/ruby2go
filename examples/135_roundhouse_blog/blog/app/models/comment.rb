@@ -193,10 +193,10 @@ class Comment < ApplicationRecord
       @__t_updated_at = nil
       @updated_at_raw = now
     end
-    if creating && (@created_at_raw.nil? || (@created_at_raw || "").empty?)
+    return unless creating && (@created_at_raw.nil? || (@created_at_raw || "").empty?)
       @__t_created_at = nil
       @created_at_raw = now
-    end
+    
   end
 
   def self._adapter_find_by_id(id)
@@ -405,10 +405,10 @@ class Comment < ApplicationRecord
   end
 
   def _autosave_article
-    if @article_loaded && @article_id == 0 && !@article_cache.nil?
+    return unless @article_loaded && @article_id == 0 && !@article_cache.nil?
       @article_cache.save
       @article_id = @article_cache.id
-    end
+    
   end
 
   def before_validation

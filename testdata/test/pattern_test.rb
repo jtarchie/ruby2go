@@ -453,9 +453,9 @@ module PatternTests
 
     def test_alternative_binding_not_narrowed
       v = [1, 2] #: Array[Integer]
-      if v in [_one] | [_, _]
+      return unless v in [_one] | [_, _]
         assert_nil _one
-      end
+      
     end
 
     def test_member_named_deconstruct_is_what_the_pattern_reads

@@ -520,21 +520,21 @@ end
 
 #: (Array[Integer], Integer) -> void
 def definite_guarded(out, n)
-  if n > 0
+  return unless n > 0
     v = n
-  else
-    return
-  end
+  
+    
+  
   out << twice(v)
 end
 
 #: (Integer) -> Integer
 def raised(n)
-  if n > 0
+  raise ArgumentError, "neg" unless n > 0
     v = n
-  else
-    raise ArgumentError, "neg"
-  end
+  
+    
+  
   twice(v)
 end
 
@@ -2226,11 +2226,11 @@ end
       found = [] #: Array[String]
       [1, 2, 3].each do |a|
         [10, 20, 30].each do |b|
-          if b > 10 * a
-            break
-          else
+          break if b > 10 * a
+            
+          
             found << "#{a}-#{b}"
-          end
+          
         end
       end
       assert_equal ["1-10", "2-10", "2-20", "3-10", "3-20", "3-30"], found

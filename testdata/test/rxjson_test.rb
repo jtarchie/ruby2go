@@ -654,12 +654,12 @@ module RxjsonTests
       assert_equal [1, 3], ["1", "x", "3"].select { |s| s.match?(/\A\d+\z/) }.map(&:to_i)
       cm = "ab".match(/(a)/)
       assert cm
-      if cm
+      return unless cm
         cs = cm.captures
         cs << "extra"
         assert_equal 2, cs.size
         assert_equal 1, cm.captures.size
-      end
+      
     end
 
     # Regexp?: nil, narrowing, &., and a method that may return nil.
@@ -891,10 +891,10 @@ b/
       assert_nil path.match(/xml/)
       pm = path.match(%r{\A/(\w+)/(\d+)(\.\w+)?\z})
       assert pm
-      if pm
+      return unless pm
         assert_equal "#<MatchData \"/posts/42.json\" 1:\"posts\" 2:\"42\" 3:\".json\">", pm.inspect
         assert_equal "posts#42", pm[1].to_s + "#" + pm[2].to_s
-      end
+      
     end
 
     # Edge matches: an empty group is "", not nil; a repeated group keeps its last iteration.
@@ -913,10 +913,10 @@ b/
       end
       em2 = "abc".match(//)
       assert em2
-      if em2
+      return unless em2
         assert_equal "", em2.pre_match
         assert_equal "abc", em2.post_match
-      end
+      
     end
 
     # Safe navigation and boolean contexts over MatchData? and Integer?.
@@ -1117,11 +1117,11 @@ b/
       assert_equal "nil", m_neg[-1].inspect if m_neg
       m2_neg = /(a)/.match("a")
       assert m2_neg
-      if m2_neg
+      return unless m2_neg
         assert_equal "\"a\"", m2_neg[-1].inspect
         assert_equal "nil", m2_neg[-2].inspect
         assert_equal "nil", m2_neg[-3].inspect
-      end
+      
     end
 
     # /i with multi-character case folds
@@ -1135,25 +1135,25 @@ b/
     def test_named_groups_numbered_access_captures
       m_named = /(?<year>\d+)-(?<mon>\d+)(?<day>-\d+)?/.match("2024-05")
       assert m_named
-      if m_named
+      return unless m_named
         assert_equal "\"2024\"", m_named[1].inspect
         assert_equal "\"05\"", m_named[2].inspect
         assert_equal "nil", m_named[3].inspect
         assert_equal 3, m_named.captures.size
         assert_equal "#<MatchData \"2024-05\" year:\"2024\" mon:\"05\" day:nil>", m_named.inspect
-      end
+      
     end
 
     # named groups make plain parens non-capturing
     def test_named_groups_make_plain_parens
       m_plain = /(?<a>x)(y)/.match("xy")
       assert m_plain
-      if m_plain
+      return unless m_plain
         assert_equal 1, m_plain.captures.size
         assert_equal "\"x\"", m_plain[1].inspect
         assert_equal "nil", m_plain[2].inspect
         assert_equal "x", m_plain.captures.join(",")
-      end
+      
     end
 
     # nil captures answer NilClass#to_i/#to_f; =~ on a nil String?
