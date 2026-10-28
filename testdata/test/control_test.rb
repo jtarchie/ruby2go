@@ -3210,7 +3210,7 @@ module ControlTests
                 false
               end
   "t"
-else
+              else
   "f"
               end)
       assert_equal ["cond ok", "f"], out
@@ -4862,7 +4862,7 @@ else
           1
         rescue StandardError
           2
-        else
+      else
           raise ArgumentError, "from else"
         
       end
