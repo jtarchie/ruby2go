@@ -5798,7 +5798,8 @@ module ControlTests
 
     def test_and_or_jumps
       assert_equal [:pos, :zero, :neg], [control_sign(3), control_sign(0), control_sign(-2)]
-      assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i| i.even? and next i * 10
+      assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i| 
+                                     i.even? and next i * 10
                                                        i }
       seen = [] #: Array[Integer]
       [1, 2, 3].each do |v|
