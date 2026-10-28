@@ -258,12 +258,12 @@ module StringTests
 
     # Character literals are one-character strings.
     def test_character_literals_are_one_character
-      assert_equal "a", ?a
-      assert_equal "\n", ?\n
-      assert_equal "é", ?é
-      assert_equal " ", ?\s
-      assert_equal "\t", ?\t
-      assert_equal "ab", (?a + ?b)
+      assert_equal "a", 'a'
+      assert_equal "\n", "\n"
+      assert_equal "é", 'é'
+      assert_equal " ", "\s"
+      assert_equal "\t", "\t"
+      assert_equal "ab", ('a' + 'b')
       assert_equal "a)b", %q(a\)b)
       assert_equal 1, "\C-a".ord
       assert_equal 1, "\c?".bytesize
