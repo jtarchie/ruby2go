@@ -21,7 +21,7 @@ puts emails
 
 masked = lines.map { |l| l.gsub(/\d/) { |d| ((d.to_i + 1) % 10).to_s } }
 puts masked.last
-puts lines.map { |l| l.gsub(/[aeiou]/) { |v| "43_10"[ "aeiou".index(v) || 0] || "" } }.first
+puts lines.map { |l| l.gsub(/[aeiou]/) { |v| "43_10"["aeiou".index(v) || 0] || "" } }.first
 puts lines.sum { |l| l.split(/[\s\/?=]+/).size }
 puts lines.count { |l| l =~ /users\/1\d*\?/ }
 puts lines.map { |l| l.tr("a-z", "b-za").delete("0-9").squeeze }.uniq.size
