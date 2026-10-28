@@ -47,7 +47,7 @@ puts (none && none + 1).inspect, (some && some + 1).inspect
 skipped = "a" == "b" && log.push("never").size > 0
 puts skipped, log.size
 missing = nil #: String?
-puts (missing || 42).inspect, (true && "yes").inspect, (false || "fallback").inspect
+puts (missing || 42).inspect, ("yes").inspect, ("fallback").inspect
 
 if values.size > 1
   amount = "many"

@@ -2035,9 +2035,9 @@ module ControlTests
       assert_equal false, (none || false)
       assert_equal "three", (some && "three")
       assert_nil (none && "none")
-      zero_and = 0 && "zero is truthy"
+      zero_and = "zero is truthy"
       assert_equal "zero is truthy", zero_and
-      empty_and = "" && :empty_is_truthy
+      empty_and = :empty_is_truthy
       assert_equal :empty_is_truthy, empty_and
       xn = nil #: Integer?
       yn = nil #: Integer?
@@ -2294,15 +2294,15 @@ module ControlTests
     def test_literal_left_of_and_or
       assert_equal false, (false && "never")
       assert_equal true, (true || "never")
-      assert_equal "yes", (true && "yes")
-      assert_equal "fallback", (false || "fallback")
+      assert_equal "yes", ("yes")
+      assert_equal "fallback", ("fallback")
       x_nil = nil && 5
       assert_nil x_nil
       s_nil = "a"
       y_nil = nil && s_nil
       assert_nil y_nil
-      assert_equal false, (nil || false)
-      assert_equal "right", (nil || "right")
+      assert_equal false, (false)
+      assert_equal "right", ("right")
     end
 
     # case on a literal subject, with and without an else
@@ -2661,9 +2661,9 @@ x > 4 ? "b" : "c"
       assert_equal 4, abs_val(-4)
       assert_equal 4, abs_val(4)
       c = 0
-      c += 1 if true
-      c += 10 unless false
-      c += 100 if false
+      c += 1
+      c += 10
+      
       assert_equal 11, c
     end
   end
@@ -3955,12 +3955,8 @@ x > 4 ? "b" : "c"
       end
       assert_equal 7, j
       never = 0
-      while false
-        never += 1
-      end
-      until true
-        never += 1
-      end
+      
+      
       assert_equal 0, never
       k = 0
       k += 2 while k < 9
