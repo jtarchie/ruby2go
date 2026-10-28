@@ -2,6 +2,10 @@
 
 # Ruby linter, kept out of the main Gemfile: its json dependency would change the json that the
 # MRI side of the test suite loads. Run: BUNDLE_GEMFILE=gemfiles/rubocop.gemfile bundle exec rubocop
-source 'https://rubygems.org'
+source "https://rubygems.org"
 
-gem 'rubocop'
+gem "rubocop"
+
+# Newer json gems get installed system-wide and then win for plain `ruby`, which the test suite
+# uses as the MRI oracle; stay on the version already there.
+gem "json", "2.21.1"
