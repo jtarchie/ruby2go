@@ -21,7 +21,7 @@ module Mime
     class InvalidMimeType < StandardError; end
 
     CANONICAL = {
-          "text/html" => "text/html",
+      "text/html" => "text/html",
           "application/xhtml+xml" => "text/html",
           "text/plain" => "text/plain",
           "text/javascript" => "text/javascript",
@@ -72,7 +72,7 @@ module Mime
     }.freeze
 
     SYMBOLS = {
-          "text/html" => :html,
+      "text/html" => :html,
           "text/plain" => :text,
           "text/javascript" => :js,
           "text/css" => :css,
@@ -111,7 +111,7 @@ module Mime
     }.freeze
 
     EXTENSIONS = {
-          "html" => "text/html",
+      "html" => "text/html",
           "xhtml" => "text/html",
           "text" => "text/plain",
           "txt" => "text/plain",

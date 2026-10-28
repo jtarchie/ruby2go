@@ -252,12 +252,12 @@ module ActiveStorage
       png = Previewer.poster(Blob.service.path_for(b.key))
       poster = Blob.create_and_upload!(png, ActiveStorage.filename_base(b.filename.to_s) + ".png", "image/png")
       ActiveRecord.adapter.insert("active_storage_attachments", {
-        "name" => "preview_image",
+                                    "name" => "preview_image",
         "record_type" => "ActiveStorage::Blob",
         "record_id" => b.id,
         "blob_id" => poster.id,
         "created_at" => ActiveSupport.db_now,
-      })
+                                  })
       nil
     end
 
@@ -607,7 +607,7 @@ module ActiveStorage
       metadata = BlobMetadata.new(dims[0], dims[1])
       service.upload(key, data)
       id = ActiveRecord.adapter.insert("active_storage_blobs", {
-        "key" => key,
+                                         "key" => key,
         "filename" => filename,
         "content_type" => content_type,
         "metadata" => metadata.to_json,
@@ -615,7 +615,7 @@ module ActiveStorage
         "byte_size" => data.length,
         "checksum" => "",
         "created_at" => ActiveSupport.db_now,
-      })
+                                       })
       Blob.new(id, key, filename, content_type, data.length, metadata)
     end
 
@@ -789,16 +789,16 @@ module ActiveStorage
         v.output_content_type(b.content_type)
       )
       record_id = ActiveRecord.adapter.insert("active_storage_variant_records", {
-        "blob_id" => b.id,
+                                                "blob_id" => b.id,
         "variation_digest" => digest,
-      })
+                                              })
       ActiveRecord.adapter.insert("active_storage_attachments", {
-        "name" => "image",
+                                    "name" => "image",
         "record_type" => "ActiveStorage::VariantRecord",
         "record_id" => record_id,
         "blob_id" => image.id,
         "created_at" => ActiveSupport.db_now,
-      })
+                                  })
       @record_id = record_id
       @image_blob = image
       nil
@@ -1066,12 +1066,12 @@ module ActiveStorage
     def attach_blob(blob)
       purge
       ActiveRecord.adapter.insert("active_storage_attachments", {
-        "name" => @name,
+                                    "name" => @name,
         "record_type" => @record_type,
         "record_id" => @record_id,
         "blob_id" => blob.id,
         "created_at" => ActiveSupport.db_now,
-      })
+                                  })
       @row_loaded = false
       nil
     end
