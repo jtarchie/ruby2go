@@ -1179,7 +1179,7 @@ module ArrayTests
       assert_equal [1, 2, 3], loose.sort
       assert_equal 1, loose.min
       assert_equal 3, loose.max
-      assert_equal [1, 2, 3], (loose.sort_by { |x| x })
+      assert_equal [1, 2, 3], (loose.sort)
     end
 
     # sort_by/max_by with an array key; sort of nested arrays
@@ -1431,7 +1431,7 @@ module ArrayTests
       assert_equal [:a, :b, :c], ([:b, :a, :c].sort)
       assert_equal ["fig", "fig", "kiwi", "pear", "apple", "Äpfel", "banana"], (words.sort_by { |w| [w.size, w] })
       assert_equal [12, 7, 5, 0, -3, -3], (nums.sort_by { |n| -n })
-      assert_equal [], (none.sort_by { |n| n })
+      assert_equal [], (none.sort)
       assert_equal "[10.0, 2.5, 0.1, -1.0]", ((floats.sort_by { |f| -f })).inspect
       assert_equal ["apple", "banana", "fig", "fig", "kiwi", "pear", "Äpfel"], words.sort_by(&:downcase)
       assert_equal -3, nums.min
@@ -1599,7 +1599,7 @@ module ArrayTests
       assert_equal "[1.25, 2.0, 3.5]", (fl.sort).inspect
       assert_equal "3.5", (fl.max).inspect
       assert_equal "3.5", ((fl.min_by { |f| -f })).inspect
-      assert_equal "[3.5, 2.0, 1.25]", ((fl.sort_by { |f| f }.reverse)).inspect
+      assert_equal "[3.5, 2.0, 1.25]", ((fl.sort.reverse)).inspect
       assert_equal true, fl.include?(2.0)
     end
   end
