@@ -199,4 +199,3 @@ require_relative "runtime/csrf_token"
 # AFTER runtime/rails defines the unsynchronized shared one. Same
 # ordering contract as the csrf reopen above.
 require_relative "runtime/fragment_cache"
-

@@ -187,4 +187,3 @@ return if xs.empty?
 puts "not returned"
 return unless xs.empty?
 puts "never printed"
-
