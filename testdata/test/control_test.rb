@@ -509,7 +509,7 @@ end
 #: (Integer) -> String
 def case_else(n)
   s = case n
-  when 1 then "one"
+      when 1 then "one"
   else "many"
       end
   shout(s)
@@ -1040,9 +1040,9 @@ end
 #: (Symbol) -> Integer
 def control_weight(s)
   w = case s
-  when :a
+      when :a
     1
-  when :b
+      when :b
     2
   else
     0
