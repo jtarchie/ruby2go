@@ -2663,7 +2663,7 @@ module ControlTests
       c = 0
       c += 1
       c += 10
-      
+
       assert_equal 11, c
     end
   end
@@ -2698,7 +2698,7 @@ module ControlTests
       end
       begin
         seen << "body"
-      
+
       end
       assert_equal ["three", "body"], seen
       x = if i > 5 then end #: Integer?
@@ -3955,8 +3955,8 @@ module ControlTests
       end
       assert_equal 7, j
       never = 0
-      
-      
+
+
       assert_equal 0, never
       k = 0
       k += 2 while k < 9
@@ -5801,7 +5801,7 @@ module ControlTests
 
     def test_and_or_jumps
       assert_equal [:pos, :zero, :neg], [control_sign(3), control_sign(0), control_sign(-2)]
-      assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i| 
+      assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i|
   i.even? and next i * 10
                                      i
 }

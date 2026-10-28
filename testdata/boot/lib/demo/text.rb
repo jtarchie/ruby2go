@@ -9,40 +9,40 @@ module Demo
       num_params = num_escapes = 0
       max_params = max_escapes = 1024
       params = {}
-  
+
       # Parse parameter list
       while i = header.index('=')
         # Only parse up to max parameters, to avoid potential denial of service
         num_params += 1
         return if num_params > max_params
-  
+
         # Found end of parameter name, ensure forward progress in loop
         param = header.slice!(0, i+1)
-  
+
         # Remove ending equals and preceding whitespace from parameter name
         param.chomp!('=')
         param.strip!
         param.downcase!
         return unless param = ALLOWED_FORWARDED_PARAMS[param]
-  
+
         if header[0] == '"'
           # Parameter value is quoted, parse it, handling backslash escapes
           header.slice!(0, 1)
           value = String.new
-  
+
           while i = header.index(/(["\\])/)
             c = ::Regexp.last_match(1)
-  
+
             # Append all content until ending quote or escape
             value << header.slice!(0, i)
-  
+
             # Remove either backslash or ending quote,
             # ensures forward progress in loop
             header.slice!(0, 1)
-  
+
             # stop parsing parameter value if found ending quote
             break if c == '"'
-  
+
             # Only allow up to max escapes, to avoid potential denial of service
             num_escapes += 1
             return if num_escapes > max_escapes
@@ -62,13 +62,13 @@ module Demo
           end
           value.lstrip!
         end
-  
+
         (params[param] ||= []) << value
-  
+
         # skip trailing semicolons/commas/whitespace, to proceed to next parameter
         header.sub!(/\A[\s;,]+/, '') unless header.empty?
       end
-  
+
       params
     end
     module_function :forwarded_values

@@ -100,9 +100,9 @@ module ActionView
       @slots[:__body__] = content
       nil
     end
-  
+
     # ── escaping / formatting ────────────────────────────────────────
-  
+
     # Hand-rolled to drop the `cgi` stdlib dependency (which spinel
     # doesn't ship). Matches CGI.escapeHTML semantics: replaces `&`,
     # `<`, `>`, `"`, and `'`. The `'` mapping uses `&#39;` (numeric)
@@ -116,9 +116,9 @@ module ActionView
       '"' => "&quot;",
       "'" => "&#39;",
     }.freeze
-  
+
     HTML_ESCAPE_PATTERN = /[&<>"']/
-  
+
     # Monomorphic: param typed String. Callers handle nil/non-String
     # coercion explicitly. Contracts the dispatch surface so every
     # backend compiler sees a stable input shape.
@@ -267,7 +267,7 @@ module ActionView
       cutoff = 0 if cutoff < 0
       "#{s[0, cutoff]}#{omission}"
     end
-  
+
     # ── DOM helpers ──────────────────────────────────────────────────
 
     # Monomorphic: param typed `ActiveRecord::Base`. Was previously a
@@ -331,9 +331,9 @@ module ActionView
         "#{suffix}_#{record.dom_prefix}_#{record.dom_record_key}"
       end
     end
-  
+
     # ── HTML element helpers ─────────────────────────────────────────
-  
+
     def self.link_to(text, href, opts = {})
       # `opts.to_h` is a no-op on Ruby Hash and a NamedTuple→Hash
       # conversion under Crystal. Call sites that use kwargs syntax
@@ -434,7 +434,7 @@ module ActionView
     def self.safe_join(parts, separator = "")
       parts.join(separator)
     end
-  
+
     def self.button_to(text, href, opts = {})
       # Use `.fetch(k, nil)` instead of bare `opts[:k]`: Ruby's Hash#[]
       # returns nil for missing keys, but Crystal's strict Hash#[]
@@ -475,12 +475,12 @@ module ActionView
       auth_token_input = csrf_token_hidden_input
       %(<form#{render_attrs(form_attrs)}>#{method_input}<button#{button_attrs}>#{html_escape(text)}</button>#{auth_token_input}</form>)
     end
-  
+
     # ── Asset / meta tag helpers (stubs for now) ─────────────────────
     # Full implementations require an asset manifest + importmap config.
     # The shapes here match what the layout consumes; iteration ≥3 will
     # fill them in when the Phase-1 lowerer surfaces the asset metadata.
-  
+
     # Two `<meta>` tags joined by `\n`, matching Rails' tag-helper output
     # shape — Rails renders them on separate lines with the second tag's
     # leading indent stripped. Compare drops both metas via ignore rule;
@@ -505,7 +505,7 @@ module ActionView
     def self.form_authenticity_token
       ""
     end
-  
+
     # Empty in dev mode without a CSP nonce configured, mirroring Rails'
     # behavior and the other targets' runtimes (Rust / Python / Elixir
     # all return "" here). Production deployment with CSP wired would
@@ -513,7 +513,7 @@ module ActionView
     def self.csp_meta_tag
       ""
     end
-  
+
     def self.stylesheet_link_tag(name, opts = {})
       href = "/assets/#{name}.css"
       attrs = render_attrs({ rel: "stylesheet", href: href }.merge(opts.to_h))
@@ -689,7 +689,7 @@ module ActionView
       parts << %(<script type="module">import "#{entry}"</script>)
       parts.join("\n")
     end
-  
+
     # Matches Rails' `turbo_stream_from` byte-output: the channel
     # name travels base64-encoded-JSON through `signed-stream-name`
     # so the Action Cable client can decode it server-side. Rails
@@ -717,7 +717,7 @@ module ActionView
       encoded = Base64.strict_encode64(JSON.generate(stream))
       %(<turbo-cable-stream-source channel="#{channel}" signed-stream-name="#{encoded}--unsigned"></turbo-cable-stream-source>)
     end
-  
+
     # ── form_with primitives ─────────────────────────────────────────
     # Small typed-scalar helpers callable from macro-inlined form_with
     # expansions. Centralizes semantics that may evolve (real signed
@@ -856,7 +856,7 @@ module ActionView
 
     # ── attribute rendering ──────────────────────────────────────────
     # Public so FormBuilder can call them; not the user-facing surface.
-  
+
     # Render an HTML attribute list. Hash-valued attrs (`data: { turbo_confirm:
     # "..." }`, `aria: { labelledby: "..." }`) flatten with a kebab-prefixed
     # key — so `data: { turbo_confirm: "x" }` emits `data-turbo-confirm="x"`,
