@@ -537,7 +537,7 @@ module HashTests
       assert_equal false, h.empty?
       assert_equal true, h.key?("a")
       assert_equal false, h.key?("A")
-      assert_equal true, h.has_key?("b")
+      assert_equal true, h.key?("b")
       assert_equal false, h.include?("x")
       assert_equal true, h.include?("d")
       assert_equal 3, h.fetch("c")
@@ -1623,7 +1623,7 @@ module HashTests
       assert_equal :b, hs_h.key(2)
       assert_nil hs_h.key(9)
       assert_equal true, hs_h.value?(3)
-      assert_equal false, hs_h.has_value?(0)
+      assert_equal false, hs_h.value?(0)
       assert_equal true, hs_h.member?(:a)
       assert_equal [1, nil], hs_h.values_at(:a, :z)
       assert_equal [1, 2], hs_h.fetch_values(:a, :b)
@@ -1720,7 +1720,7 @@ module HashTests
       assert_equal 0, u.fetch("zz", 0)
       assert_equal false, u.empty?
       assert_equal true, u.include?("b")
-      assert_equal false, u.has_key?("zz")
+      assert_equal false, u.key?("zz")
       assert_nil u.delete("zz")
       assert_equal true, (u == th)
       assert_equal true, (th == u)

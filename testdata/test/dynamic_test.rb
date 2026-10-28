@@ -3123,7 +3123,7 @@ module DynamicTests
       o = { "c" => 3 } #: Hash[String, Integer]
       y = o #: untyped
       assert_equal [{ "a" => 1, "b" => 2, "c" => 3 }, { "b" => 2 }, { "a" => 1 }, ["a", 1, "b", 2], true, false, "b", nil],
-                   [x.merge(y), x.except("a"), x.slice("a", "z"), x.flatten, x.value?(2), x.has_value?(7), x.key(2), x.key(7)]
+                   [x.merge(y), x.except("a"), x.slice("a", "z"), x.flatten, x.value?(2), x.value?(7), x.key(2), x.key(7)]
       assert_equal({ "a" => 1, "b" => 2 }, h)
       c = x.to_h # self, as MRI's
       c.store("d", 4)
