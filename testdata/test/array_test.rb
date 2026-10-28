@@ -1089,7 +1089,7 @@ module ArrayTests
       branch = ""
       branch = if (hole = idx_opt[1])
                  "truthy #{hole.inspect}"
-      else
+               else
         "falsy"
                end
       assert_equal "falsy", branch
@@ -2974,7 +2974,7 @@ module ArrayTests
       end
       out << if a.empty?
                0
-      else
+             else
         a.shift
              end
       out << (a.empty? ? -1 : a.shift)

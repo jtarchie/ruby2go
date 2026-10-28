@@ -138,15 +138,15 @@ module SchematizedJson
         e = s[i + 1, 1].to_s
         out = if e == "n"
                 out + "\n"
-        elsif e == "r"
+              elsif e == "r"
           out + "\r"
-        elsif e == "t"
+              elsif e == "t"
           out + "\t"
-        elsif e == "b"
+              elsif e == "b"
           out + "\b"
-        elsif e == "f"
+              elsif e == "f"
           out + "\f"
-        else
+              else
           out + e
               end
         i = i + 2

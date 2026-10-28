@@ -125,7 +125,7 @@ module Main
     h.each do |k, v|
       out[k.to_s] = if v.is_a?(Hash)
                       Main.deep_dup(v)
-      else
+                    else
         v
                     end
     end

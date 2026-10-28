@@ -500,7 +500,7 @@ end
 def both_branches(flag)
   a = if flag
         1
-  else
+      else
     2
       end
   twice(a)
@@ -510,7 +510,7 @@ end
 def case_else(n)
   s = case n
       when 1 then "one"
-  else "many"
+      else "many"
       end
   shout(s)
 end
@@ -1029,9 +1029,9 @@ end
 def size_word(n)
   word = if n > 100
            "large"
-  elsif n > 10
+         elsif n > 10
     "medium"
-  else
+         else
     "small"
          end
   word + "!"
@@ -1044,7 +1044,7 @@ def control_weight(s)
         1
       when :b
         2
-  else
+      else
         0
       end
   w * 10
@@ -1069,7 +1069,7 @@ end
 def nil_first(n)
   label = if n > 0
             nil
-  else
+          else
     "non-positive"
           end
   label.inspect
@@ -2609,7 +2609,7 @@ end
       end
       got << if (m2 = h["zz"])
                "never #{m2}"
-      else
+             else
         "missing #{m2.inspect}"
              end
       assert_equal ["found 2", "missing nil"], got
@@ -3732,7 +3732,7 @@ end
       assert_equal 20, last
       msg = if i.zero?
               "zero"
-      else
+            else
         "i=#{i}"
             end
       assert_equal "i=3", msg

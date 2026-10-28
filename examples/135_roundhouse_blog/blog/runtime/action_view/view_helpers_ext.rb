@@ -555,7 +555,7 @@ module ActionView
                   # self-closing root (`<svg/>`) contains nothing.
                   i = if raw[raw.length - 1, 1].to_s == "/"
                         after
-                  else
+                      else
                     sanitize_foreign_end(s, after, name)
                       end
                 elsif sanitize_rawtext_elements.include?(name)

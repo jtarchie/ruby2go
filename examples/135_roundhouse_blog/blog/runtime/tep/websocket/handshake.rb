@@ -99,7 +99,7 @@ module Tep
           c = s[i]
           out << if c >= "A" && c <= "Z"
                    (c.ord + 32).chr
-          else
+                 else
             c
                  end
           i += 1

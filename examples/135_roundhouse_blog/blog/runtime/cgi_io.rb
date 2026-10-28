@@ -205,7 +205,7 @@ module CgiIo
       out << if (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
                 b == 45 || b == 46 || b == 95 || b == 126
                b.chr
-      else
+             else
         format("%%%02X", b)
              end
     end

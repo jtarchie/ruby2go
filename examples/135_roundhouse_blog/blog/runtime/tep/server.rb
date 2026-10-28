@@ -242,7 +242,7 @@ module Tep
         end
         res.headers["Connection"] = if keep_alive
                                       "keep-alive"
-        else
+                                    else
           "close"
                                     end
         head = build_head(req, res)
@@ -260,7 +260,7 @@ module Tep
       res.headers["Content-Length"] = res.body.bytesize.to_s
       res.headers["Connection"] = if keep_alive
                                     "keep-alive"
-      else
+                                  else
         "close"
                                   end
 

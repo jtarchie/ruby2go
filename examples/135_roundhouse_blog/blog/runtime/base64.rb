@@ -112,9 +112,9 @@ module Base64
       c = std[i]
       out << if c == "+"
                "-"
-      elsif c == "/"
+             elsif c == "/"
         "_"
-      else
+             else
         c.to_s
              end
       i = i + 1
@@ -151,9 +151,9 @@ module Base64
       c = s[i]
       std << if c == "-"
                "+"
-      elsif c == "_"
+             elsif c == "_"
         "/"
-      else
+             else
         c.to_s
              end
       i = i + 1

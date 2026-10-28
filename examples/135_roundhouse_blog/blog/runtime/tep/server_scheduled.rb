@@ -327,7 +327,7 @@ module Tep
         end
         head << if keep_alive
                   "Connection: keep-alive\r\n"
-        else
+                else
           "Connection: close\r\n"
                 end
         if res.file_path.length > 0

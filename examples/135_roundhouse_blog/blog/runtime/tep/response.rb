@@ -57,7 +57,7 @@ module Tep
         opts.each do |k, v|
           line << if v.length == 0
                     "; " + k          # bare flag (HttpOnly, Secure)
-          else
+                  else
             "; " + k + "=" + v
                   end
         end

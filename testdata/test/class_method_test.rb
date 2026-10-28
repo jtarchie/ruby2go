@@ -38,7 +38,7 @@ module ClassMethodTests
     h.each do |k, v|
       out[k] = if v.is_a?(Hash)
                  ClassMethodTests.copy(v)
-      else
+               else
         v
                end
     end
@@ -51,7 +51,7 @@ module ClassMethodTests
     h.each do |k, v|
       out[k] = if v.is_a?(Integer)
                  (v + 1).to_s
-      else
+               else
         v
                end
     end

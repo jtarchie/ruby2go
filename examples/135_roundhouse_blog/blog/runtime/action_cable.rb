@@ -129,7 +129,7 @@ module ActionCable
         next if entry[:stream] != stream
         out << if entry[:action] == :message
                  entry[:payload].to_s
-        else
+               else
           JSON.generate(Broadcasts.render_fragment(
                                  action: entry[:action],
                                  target: entry[:target],

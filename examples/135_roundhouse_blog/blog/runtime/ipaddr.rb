@@ -224,9 +224,9 @@ class IPAddr
       bit = i * 8
       out << if bit + 8 <= prefix
                octets[i]
-      elsif bit >= prefix
+             elsif bit >= prefix
         0
-      else
+             else
         (octets[i] & ((0xff << (8 - (prefix - bit))) & 0xff))
              end
       i += 1
