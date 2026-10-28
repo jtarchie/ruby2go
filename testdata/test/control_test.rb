@@ -923,7 +923,6 @@ end
 #: () -> String
 def ensure_value
   "body value"
-
 end
 
 #: (Integer) -> String
