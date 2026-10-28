@@ -2518,7 +2518,7 @@ module ObjectTests
     private
 
 #: () -> String
-def secret = "s3cret"
+    def secret = "s3cret"
 
     #: () -> Integer
     def pin = @pin

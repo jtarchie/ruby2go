@@ -211,7 +211,7 @@ module Tep
         res.headers["Connection"] = if keep_alive
                                       "keep-alive"
                                     else
-          "close"
+                                      "close"
                                     end
         head = build_head(req, res)
         Sock.sphttp_write_str(client, head)
@@ -227,7 +227,7 @@ module Tep
       res.headers["Connection"] = if keep_alive
                                     "keep-alive"
                                   else
-        "close"
+                                    "close"
                                   end
 
       head = build_head(req, res)

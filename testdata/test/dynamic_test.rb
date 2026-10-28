@@ -3328,9 +3328,9 @@ module DynamicTests
       assert_equal "priv", x.send(:dyngen_both)
       assert_equal "priv2", x.send(:dyngen_priv)
       ok = begin
-             [x.dyngen_both, x.dyngen_priv].map { "no" }
-      rescue StandardError
-             :nomethod
+        [x.dyngen_both, x.dyngen_priv].map { "no" }
+ rescue StandardError
+   :nomethod
       end
       assert_equal :nomethod, ok
     end

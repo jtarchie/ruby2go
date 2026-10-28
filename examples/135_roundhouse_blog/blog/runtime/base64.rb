@@ -114,9 +114,9 @@ module Base64
       out << if c == "+"
                "-"
              elsif c == "/"
-        "_"
+               "_"
              else
-        c.to_s
+               c.to_s
              end
       i += 1
     end
@@ -151,9 +151,9 @@ module Base64
       std << if c == "-"
                "+"
              elsif c == "_"
-        "/"
+               "/"
              else
-        c.to_s
+               c.to_s
              end
       i += 1
     end

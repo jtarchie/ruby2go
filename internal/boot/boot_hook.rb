@@ -107,9 +107,9 @@ module RugarooBoot
         singleton = owner.singleton_class?
         named = singleton ? owner.attached_object : owner
         m = begin
-              owner.instance_method(name)
-        rescue StandardError
-              nil
+          owner.instance_method(name)
+    rescue StandardError
+      nil
         end
         from = m && m.original_name != name ? m.owner : nil
         @define_methods << {
@@ -131,9 +131,9 @@ module RugarooBoot
 
         owner = tp.self
         m = begin
-              owner.instance_method(tp.return_value)
-        rescue StandardError
-              next
+          owner.instance_method(tp.return_value)
+    rescue StandardError
+      next
         end
         singleton = owner.singleton_class?
         @aliases << { "owner" => safe_name(singleton ? owner.attached_object : owner), "singleton" => singleton,
@@ -178,9 +178,9 @@ module RugarooBoot
       return {} unless b
 
       nesting = begin
-                  b.eval("Module.nesting")
+        b.eval("Module.nesting")
       rescue StandardError
-                  []
+        []
       end
       b.local_variables.each_with_object({}) do |v, out|
         value = b.local_variable_get(v)
@@ -198,9 +198,9 @@ module RugarooBoot
           next if mod.autoload?(c, false) # resolving it would load a file the program never did (decision 404)
 
           obj = begin
-                  mod.const_get(c, false)
-          rescue StandardError
-                  next
+            mod.const_get(c, false)
+    rescue StandardError
+      next
           end
           return "#{name}::#{c}" if obj.equal?(value)
 
@@ -226,13 +226,13 @@ module RugarooBoot
                       end
       when nil, true, false, Integer, Symbol then x.inspect
       when Module then if (n = MOD_NAME.bind_call(x)) && begin
-                                                        Object.const_get(n)
+        Object.const_get(n)
       rescue StandardError
-                                                        nil
+        nil
       end.equal?(x)
-  "::#{n}"
+                         "::#{n}"
                        else
-  nil
+                         nil
                        end
       when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
       when String then x.size > 100_000 ? nil : x.inspect
@@ -407,9 +407,9 @@ module RugarooBoot
           next if MOD_AUTOLOAD.bind_call(owner, c)
 
           v = begin
-                MOD_CONST_GET.bind_call(owner, c, false)
-          rescue StandardError
-                next
+            MOD_CONST_GET.bind_call(owner, c, false)
+      rescue StandardError
+        next
           end
           next unless v.is_a?(Module) # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
 
@@ -431,9 +431,9 @@ module RugarooBoot
         next unless k < ::T::Struct && MOD_NAME.bind_call(k)
 
         props = begin
-                  k.props
-        rescue StandardError
-                  next
+          k.props
+rescue StandardError
+  next
         end
         out[MOD_NAME.bind_call(k)] = props.map do |name, rules|
           h = { "name" => name.to_s, "type" => rules[:type_object].to_s }

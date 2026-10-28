@@ -273,7 +273,7 @@ module Tep
         head << if keep_alive
                   "Connection: keep-alive\r\n"
                 else
-          "Connection: close\r\n"
+                  "Connection: close\r\n"
                 end
         if res.file_path.length > 0
           fs = Sock.sphttp_filesize(res.file_path)

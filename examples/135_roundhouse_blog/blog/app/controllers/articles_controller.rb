@@ -33,7 +33,7 @@ class ArticlesController < ApplicationController
     __comments_loaded << Comment.from_stmt(__comments_stmt) while Db.step?(__comments_stmt)
     Db.finalize(__comments_stmt)
     results.each do |a|
-  __comments_group = []
+      __comments_group = []
   __comments_loaded.each { |r| __comments_group << r if r.article_id == a.id }
   a._preload_comments(__comments_group)
     end

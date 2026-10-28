@@ -558,7 +558,7 @@ module ActionView
                   i = if raw[raw.length - 1, 1].to_s == "/"
                         after
                       else
-                    sanitize_foreign_end(s, after, name)
+                        sanitize_foreign_end(s, after, name)
                       end
                 elsif sanitize_rawtext_elements.include?(name)
                   # Content up to the matching close is character data:

@@ -39,7 +39,7 @@ module ClassMethodTests
       out[k] = if v.is_a?(Hash)
                  ClassMethodTests.copy(v)
                else
-        v
+                 v
                end
     end
     out
@@ -52,7 +52,7 @@ module ClassMethodTests
       out[k] = if v.is_a?(Integer)
                  (v + 1).to_s
                else
-        v
+                 v
                end
     end
     out

@@ -398,7 +398,7 @@ module UnionTests
       assert_in_delta 5.0, 10.0 / union_num(true)
       order = [] #: Array[String]
       pick = lambda { |s| 
-               order << s
+  order << s
  s
 }
       assert_equal "xy", pick.call("x") + pick.call("y")

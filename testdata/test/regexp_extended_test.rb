@@ -141,10 +141,10 @@ module RegexpTests
       raised = [] #: Array[bool]
       [big, bad, big, bad].each do |s|
         
-          s.match?(/\Aabc/)
-          raised << false
-      rescue ArgumentError
-          raised << true
+        s.match?(/\Aabc/)
+        raised << false
+    rescue ArgumentError
+      raised << true
         
       end
       assert_equal [false, true, false, true], raised

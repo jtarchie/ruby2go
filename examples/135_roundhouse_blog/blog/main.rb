@@ -122,7 +122,7 @@ module Main
       out[k.to_s] = if v.is_a?(Hash)
                       Main.deep_dup(v)
                     else
-        v
+                      v
                     end
     end
     out

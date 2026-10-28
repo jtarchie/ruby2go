@@ -36,33 +36,33 @@ module RactorTests
     def test_args_are_copied
       list = [1, [2]] #: Array[untyped]
       r = Ractor.new(list) do |xs| 
-            xs << 3
+  xs << 3
  xs.size
 end
       assert_equal 3, r.value
       assert_equal [1, [2]], list
       pt = Point.new(["a"])
       got = Ractor.new(pt) do |o| 
-              o.tags << "b"
+  o.tags << "b"
  o.tags
 end.value
       assert_equal %w[a b], got
       assert_equal ["a"], pt.tags
       s = Pair.new([1], "x")
       assert_equal [[1, 9], "x"], Ractor.new(s) { |v| 
-                                    v.a << 9
+  v.a << 9
  [v.a, v.b]
 }.value
       assert_equal [1], s.a
       c = Coord.new(xs: [1])
       assert_equal [1, 2], Ractor.new(c) { |v| 
-                             v.xs << 2
+  v.xs << 2
  v.xs
 }.value
       assert_equal [1], c.xs
       h = { "k" => [1] }
       assert_equal({ "k" => [1, 2] }, Ractor.new(h) do |x| 
-                                        x["k"] << 2
+  x["k"] << 2
  x
 end.value)
       assert_equal({ "k" => [1] }, h)

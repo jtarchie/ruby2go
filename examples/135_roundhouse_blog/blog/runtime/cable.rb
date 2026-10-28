@@ -500,10 +500,10 @@ module Cable
     def unsubscribe_all
       @channels.each do |channel|
         
-          channel.unsubscribed
-          channel.after_unsubscribe
-      rescue StandardError => e
-          warn "[cable] unsubscribe raised: " + e.message
+        channel.unsubscribed
+        channel.after_unsubscribe
+    rescue StandardError => e
+      warn "[cable] unsubscribe raised: " + e.message
         
       end
       @channels = []

@@ -212,7 +212,7 @@ module CgiIo
                 b == 45 || b == 46 || b == 95 || b == 126
                b.chr
              else
-        format("%%%02X", b)
+               format("%%%02X", b)
              end
     end
     out

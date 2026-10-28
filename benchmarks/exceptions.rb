@@ -25,11 +25,11 @@ ensured = 0
 inputs = %w[1 x 3 4 y 6 7 8 z 0]
 100_000.times do |i|
   
-    ok += parse_digit(inputs[i % 10] || "")
+  ok += parse_digit(inputs[i % 10] || "")
 rescue ParseError => e
-    bad += e.pos
+  bad += e.pos
 ensure
-    ensured += 1
+  ensured += 1
   
 end
 puts ok, bad, ensured

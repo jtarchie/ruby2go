@@ -910,15 +910,15 @@ module HashTests
       sel_h = { "a" => 1, "bb" => 2 } #: Hash[String, Integer]
       got = [] #: Array[String]
       sel_h.select do |x| 
-        got << x.inspect
+  got << x.inspect
  true
 end
       sel_h.filter do |x| 
-        got << x.inspect
+  got << x.inspect
  false
 end
       sel_h.reject do |x| 
-        got << x.inspect
+  got << x.inspect
  false
 end
       assert_equal ["\"a\"", "\"bb\"", "\"a\"", "\"bb\"", "\"a\"", "\"bb\""], got
@@ -1254,9 +1254,9 @@ end
       ie = assert_raises(IndexError) { u.fetch(:zz) }
       assert_equal "KeyError: key not found: :zz", "#{ie.class}: #{ie.message}"
       x = begin
-            u.fetch("zz")
-      rescue StandardError
-            -1
+        u.fetch("zz")
+  rescue StandardError
+    -1
       end
       assert_equal(-1, x)
       # formerly the uncaught KeyError that ended the file
@@ -1442,11 +1442,11 @@ end
       out = []
       w.each do |k, v|
         
-          raise "x#{k}" if v.odd?
+        raise "x#{k}" if v.odd?
 
-          out << "ok #{k}"
-        rescue StandardError => re
-          out << re.message
+        out << "ok #{k}"
+      rescue StandardError => re
+        out << re.message
         
       end
       assert_equal ["xa", "ok bb", "xccc"], out
@@ -1463,7 +1463,7 @@ end
       w.each_pair { |k, v| out << "#{k}#{v}" }
       assert_equal ["z1"], out
       snap = w.map do |k, v| 
-               w[k] = v + 1
+  w[k] = v + 1
  k
 end
       assert_equal ["z"], snap
@@ -1562,7 +1562,7 @@ end
       branch = if look_h["a"]
                  "truthy"
                else
-        "falsy"
+                 "falsy"
                end
       assert_equal "falsy", branch
       assert_equal "7", (look_h["a"] || 7).to_s
@@ -2504,7 +2504,7 @@ module HashTests
       raised = false
       begin
         h.delete_if do |_k, _v| 
-          h[99] = 9
+  h[99] = 9
  false
 end
       rescue RuntimeError

@@ -133,9 +133,9 @@ module Surfguard
   # Errs closed — an address it cannot parse is blocked.
   def self.blocked_address?(ip)
     
-      blocked_ipaddr?(IPAddr.new(ip))
-  rescue IPAddr::InvalidAddressError
-      true
+    blocked_ipaddr?(IPAddr.new(ip))
+rescue IPAddr::InvalidAddressError
+  true
     
   end
 
@@ -178,9 +178,9 @@ module Surfguard
   # reach it.
   def self.ip_literal(host)
     
-      IPAddr.new(host)
-  rescue IPAddr::InvalidAddressError
-      nil
+    IPAddr.new(host)
+rescue IPAddr::InvalidAddressError
+  nil
     
   end
 

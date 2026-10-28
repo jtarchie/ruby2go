@@ -278,7 +278,7 @@ module Tep
                                       # tick picker, so use a far-future wake_at as the sentinel.
                                       Sock.sphttp_now_us + 86_400 * 1_000_000
                                     else
-        Sock.sphttp_now_us + (timeout_seconds * 1_000_000).to_i
+                                      Sock.sphttp_now_us + (timeout_seconds * 1_000_000).to_i
                                     end
       Fiber.yield
       ready = Tep::APP.sched_io_ready[idx]

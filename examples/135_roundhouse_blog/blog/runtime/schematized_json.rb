@@ -135,15 +135,15 @@ module SchematizedJson
               when "n"
                 out + "\n"
               when "r"
-          out + "\r"
+                out + "\r"
               when "t"
-          out + "\t"
+                out + "\t"
               when "b"
-          out + "\b"
+                out + "\b"
               when "f"
-          out + "\f"
+                out + "\f"
               else
-          out + e
+                out + e
               end
         i += 2
       else

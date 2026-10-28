@@ -58,7 +58,7 @@ module Tep
           line << if v.length == 0
                     "; " + k # bare flag (HttpOnly, Secure)
                   else
-            "; " + k + "=" + v
+                    "; " + k + "=" + v
                   end
         end
       end

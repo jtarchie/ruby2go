@@ -7,14 +7,14 @@
 
 values = [1, 2]
 missing_value = begin
-                  values.fetch(5)
+  values.fetch(5)
 rescue StandardError
-                  -1
+  -1
 end
 present_value = begin
-                  values.fetch(1)
+  values.fetch(1)
 rescue StandardError
-                  -1
+  -1
 end
 puts missing_value, present_value
 
@@ -28,11 +28,11 @@ end
 #: (bool) -> String
 def maybe(flag)
   
-    raise ArgumentError, "kept" if flag
+  raise ArgumentError, "kept" if flag
 
-    "body"
+  "body"
 ensure
-    return "early" unless flag
+  return "early" unless flag
   
 end
 
@@ -62,7 +62,7 @@ puts (missing || 42).inspect, "yes".inspect, "fallback".inspect
 amount = if values.size > 1
            "many"
          else
-  "few"
+           "few"
          end
 puts amount
 

@@ -97,7 +97,7 @@ module Tep
           out << if c >= "A" && c <= "Z"
                    (c.ord + 32).chr
                  else
-            c
+                   c
                  end
           i += 1
         end

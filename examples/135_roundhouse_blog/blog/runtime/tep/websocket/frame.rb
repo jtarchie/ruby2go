@@ -186,11 +186,11 @@ module Tep
           mask_byte = if (i & 3) == 0
                         m0
                       elsif (i & 3) == 1
-            m1
+                        m1
                       elsif (i & 3) == 2
-            m2
+                        m2
                       else
-            m3
+                        m3
                       end
           bytes << (b ^ mask_byte)
           i += 1

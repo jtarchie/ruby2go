@@ -93,9 +93,9 @@ def ens_ret2
   x = 0
   [1, 2, 3].each do |v|
     
-      x += v
-  ensure
-      return x if v == 2
+    x += v
+ensure
+  return x if v == 2
     
   end
   x
@@ -104,14 +104,14 @@ end
 #: (Array[String], Integer) -> Integer
 def tail_ret(out, n)
   
-    return 5 if n == 1
-    raise "x" if n == 2
+  return 5 if n == 1
+  raise "x" if n == 2
 
-    n * 10
+  n * 10
 rescue StandardError
-    -1
+  -1
 ensure
-    out << "ens #{n}"
+  out << "ens #{n}"
   
 end
 
@@ -504,7 +504,7 @@ def both_branches(flag)
   a = if flag
         1
       else
-    2
+        2
       end
   twice(a)
 end
@@ -552,12 +552,12 @@ end
 #: (Array[Integer], Integer) -> void
 def rescued(out, n)
   
-    got = n
-    raise ArgumentError, "big" if n > 1
+  got = n
+  raise ArgumentError, "big" if n > 1
 
-    out << twice(got)
+  out << twice(got)
 rescue ArgumentError
-    out << twice(got)
+  out << twice(got)
   
 end
 
@@ -609,13 +609,13 @@ end
 #: (Integer) -> String
 def cased(n)
   
-    case n
-    when 1 then return "one"
-    when 2 then raise ArgumentError, "two"
-    end
-    "other"
+  case n
+  when 1 then return "one"
+  when 2 then raise ArgumentError, "two"
+  end
+  "other"
 rescue ArgumentError => e
-    "err #{e.message}"
+  "err #{e.message}"
   
 end
 
@@ -802,11 +802,11 @@ end
 def first_ok(out, xs)
   xs.each do |x|
     
-      raise "bad #{x}" if x < 0
+    raise "bad #{x}" if x < 0
 
-      return x * 10
-    rescue StandardError => e
-      out << "skip #{e.message}"
+    return x * 10
+  rescue StandardError => e
+    out << "skip #{e.message}"
     
   end
   -1
@@ -897,13 +897,13 @@ end
 #: () -> String
 def outer
   
-    begin
-      raise ControlTests::Fatal, "deep"
-    rescue StandardError => e
-      "inner caught #{e.class}"
-    end
+  begin
+    raise ControlTests::Fatal, "deep"
+  rescue StandardError => e
+    "inner caught #{e.class}"
+  end
 rescue Exception => e
-    "outer caught #{e.class} #{e.message}"
+  "outer caught #{e.class} #{e.message}"
   
 end
 
@@ -992,9 +992,9 @@ end
 def first_big(out, list)
   list.each do |x|
     
-      return x if x > 10
-  ensure
-      out << "checked #{x}"
+    return x if x > 10
+ensure
+  out << "checked #{x}"
     
   end
   -1
@@ -1037,9 +1037,9 @@ end
 #: (String) -> Integer
 def control_safe_fetch(k)
   
-    { "a" => 1 }.fetch(k)
+  { "a" => 1 }.fetch(k)
 rescue StandardError
-    -1
+  -1
   
 end
 
@@ -1049,9 +1049,9 @@ def size_word(n)
   word = if n > 100
            "large"
          elsif n > 10
-    "medium"
+           "medium"
          else
-    "small"
+           "small"
          end
   word + "!"
 end
@@ -1089,7 +1089,7 @@ def nil_first(n)
   label = if n > 0
             nil
           else
-    "non-positive"
+            "non-positive"
           end
   label.inspect
 end
@@ -1377,7 +1377,7 @@ end
 #: () -> Integer
 def control_block_local_first
   [1].each do |i| 
-    item = ControlTests::Counter.new
+  item = ControlTests::Counter.new
  item.n += i
 end
   item = nil #: ControlTests::Counter?
@@ -1854,14 +1854,14 @@ module ControlTests
       hi = 0
       pairs = [[1, 9], [2, 8]] #: Array[[Integer, Integer]]
       pairs.each do |pair|
-  lo = pair[1]
+        lo = pair[1]
         hi = pair[0]
       end
       assert_equal 8, lo
       assert_equal 2, hi
       ww = 0
       res = [5].map do |x|
-  ww = x
+        ww = x
               z = x * 2
  z
       end
@@ -2149,18 +2149,18 @@ module ControlTests
       out = [] #: Array[String]
       [1, 2, 3].each do |v|
         
-          [10, 20].each do |w|
-            
-              next if w == 10
-              break if v == 2
+        [10, 20].each do |w|
+          
+          next if w == 10
+          break if v == 2
 
-              out << "#{v} #{w}"
-          ensure
-              out << "e #{v} #{w}"
-            
-          end
+          out << "#{v} #{w}"
       ensure
-          out << "outer e #{v}"
+        out << "e #{v} #{w}"
+          
+        end
+    ensure
+      out << "outer e #{v}"
         
       end
       assert_equal ["e 1 10", "1 20", "e 1 20", "outer e 1", "e 2 10", "e 2 20", "outer e 2", "e 3 10", "3 20", "e 3 20", "outer e 3"], out
@@ -2485,13 +2485,13 @@ module ControlTests
     def test_next_with_value
       nv_h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
       assert_equal "{\"a\" => 1}", nv_h.select { |k, v| 
-                                     next false if k == "b"
+  next false if k == "b"
  v > 0
 }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
       assert_equal([1], nv_xs.select do |n| 
-                          next false if n > 1
+  next false if n > 1
  true
 end)
     end
@@ -2638,7 +2638,7 @@ end)
       got << if (m2 = h["zz"])
                "never #{m2}"
              else
-        "missing #{m2.inspect}"
+               "missing #{m2.inspect}"
              end
       assert_equal ["found 2", "missing nil"], got
     end
@@ -2786,9 +2786,9 @@ end)
       assert_equal 101, collide_pick(1)
       p = 7
       v = begin
-            collide_risky(-1)
-      rescue StandardError
-            p
+        collide_risky(-1)
+  rescue StandardError
+    p
       end
       assert_equal 7, v
       assert_equal "v2", doubled(1)
@@ -2892,23 +2892,23 @@ end)
     # nested rescue modifiers: the outer one catches the inner fallback's raise
     def test_nested_rescue_modifiers
       v = begin
-            begin
-            edges_risky(-1)
-            rescue StandardError
+        begin
+          edges_risky(-1)
+          rescue StandardError
             edges_risky(-2)
-            end
-      rescue StandardError
-            3
+        end
+  rescue StandardError
+    3
       end
       assert_equal 3, v
       v2 = begin
-             begin
-             edges_risky(-1)
-             rescue StandardError
-             edges_risky(4)
-             end
-      rescue StandardError
-             3
+        begin
+          edges_risky(-1)
+          rescue StandardError
+            edges_risky(4)
+        end
+ rescue StandardError
+   3
       end
       assert_equal 4, v2
     end
@@ -2930,14 +2930,14 @@ end)
       kinds = [] #: Array[String]
       [KeyError.new("k"), ArgumentError.new("a"), IOError.new("io")].each do |ex|
         
-          raise ex
-      rescue StandardError => e
-          kind = case e
-                 when KeyError then "key"
-                 when ArgumentError then "arg"
-                 else "other #{e.class}"
-                 end
-          kinds << kind
+        raise ex
+    rescue StandardError => e
+      kind = case e
+             when KeyError then "key"
+             when ArgumentError then "arg"
+             else "other #{e.class}"
+             end
+        kinds << kind
         
       end
       assert_equal ["key", "arg", "other IOError"], kinds
@@ -3197,34 +3197,34 @@ end)
     def test_rescue_modifiers_as_conditions
       out = [] #: Array[String]
       out << "cond ok" if begin
-                            edges_risky(1)
+        edges_risky(1)
       rescue StandardError
-                            nil
+        nil
       end
       out << "cond never" if begin
-                               edges_risky(-1)
+        edges_risky(-1)
       rescue StandardError
-                               nil
+        nil
       end
       out << (if begin
-                edges_risky(-1)
+        edges_risky(-1)
       rescue StandardError
-                false
+        false
       end
-  "t"
+                "t"
               else
-  "f"
+                "f"
               end)
       assert_equal ["cond ok", "f"], out
       rx = begin
-             edges_risky(2)
-      rescue StandardError
-             nil
+        edges_risky(2)
+ rescue StandardError
+   nil
       end || 9
       ry = begin
-             edges_risky(-2)
-      rescue StandardError
-             nil
+        edges_risky(-2)
+ rescue StandardError
+   nil
       end || 9
       assert_equal 2, rx
       assert_equal 9, ry
@@ -3274,10 +3274,10 @@ end)
       out = [] #: Array[String]
       e = assert_raises(KeyError) do
         
-          raise ArgumentError, "first"
-      ensure
-          out << "ensure raising"
-          raise KeyError, "from ensure"
+        raise ArgumentError, "first"
+    ensure
+      out << "ensure raising"
+        raise KeyError, "from ensure"
         
       end
       assert_equal ["ensure raising"], out
@@ -3351,9 +3351,9 @@ end)
       out = [] #: Array[String]
       3.times do |t|
         
-          out << "try #{t}"
-        ensure
-          out << "done #{t}"
+        out << "try #{t}"
+      ensure
+        out << "done #{t}"
         
       end
       assert_equal ["try 0", "done 0", "try 1", "done 1", "try 2", "done 2"], out
@@ -3379,10 +3379,10 @@ end)
       out = [] #: Array[String]
       outer = assert_raises(KeyError) do
         
-          raise KeyError, "orig"
-      rescue KeyError => e
-          out << "logging #{e.message}"
-          raise e
+        raise KeyError, "orig"
+    rescue KeyError => e
+      out << "logging #{e.message}"
+        raise e
         
       end
       assert_equal ["logging orig"], out
@@ -3441,9 +3441,9 @@ end)
     def test_rescue_modifier_right_of_or_assign
       opt = nil #: Integer?
       opt ||= begin
-                flow_risky(-1)
+        flow_risky(-1)
       rescue StandardError
-                5
+        5
       end
       assert_equal 5, opt
     end
@@ -3453,11 +3453,11 @@ end)
       out = [] #: Array[String]
       [1, 2].each do |i|
         
-          raise "odd" if i.odd?
-      rescue StandardError
-          out << "rescued #{i}"
-      ensure
-          out << "ensure #{i}"
+        raise "odd" if i.odd?
+    rescue StandardError
+      out << "rescued #{i}"
+    ensure
+      out << "ensure #{i}"
         
       end
       assert_equal ["rescued 1", "ensure 1", "ensure 2"], out
@@ -3476,9 +3476,9 @@ end)
     def test_cause
       outer = assert_raises(TypeError) do
         
-          raise "inner"
-      rescue RuntimeError
-          raise TypeError, "outer"
+        raise "inner"
+    rescue RuntimeError
+      raise TypeError, "outer"
         
       end
       cause = outer.cause
@@ -3490,22 +3490,22 @@ end)
       # re-raising the handled exception itself does not make it its own cause
       same = assert_raises(ArgumentError) do
         
-          raise ArgumentError, "once"
-      rescue ArgumentError => e
-          raise e
+        raise ArgumentError, "once"
+    rescue ArgumentError => e
+      raise e
         
       end
       assert_nil same.cause
       # an exception that already has a cause keeps it
       kept = assert_raises(ArgumentError) do
         
-          raise "first"
-      rescue RuntimeError
-          begin
-            raise ArgumentError, "second"
-          rescue ArgumentError => e
-            raise e
-          end
+        raise "first"
+    rescue RuntimeError
+      begin
+        raise ArgumentError, "second"
+      rescue ArgumentError => e
+        raise e
+      end
         
       end
       kept_cause = kept.cause
@@ -3518,9 +3518,9 @@ end)
       rows = [] #: Array[String]
       11.times do |k|
         
-          boom(out, k)
-        rescue StandardError => e
-          rows << "#{e.class}: #{e.message.inspect} #{e.to_s.inspect}"
+        boom(out, k)
+      rescue StandardError => e
+        rows << "#{e.class}: #{e.message.inspect} #{e.to_s.inspect}"
         
       end
       assert_equal [
@@ -3562,9 +3562,9 @@ end)
       assert_equal "outer caught ControlTests::Fatal deep", outer
       se = assert_raises(ScriptError) do
         
-          raise NotImplementedError, "nie"
-      rescue StandardError
-          got << "never"
+        raise NotImplementedError, "nie"
+    rescue StandardError
+      got << "never"
         
       end
       assert_equal "script: NotImplementedError nie false", "script: #{se.class} #{se.message} #{se.is_a?(StandardError)}"
@@ -3642,11 +3642,11 @@ end)
       end
       ae = assert_raises(AppError) do
         
-          raise "first"
-      rescue StandardError => e1
-          raise AppError, "second from #{e1.message}"
-      ensure
-          out << "inner ensure"
+        raise "first"
+    rescue StandardError => e1
+      raise AppError, "second from #{e1.message}"
+    ensure
+      out << "inner ensure"
         
       end
       assert_equal "second from first", ae.message
@@ -3696,9 +3696,9 @@ end)
       out = [] #: Array[String]
       [0, 3, -3].each do |d|
         
-          out << (10 / d).to_s << (10 % d).to_s << (-7 / d).to_s
-      rescue ZeroDivisionError => e
-          out << "zde #{e.message} #{e.class}"
+        out << (10 / d).to_s << (10 % d).to_s << (-7 / d).to_s
+    rescue ZeroDivisionError => e
+      out << "zde #{e.message} #{e.class}"
         
       end
       assert_equal ["zde divided by 0 ZeroDivisionError", "3", "1", "-3", "-4", "-2", "2"], out
@@ -3734,69 +3734,69 @@ end)
 
     def test_rescue_modifiers
       a = begin
-            risky_int(2)
-      rescue StandardError
-            0
+        risky_int(2)
+  rescue StandardError
+    0
       end
       b = begin
-            risky_int(-1)
-      rescue StandardError
-            0
+        risky_int(-1)
+  rescue StandardError
+    0
       end
       assert_equal 4, a
       assert_equal 0, b
       c = begin
-            risky_int(-5)
-      rescue StandardError
-            nil
+        risky_int(-5)
+  rescue StandardError
+    nil
       end
       assert_nil c
       d = begin
-            risky_int(-1)
-      rescue StandardError
-            "failed"
+        risky_int(-1)
+  rescue StandardError
+    "failed"
       end
       assert_equal "failed", d
       e2 = begin
-             risky_int(3)
-      rescue StandardError
-             "failed"
+        risky_int(3)
+ rescue StandardError
+   "failed"
       end
       assert_equal 6, e2
       assert_equal(-10, begin
-                          tern(false)
+        tern(false)
       rescue StandardError
-                          -10
+        -10
       end)
       hits = [] #: Array[String]
       f = begin
-            risky_int(1)
-      rescue StandardError
-            hits.push("f").size
+        risky_int(1)
+  rescue StandardError
+    hits.push("f").size
       end
       f2 = begin
-             risky_int(-1)
-      rescue StandardError
-             hits.push("f2").size
+        risky_int(-1)
+ rescue StandardError
+   hits.push("f2").size
       end
       assert_equal 2, f
       assert_equal 1, f2
       assert_equal ["f2"], hits
       ex = assert_raises(NotImplementedError) do
         g = begin
-              risky_int(99)
-        rescue StandardError
-              -1
+          risky_int(99)
+    rescue StandardError
+      -1
         end
         flunk "got #{g}"
       end
       assert_equal "nie", ex.message
       list = [1, 2, 3] #: Array[Integer]
       assert_equal([100, 0, 2], list.map do |v| 
-                                  begin
-                                                 risky_int(v - 2)
-                                  rescue StandardError
-                                                 100
+  begin
+        risky_int(v - 2)
+  rescue StandardError
+    100
       end
 end)
       assert_equal 1, control_safe_fetch("a")
@@ -3847,7 +3847,7 @@ end)
       msg = if i.zero?
               "zero"
             else
-        "i=#{i}"
+              "i=#{i}"
             end
       assert_equal "i=3", msg
       maybe = nil
@@ -3866,7 +3866,7 @@ end)
       assert_equal(-1, count)
       sum = 0
       doubled = [1, 2, 3].map do |x| 
-                  sum += x
+  sum += x
  x * 2
 end
       assert_equal 6, sum
@@ -4438,17 +4438,17 @@ end
     def test_rescue_modifier_fallback_raises
       e = assert_raises(KeyError) do
         v_wrap = begin
-                   mid_risky(-1)
+          mid_risky(-1)
         rescue StandardError
-                   raise(KeyError, "wrapped")
+          raise(KeyError, "wrapped")
         end
         flunk "got #{v_wrap}"
       end
       assert_equal "wrapped", e.message
       w_risky = begin
-                  mid_risky(2)
+        mid_risky(2)
       rescue StandardError
-                  raise("no")
+        raise("no")
       end
       assert_equal 2, w_risky
     end
@@ -4466,11 +4466,11 @@ end
       end
       names = %w[ann bo] #: Array[String]
       names.each do |n| 
-        s = n.upcase
+  s = n.upcase
  got << s
 end
       [4, 5].each do |c| 
-        s = c * 2
+  s = c * 2
  got << s.to_s
 end
       assert_equal %w[2 4 s3 ANN BO 8 10], got
@@ -4624,11 +4624,11 @@ end
       v = catch(:outer) do
         catch(:inner) do
           
-            throw :outer, "deep"
-        rescue Exception
-            log << "rescued"
-        ensure
-            log << "ensure"
+          throw :outer, "deep"
+      rescue Exception
+        log << "rescued"
+      ensure
+        log << "ensure"
           
         end
         "not reached"
@@ -4868,11 +4868,11 @@ end
       assert_equal ["body,else,ensure", "body,rescue,ensure", "early"], [control_flow(0), control_flow(1), control_flow(2)]
       e = assert_raises(ArgumentError) do
         
-          1
-      rescue StandardError
-          2
-      else
-          raise ArgumentError, "from else"
+        1
+    rescue StandardError
+      2
+    else
+      raise ArgumentError, "from else"
         
       end
       assert_equal "from else", e.message
@@ -5050,14 +5050,14 @@ end
       seen = [] #: Array[untyped]
       [1, 2, 3].each do |i|
         
-          raise IOError, "io" if i == 1
-          raise ArgumentError, "arg" if i == 2
+        raise IOError, "io" if i == 1
+        raise ArgumentError, "arg" if i == 2
 
-          raise TypeError, "type"
-      rescue *CONTROL_NET_ERRORS => e
-          seen << [:net, e.message]
-      rescue TypeError, *[KeyError] => e
-          seen << [:other, e.message]
+        raise TypeError, "type"
+    rescue *CONTROL_NET_ERRORS => e
+      seen << [:net, e.message]
+    rescue TypeError, *[KeyError] => e
+      seen << [:other, e.message]
         
       end
       assert_equal [[:net, "io"], [:net, "arg"], [:other, "type"]], seen
@@ -5104,10 +5104,10 @@ end
     def test_full_message_cause
       e = assert_raises(IOError) do
         
-          raise "inner"
-      rescue StandardError => inner
-          inner.set_backtrace(["i.rb:1:in 'x'"])
-          raise IOError, "outer"
+        raise "inner"
+    rescue StandardError => inner
+      inner.set_backtrace(["i.rb:1:in 'x'"])
+        raise IOError, "outer"
         
       end
       e.set_backtrace(["o.rb:1:in 'y'", "o.rb:2:in 'z'"])
@@ -5979,7 +5979,7 @@ module ControlTests
     def test_and_or_jumps
       assert_equal %i[pos zero neg], [control_sign(3), control_sign(0), control_sign(-2)]
       assert_equal([1, 20, 3, 40], [1, 2, 3, 4].map do |i|
-  i.even? and next i * 10
+        i.even? and next i * 10
   i
       end)
       seen = [] #: Array[Integer]
@@ -6250,7 +6250,7 @@ module ControlTests
       assert_equal [-1, 0, -1, -1, 0], got
       calls = 0
       lim = lambda { 
-              calls += 1
+  calls += 1
  3
 }
       1.upto(lim.call) { |i| calls += i * 0 }
