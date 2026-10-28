@@ -225,11 +225,15 @@ module RugarooBoot
                         x.infinite? ? "#{"-" if x < 0}Float::INFINITY" : x.inspect
                       end # NaN/Infinity inspect as bare words
       when nil, true, false, Integer, Symbol then x.inspect
-      when Module then (n = MOD_NAME.bind_call(x)) && begin
+      when Module then if (n = MOD_NAME.bind_call(x)) && begin
                                                         Object.const_get(n)
                                                       rescue StandardError
                                                         nil
-                                                      end.equal?(x) ? "::#{n}" : nil
+                                                      end.equal?(x)
+  "::#{n}"
+else
+  nil
+end
       when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
       when String then x.size > 100_000 ? nil : x.inspect
       when Array

@@ -3204,11 +3204,15 @@ end
                              rescue StandardError
                                nil
                              end
-      out << (begin
+      out << (if begin
                 edges_risky(-1)
               rescue StandardError
                 false
-              end ? "t" : "f")
+              end
+  "t"
+else
+  "f"
+end)
       assert_equal ["cond ok", "f"], out
       rx = begin
              edges_risky(2)
