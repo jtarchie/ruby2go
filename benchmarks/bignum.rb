@@ -34,7 +34,6 @@ def pi_digits(count)
       nr = 10 * (r - n * t)
       n = (10 * (3 * q + r)) / t - 10 * n
       q *= 10
-      r = nr
     else
       nr = (2 * q + r) * l
       nn = (q * (7 * k) + 2 + (r * l)) / (t * l)
@@ -43,8 +42,8 @@ def pi_digits(count)
       l += 2
       k += 1
       n = nn
-      r = nr
     end
+    r = nr
   end
   out
 end
