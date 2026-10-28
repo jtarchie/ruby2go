@@ -404,6 +404,7 @@ module NumberTests
     def !~(other) = other % v != 0
     #: (Integer) -> Integer
     def [](i) = v * i
+
     #: (Integer, Integer) -> Integer
     def []=(i, x)
       @last_set = v + i + x
@@ -420,17 +421,20 @@ module NumberTests
     def match(x) = x == v
     #: () -> String
     def to_s = "Num(#{v})"
+
     # Non-operator names: ? -> Q, ! -> Bang, = -> Set, leading underscores kept.
     #: (Integer) -> Integer
     def v=(x)
       @v = x
       x
     end
+
     #: () -> Num
     def reset!
       @v = 0
       self
     end
+
     #: () -> bool
     def big? = v > 10
     #: () -> Integer

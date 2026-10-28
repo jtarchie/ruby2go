@@ -4084,6 +4084,7 @@ module ObjectTests
       assert_equal [15, 2, 3], [FwdBoth.plus(5), FwdBoth.new.size, FwdLater.new.size]
     end
   end
+
   # Gaps the sealed Type sum types turned up (decision 119): a call on a void
   # method's nil, `.class` on a tuple, `is_a?` on a generic value.
   class SumTypeGapsTest < Minitest::Test
@@ -4908,6 +4909,7 @@ module ObjectTests
       assert_equal true, x.frozen?
     end
   end
+
   # #56: Object.new is a plain object, unique by identity
   class ObjectNewTest < Minitest::Test
     def test_object_new
@@ -4958,6 +4960,7 @@ module ObjectTests
       assert_equal 5, f.call
     end
   end
+
   # decision 147: a module's instance variables live in each includer's object
   module IvarTally
     # @rbs @n: Integer?
@@ -5002,11 +5005,13 @@ module ObjectTests
   module IvarDiscovered
     #: () -> Integer
     def hits = (@hits = (@hits || 0) + 1)
+
     #: (String) -> void
     def label=(s)
       @labels ||= []
       @labels << s
     end
+
     #: () -> Array[String]
     def labels = @labels || []
     #: () -> String?
@@ -6629,6 +6634,7 @@ module ObjectTests
     class Inner
       self::C = "c"
     end
+
     def self.read = self::A
   end
 

@@ -524,6 +524,7 @@ module UnionTests
     class UnionPipeA
       #: (Array[String] log) -> void
       def initialize(log) = @log = log
+
       #: () -> nil
       def close
         @log << "a"

@@ -1451,6 +1451,7 @@ module ActionView
       return false if c == ""
       auto_link_word_char?(c) || c == "-"
     end
+
     # Rails' CaptureHelper, for the block a helper FORWARDS rather than
     # writes. `src/lower/capture_inline.rs` claims the LITERAL-block
     # shape (`capture { concat(a); … }`) and inlines it into an
@@ -1493,6 +1494,7 @@ module ActionView
     def self.concat(string)
       raise "concat outside capture — emitted views buffer through io<<, not concat"
     end
+
     # `polymorphic_url(record, only_path: true)` — Rails' "the route for
     # whatever this record is", resolved at RUNTIME from the record's
     # class. Nothing here can answer that: it needs a class-to-route

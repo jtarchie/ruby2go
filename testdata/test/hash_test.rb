@@ -2045,6 +2045,7 @@ module HashTests
       assert_equal [Set[1, 2, 3], Set[1, 2]], [Set[Set[1, 2], Set[2, 3]].flatten, Set[1, 2].flatten]
     end
   end
+
   # #86: a Hash subclass rewrites keys, then reaches the embedded Hash with super
   class HashSubclassTest < Minitest::Test
     def test_downcased_keys

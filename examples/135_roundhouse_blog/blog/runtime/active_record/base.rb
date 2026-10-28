@@ -212,6 +212,7 @@ module ActiveRecord
     def _adapter_insert
       raise NotImplementedError, "_adapter_insert: subclasses must override"
     end
+
     def _adapter_update; end
     def _adapter_delete; end
 

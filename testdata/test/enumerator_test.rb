@@ -557,6 +557,7 @@ module EnumeratorTests
       assert_equal "cannot get the last element of endless arithmetic sequence", err.message
     end
   end
+
   # #56: min(n)/max(n) on an endless range end, as MRI's do
   class EnumeratorEndlessMinMaxTest < Minitest::Test
     def test_endless_min_max_n

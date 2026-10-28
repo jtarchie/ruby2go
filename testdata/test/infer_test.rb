@@ -56,6 +56,7 @@ module InferTests
     def <=>(other) = n <=> other.n
   end
 end
+
 def infer_chain(y) = infer_twice(y) + 1
 def infer_label(v, prefix = "n=") = "#{prefix}#{v}"
 def infer_maybe(z) = z.nil? ? "none" : z.to_s
