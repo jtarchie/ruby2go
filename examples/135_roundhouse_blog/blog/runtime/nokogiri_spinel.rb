@@ -125,7 +125,7 @@ module Nokogiri
         next unless !equiv.nil? && equiv.downcase == "content-type" && !content.nil?
 
         at = content.downcase.index("charset=")
-        next unless !at.nil?
+        next if at.nil?
 
         value = content[at + 8, content.length].to_s.strip
         semi = value.index(";")

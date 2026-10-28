@@ -169,7 +169,7 @@ module Tep
       # the call sites.
       deadline = Sock.sphttp_now_us + (seconds * 1_000_000).to_i
       while Sock.sphttp_now_us < deadline
-        next unless !Scheduler.tick(0)
+        next if Scheduler.tick(0)
 
         # Nothing ready this pass. Compute the next deadline:
         # min(next_wake, overall_deadline). If any fiber is
