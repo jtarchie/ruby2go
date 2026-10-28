@@ -531,6 +531,7 @@ module Main
     # sets `session[:u]` then 302s).
     session_out = controller.session.to_cookie
     return unless session_out != session_in
+
       if session_out == ""
         Main.clear_flash_cookie(res, session_cookie)
       else

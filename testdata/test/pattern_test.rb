@@ -454,6 +454,7 @@ module PatternTests
     def test_alternative_binding_not_narrowed
       v = [1, 2] #: Array[Integer]
       return unless v in [_one] | [_, _]
+
         assert_nil _one
 
     end

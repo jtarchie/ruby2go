@@ -655,6 +655,7 @@ module RxjsonTests
       cm = "ab".match(/(a)/)
       assert cm
       return unless cm
+
         cs = cm.captures
         cs << "extra"
         assert_equal 2, cs.size
@@ -892,6 +893,7 @@ b/
       pm = path.match(%r{\A/(\w+)/(\d+)(\.\w+)?\z})
       assert pm
       return unless pm
+
         assert_equal "#<MatchData \"/posts/42.json\" 1:\"posts\" 2:\"42\" 3:\".json\">", pm.inspect
         assert_equal "posts#42", pm[1].to_s + "#" + pm[2].to_s
 
@@ -914,6 +916,7 @@ b/
       em2 = "abc".match(//)
       assert em2
       return unless em2
+
         assert_equal "", em2.pre_match
         assert_equal "abc", em2.post_match
 
@@ -1118,6 +1121,7 @@ b/
       m2_neg = /(a)/.match("a")
       assert m2_neg
       return unless m2_neg
+
         assert_equal "\"a\"", m2_neg[-1].inspect
         assert_equal "nil", m2_neg[-2].inspect
         assert_equal "nil", m2_neg[-3].inspect
@@ -1136,6 +1140,7 @@ b/
       m_named = /(?<year>\d+)-(?<mon>\d+)(?<day>-\d+)?/.match("2024-05")
       assert m_named
       return unless m_named
+
         assert_equal "\"2024\"", m_named[1].inspect
         assert_equal "\"05\"", m_named[2].inspect
         assert_equal "nil", m_named[3].inspect
@@ -1149,6 +1154,7 @@ b/
       m_plain = /(?<a>x)(y)/.match("xy")
       assert m_plain
       return unless m_plain
+
         assert_equal 1, m_plain.captures.size
         assert_equal "\"x\"", m_plain[1].inspect
         assert_equal "nil", m_plain[2].inspect

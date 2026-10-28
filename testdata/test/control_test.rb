@@ -521,6 +521,7 @@ end
 #: (Array[Integer], Integer) -> void
 def definite_guarded(out, n)
   return unless n > 0
+
     v = n
 
 
@@ -531,6 +532,7 @@ end
 #: (Integer) -> Integer
 def raised(n)
   raise ArgumentError, "neg" unless n > 0
+
     v = n
 
 
@@ -2486,12 +2488,14 @@ module ControlTests
       nv_h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
       assert_equal "{\"a\" => 1}", nv_h.select { |k, v|
   next false if k == "b"
+
  v > 0
 }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
       assert_equal([1], nv_xs.select do |n|
   next false if n > 1
+
  true
 end)
     end

@@ -49,6 +49,7 @@ module Tep
                  e.class.to_s + ": " + e.message)
     frames = e.backtrace
     return if frames.nil?
+
       frames.each do |frame|
         warn(tag + "        " + frame)
       end
