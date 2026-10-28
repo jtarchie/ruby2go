@@ -2519,6 +2519,9 @@ module ObjectTests
 
     private
 
+#: () -> String
+def secret = "s3cret"
+
     #: () -> Integer
     def pin = @pin
 
@@ -2533,8 +2536,6 @@ module ObjectTests
     #: () -> String
     def status = "ok #{check(3)}"
 
-    #: () -> String
-    private def secret = "s3cret"
 
     #: () -> String
     def reveal = secret.reverse
