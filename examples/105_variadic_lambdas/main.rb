@@ -11,7 +11,7 @@ puts report.call("one", 4)
 puts report.("three", 1, 2, 3)
 
 # Mixed argument types join to a union (decision 150): Integer | Float | String.
-fmt = -> f, *args { f % args }
+fmt = ->f, *args { f % args }
 puts fmt.call("%d apples", 3)
 puts fmt.call("%.2f kg of %s", 1.5, "pears")
 
