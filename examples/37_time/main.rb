@@ -26,7 +26,7 @@ log = [
   Entry.new(base, "start"),
   Entry.new(base + 45, "leap day rolls over"),
   Entry.new(base + 3.5, "fractional"),
-  Entry.new(Time.at(1_700_000_000).utc, "epoch 1.7e9"),
+  Entry.new(Time.at(1_700_000_000).utc, "epoch 1.7e9")
 ]
 log.sort_by(&:at).each { |e| puts e }
 

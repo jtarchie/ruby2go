@@ -1605,7 +1605,7 @@ module ArrayTests
       multi = [
         1,
         2, # two
-        3,
+        3
       ] #: Array[Integer]
       assert_equal "[1, 2, 3]", multi.inspect
       assert_equal "[1.5, -0.0]", "#{[1.5, -0.0]}"

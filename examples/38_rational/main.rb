@@ -28,7 +28,7 @@ end
 recipe = [
   Ingredient.new("cup flour", 3/4r),
   Ingredient.new("tsp salt", Rational(1, 8)),
-  Ingredient.new("eggs", 2r),
+  Ingredient.new("eggs", 2r)
 ]
 [Rational(1, 2), 3r, Rational(4, 3)].each do |k|
   puts "x#{k.inspect}: #{recipe.map { |i| i.scale(k).to_s }.join(", ")}"

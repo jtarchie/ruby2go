@@ -2126,7 +2126,7 @@ module StdlibTests
         ["**/foo", "a/.b/c/foo", File::FNM_PATHNAME | File::FNM_DOTMATCH],
         ["/opt/homebrew/opt/*/bin/wget", "/opt/homebrew/opt/wget/bin/wget", File::FNM_PATHNAME],
         ["/opt/homebrew/opt/*/bin/wget", "/opt/homebrew/Cellar/wget/1/bin/wget", File::FNM_PATHNAME],
-        ["ca[", "ca[", 0], ["[a-c]x", "bx", 0], ["[!a-c]x", "bx", 0],
+        ["ca[", "ca[", 0], ["[a-c]x", "bx", 0], ["[!a-c]x", "bx", 0]
       ]
       assert_equal [true, false, false, true, true, false, true, true, true, false, false, true, false, false, false, true, true, true, true, false, true, true, true, false, true, true, true, true, true, true, true, false, true, true, false, false, true, false], cases.map { |pat, s, f| File.fnmatch(pat, s, f) }
       assert_equal [true, true], [Pathname.new("/a/b").fnmatch?("/a/*", File::FNM_PATHNAME), File.fnmatch?("*.rb", "x.rb")]
@@ -2139,12 +2139,12 @@ module StdlibTests
       segs = "a/" * 40
       assert_equal [false, true, false, true], [
         File.fnmatch(many, "a" * 40), File.fnmatch(many, "#{"a" * 40}b"),
-        File.fnmatch(many, "a" * 40, File::FNM_PATHNAME), File.fnmatch(many, "#{"a" * 40}b", File::FNM_PATHNAME),
+        File.fnmatch(many, "a" * 40, File::FNM_PATHNAME), File.fnmatch(many, "#{"a" * 40}b", File::FNM_PATHNAME)
       ]
       assert_equal [false, true, false, false, true], [
         File.fnmatch(deep, "#{segs}y", File::FNM_PATHNAME), File.fnmatch(deep, "#{segs}x", File::FNM_PATHNAME),
         File.fnmatch(deep, "#{segs}.b/x", File::FNM_PATHNAME), File.fnmatch("a*a*b", "a/a/b", File::FNM_PATHNAME),
-        File.fnmatch(deep, "#{segs}.b/x", File::FNM_PATHNAME | File::FNM_DOTMATCH),
+        File.fnmatch(deep, "#{segs}.b/x", File::FNM_PATHNAME | File::FNM_DOTMATCH)
       ]
     end
 

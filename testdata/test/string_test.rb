@@ -1946,7 +1946,7 @@ module StringTests
         ["%.3s", "abcdef", "abc"],
         ["%-5s|", "ab", "ab   |"],
         ["%x", 255, "ff"],
-        ["%8.3x", 255, "     0ff"],
+        ["%8.3x", 255, "     0ff"]
       ] #: Array[Array[untyped]]
       assert_equal rows.map { |r| r[2] }, rows.map { |r| format(String(r[0]), r[1]) }
       assert_equal ["1:ab", "<s|7>", "{a: 1}"], [format("%d:%s", 1, "ab"), format("<%<a>s|%<b>d>", a: "s", b: 7), format("%s", { a: 1 })]

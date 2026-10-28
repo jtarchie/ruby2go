@@ -25,7 +25,7 @@ lines = [
   "2024-03-05T12:34:56Z | boot",
   "2024-03-05 13:05:00 +0200 | login",
   "2024-03-05T09:15:30.250-05:00 | fetch",
-  "Tue, 05 Mar 2024 14:00:00 GMT | cron",
+  "Tue, 05 Mar 2024 14:00:00 GMT | cron"
 ]
 logs = lines.map { |l| LogLine.parse(l) }
 logs.each { |l| puts "#{l.at.utc.iso8601(3)} #{l.msg}" }

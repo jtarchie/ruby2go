@@ -2756,7 +2756,7 @@ module DynamicTests
         [":\"with space\"", "with space", "<with space>"],
         ["[\"n\", [1, [2]]]", "[\"n\", [1, [2]]]", "<[\"n\", [1, [2]]]>"],
         ["{\"k\" => \"v\", s: 1.0}", "{\"k\" => \"v\", s: 1.0}", "<{\"k\" => \"v\", s: 1.0}>"],
-        ["#<Temp 21>", "21°", "<21°>"],
+        ["#<Temp 21>", "21°", "<21°>"]
       ] #: Array[Array[String]]
       assert_equal expected, more.map { |v| [v.inspect, v.to_s, "<#{v}>"] }
       assert_equal "[1099511627776, -0.5, 1.0e+20, 0.30000000000000004, \"tab\\there\", \"quote\\\"s\", \"uni ✓\", \"\", :\"with space\", [\"n\", [1, [2]]], {\"k\" => \"v\", s: 1.0}, #<Temp 21>]", more.inspect

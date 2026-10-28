@@ -721,7 +721,7 @@ class DbPool
     # safe across a process crash and risks only the most recent commits
     # on OS or power failure. That is the guarantee campfire ships with,
     # so it is the one to match.
-    "PRAGMA synchronous=NORMAL",
+    "PRAGMA synchronous=NORMAL"
   ].freeze
 
   def initialize(path, n)

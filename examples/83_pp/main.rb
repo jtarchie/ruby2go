@@ -26,7 +26,7 @@ config = {
   servers: [
     Server.new("app-1.example.com", 8080, %w[web primary]),
     Server.new("app-2.example.com", 8080, %w[web replica]),
-    Server.new("db.example.com", 5432, ["database"]),
+    Server.new("db.example.com", 5432, ["database"])
   ],
   retries: { attempts: 3, backoff: [0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0] },
   "notes" => "line one\nline two\n",

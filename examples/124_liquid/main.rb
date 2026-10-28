@@ -31,7 +31,7 @@ data = {
   "items" => [
     { "name" => "Pen", "price" => 1.25, "qty" => 4 },
     { "name" => "Ink", "price" => 3.5, "qty" => 1 },
-    { "name" => "Pad", "price" => 2.0, "qty" => 0 },
+    { "name" => "Pad", "price" => 2.0, "qty" => 0 }
   ],
 }
 puts template.render(data)

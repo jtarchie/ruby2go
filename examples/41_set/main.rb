@@ -23,7 +23,7 @@ end
 posts = [
   Post.new("Go generics", %w[go generics types]),
   Post.new("Ruby sets", %w[ruby types collections ruby]),
-  Post.new("Typed Ruby to Go", %w[ruby go types]),
+  Post.new("Typed Ruby to Go", %w[ruby go types])
 ]
 
 all_tags = Set.new #: Set[String]

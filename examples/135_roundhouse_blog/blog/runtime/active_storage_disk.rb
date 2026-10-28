@@ -190,7 +190,7 @@ module ActiveStorage
         ActionDispatch::Router::Route.new(
           "GET", "/rails/active_storage/disk/:encoded_key/*filename",
           :active_storage_disk, :show
-        ),
+        )
       ]
     end
 

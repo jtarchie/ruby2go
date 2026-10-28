@@ -15,7 +15,7 @@ module Demo
         x.inject(0) { |a, v| a + v.to_s.size }, x.reduce("") { |a, v| a.to_s + v.to_s }, x.each_with_object([]) { |v, a| a << v.to_s },
         x.sort_by { |v| v.to_s }, x.max_by { |v| v.to_s }, x.min_by { |v| v.to_s }, x.take_while { |v| v.to_s != "2" },
         x.drop_while { |v| v.to_s != "2" }, x.count { |v| v.to_s > "1" }, x.sort { |a, b| b.to_s <=> a.to_s },
-        x.uniq { |v| v.to_s.size }, x.first, x.first(2),
+        x.uniq { |v| v.to_s.size }, x.first, x.first(2)
       ]
     end
 

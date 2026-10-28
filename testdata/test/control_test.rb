@@ -2465,7 +2465,7 @@ end
         "n: falsy", "  nil? true", "  && nil",
         "z: truthy", "  if", "  local if", "  nil? false", "  && \"rhs\"",
         "missing: falsy", "  nil? true", "  && nil",
-        "arr[2] truthy",
+        "arr[2] truthy"
       ], out
     end
 
@@ -3523,7 +3523,7 @@ end
         "ControlTests::ValidationError: \"too short\" \"too short\"",
         "ControlTests::DefaultMsg: \"default message\" \"default message\"",
         "IndexError: \"\" \"\"",
-        "TypeError: \"ünïcode ✓\" \"ünïcode ✓\"",
+        "TypeError: \"ünïcode ✓\" \"ünïcode ✓\""
       ], rows
       assert_equal ["no raise 10"], out
     end
@@ -3532,7 +3532,7 @@ end
       out = [] #: Array[String]
       assert_equal [
         "NotFound ControlTests::NotFound", "AppError|KeyError ControlTests::AppError ControlTests::AppError", "AppError|KeyError KeyError k",
-        "name: too short", "StandardError ArgumentError", "StandardError RuntimeError", "none",
+        "name: too short", "StandardError ArgumentError", "StandardError RuntimeError", "none"
       ], [which(out, 2), which(out, 5), which(out, 4), which(out, 6), which(out, 0), which(out, 1), which(out, 10)]
       assert_equal ["no raise 10"], out
       got = [] #: Array[String]
