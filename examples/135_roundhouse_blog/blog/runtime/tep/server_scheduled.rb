@@ -61,7 +61,7 @@ module Tep
           # returning here (the caller discards the code) made the
           # binary look like it started and immediately vanished.
           warn Tep.display_name + ": cannot bind to port " +
-                       port.to_s + " (already in use?)"
+               port.to_s + " (already in use?)"
           exit(1)
         end
         Sock.sphttp_set_nonblock(sfd)
