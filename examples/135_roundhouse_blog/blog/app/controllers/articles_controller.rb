@@ -6,19 +6,19 @@ class ArticlesController < ApplicationController
   def process_action(action_name)
     case action_name
     when :index
-      self.index
+      index
     when :show
-      self.show
+      show
     when :new
-      self.new_action
+      new_action
     when :edit
-      self.edit
+      edit
     when :create
-      self.create
+      create
     when :update
-      self.update
+      update
     when :destroy
-      self.destroy
+      destroy
     end
   end
 
@@ -42,7 +42,7 @@ class ArticlesController < ApplicationController
   a._preload_comments(__comments_group)
 end
     @articles = results
-    if self.request_format == :json
+    if request_format == :json
       render(Views::Articles.index_json(@articles), content_type: "application/json")
     else
       render(Views::Layouts.application(Views::Articles.index(@articles, @flash[:notice], @flash[:alert]), @flash[:notice], @flash[:alert]))
@@ -51,7 +51,7 @@ end
 
   def show
     @article = Article.find(@params.fetch("id", "0").to_s.to_i)
-    if self.request_format == :json
+    if request_format == :json
       render(Views::Articles.show_json(@article), content_type: "application/json")
     else
       render(Views::Layouts.application(Views::Articles.show(@article, @flash[:notice], @flash[:alert]), @flash[:notice], @flash[:alert]))
@@ -69,9 +69,9 @@ end
   end
 
   def create
-    @article = Article.from_params(self.article_params)
+    @article = Article.from_params(article_params)
     if @article.save
-      if self.request_format == :json
+      if request_format == :json
         render(Views::Articles.show_json(@article), status: :created, location: RouteHelpers.article_path(@article.id), content_type: "application/json")
       else
         redirect_to(RouteHelpers.article_path(@article.id), notice: "Article was successfully created.")
@@ -83,8 +83,8 @@ end
 
   def update
     @article = Article.find(@params.fetch("id", "0").to_s.to_i)
-    if @article.update_from_article_params(self.article_params)
-      if self.request_format == :json
+    if @article.update_from_article_params(article_params)
+      if request_format == :json
         render(Views::Articles.show_json(@article), status: :ok, location: RouteHelpers.article_path(@article.id), content_type: "application/json")
       else
         redirect_to(RouteHelpers.article_path(@article.id), notice: "Article was successfully updated.", status: :see_other)
@@ -97,7 +97,7 @@ end
   def destroy
     @article = Article.find(@params.fetch("id", "0").to_s.to_i)
     @article.destroy
-    if self.request_format == :json
+    if request_format == :json
       head(:no_content, content_type: "application/json")
     else
       redirect_to(RouteHelpers.articles_path, notice: "Article was successfully destroyed.", status: :see_other)

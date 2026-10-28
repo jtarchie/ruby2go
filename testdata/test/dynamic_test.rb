@@ -882,7 +882,7 @@ module DynamicTests
     def car? = is_a?(Car)
 
     #: () -> bool
-    def self_truck? = self.is_a?(Truck)
+    def self_truck? = is_a?(Truck)
   end
 
   class Car < Vehicle
@@ -1096,16 +1096,16 @@ module DynamicTests
     def hi = "hi"
 
     #: () -> String
-    def call_hi = self.send(:hi)
+    def call_hi = send(:hi)
 
     #: () -> bool
     def can_hi = respond_to?(:hi)
 
     #: () -> bool
-    def can_bye = self.respond_to?(:bye)
+    def can_bye = respond_to?(:bye)
 
     #: (String) -> String
-    def call_named(n) = self.send(n)
+    def call_named(n) = send(n)
   end
 
   class Base

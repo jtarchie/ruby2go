@@ -5,15 +5,15 @@ class CommentsController < ApplicationController
   def process_action(action_name)
     case action_name
     when :create
-      self.create
+      create
     when :destroy
-      self.destroy
+      destroy
     end
   end
 
   def create
     @article = Article.find(@params.fetch("article_id", "0").to_s.to_i)
-    @comment = Comment.from_params(self.comment_params)
+    @comment = Comment.from_params(comment_params)
     @comment.article_id = @article.id
     if @comment.save
       redirect_to(RouteHelpers.article_path(@article.id), notice: "Comment was successfully created.")

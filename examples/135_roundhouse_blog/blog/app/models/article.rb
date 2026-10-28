@@ -156,7 +156,7 @@ class Article < ApplicationRecord
     self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !((attrs[:created_at]).to_s.nil?)
     self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
     self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !((attrs[:updated_at]).to_s.nil?)
-    self.save
+    save
   end
 
   def update!(attrs)
@@ -166,7 +166,7 @@ class Article < ApplicationRecord
     self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !((attrs[:created_at]).to_s.nil?)
     self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
     self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !((attrs[:updated_at]).to_s.nil?)
-    self.save!
+    save!
     self
   end
 
@@ -260,7 +260,7 @@ class Article < ApplicationRecord
       @created_at_raw = Db.column_text(stmt, 3)
       @__t_updated_at = nil
       @updated_at_raw = Db.column_text(stmt, 4)
-      self.mark_persisted!
+      mark_persisted!
     end
     Db.finalize(stmt)
     self
@@ -298,7 +298,7 @@ class Article < ApplicationRecord
     else
       self.body = p.body
     end
-    self.save
+    save
   end
 
   def update_from_article_params!(p)
@@ -312,16 +312,16 @@ class Article < ApplicationRecord
     else
       self.body = p.body
     end
-    self.save!
+    save!
     self
   end
 
   def validate
-    self.errors << "Title can't be blank" if @title.nil? || (@title || "").empty?
-    self.errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
+    errors << "Title can't be blank" if @title.nil? || (@title || "").empty?
+    errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
     if !(@body.nil?)
       len = @body.length
-      self.errors << "Body is too short (minimum is 10 characters)" if len < 10
+      errors << "Body is too short (minimum is 10 characters)" if len < 10
     end
   end
 
@@ -350,11 +350,11 @@ class Article < ApplicationRecord
   end
 
   def comment_ids
-    self.comments.map { |rh_id_record| rh_id_record.id }
+    comments.map { |rh_id_record| rh_id_record.id }
   end
 
   def before_destroy
-    self.comments.each { |c| c.destroy }
+    comments.each { |c| c.destroy }
   end
 
   def dom_prefix
@@ -370,7 +370,7 @@ class Article < ApplicationRecord
   end
 
   def cache_key
-    if self.persisted?
+    if persisted?
       "articles/#{@id}"
     else
       "articles/new"
@@ -378,7 +378,7 @@ class Article < ApplicationRecord
   end
 
   def cache_key_with_version
-    "#{self.cache_key}-#{@updated_at_raw}"
+    "#{cache_key}-#{@updated_at_raw}"
   end
 
   def after_create_commit
@@ -386,11 +386,11 @@ class Article < ApplicationRecord
   end
 
   def after_update_commit
-    Broadcasts.replace(stream: "articles", target: "#{self.dom_prefix}_#{self.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Articles.article(self)))
+    Broadcasts.replace(stream: "articles", target: "#{dom_prefix}_#{dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Articles.article(self)))
   end
 
   def after_destroy_commit
-    Broadcasts.remove(stream: "articles", target: "#{self.dom_prefix}_#{self.dom_record_key}")
+    Broadcasts.remove(stream: "articles", target: "#{dom_prefix}_#{dom_record_key}")
   end
 
   def to_gid_param

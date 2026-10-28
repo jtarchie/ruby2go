@@ -172,7 +172,7 @@ class Comment < ApplicationRecord
     self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !((attrs[:created_at]).to_s.nil?)
     self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
     self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !((attrs[:updated_at]).to_s.nil?)
-    self.save
+    save
   end
 
   def update!(attrs)
@@ -183,7 +183,7 @@ class Comment < ApplicationRecord
     self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !((attrs[:created_at]).to_s.nil?)
     self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
     self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !((attrs[:updated_at]).to_s.nil?)
-    self.save!
+    save!
     self
   end
 
@@ -278,7 +278,7 @@ class Comment < ApplicationRecord
       @created_at_raw = Db.column_text(stmt, 4)
       @__t_updated_at = nil
       @updated_at_raw = Db.column_text(stmt, 5)
-      self.mark_persisted!
+      mark_persisted!
     end
     Db.finalize(stmt)
     self
@@ -316,7 +316,7 @@ class Comment < ApplicationRecord
     else
       self.body = p.body
     end
-    self.save
+    save
   end
 
   def update_from_comment_params!(p)
@@ -330,14 +330,14 @@ class Comment < ApplicationRecord
     else
       self.body = p.body
     end
-    self.save!
+    save!
     self
   end
 
   def validate
-    self.errors << "Commenter can't be blank" if @commenter.nil? || (@commenter || "").empty?
-    self.errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
-    self.errors << "Article must exist" if @article_id.nil? || @article_id == 0 || !(Article.exists?(@article_id))
+    errors << "Commenter can't be blank" if @commenter.nil? || (@commenter || "").empty?
+    errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
+    errors << "Article must exist" if @article_id.nil? || @article_id == 0 || !(Article.exists?(@article_id))
   end
 
   def article
@@ -379,7 +379,7 @@ class Comment < ApplicationRecord
   end
 
   def cache_key
-    if self.persisted?
+    if persisted?
       "comments/#{@id}"
     else
       "comments/new"
@@ -387,23 +387,23 @@ class Comment < ApplicationRecord
   end
 
   def cache_key_with_version
-    "#{self.cache_key}-#{@updated_at_raw}"
+    "#{cache_key}-#{@updated_at_raw}"
   end
 
   def after_create_commit
     Broadcasts.append(stream: "article_#{@article_id}_comments", target: "comments", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Comments.comment(self)))
-    parent = self.article
+    parent = article
     return if parent.nil?
     Broadcasts.replace(stream: "articles", target: "#{parent.dom_prefix}_#{parent.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Articles.article(parent)))
   end
 
   def after_update_commit
-    Broadcasts.replace(stream: "article_#{@article_id}_comments", target: "#{self.dom_prefix}_#{self.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Comments.comment(self)))
+    Broadcasts.replace(stream: "article_#{@article_id}_comments", target: "#{dom_prefix}_#{dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Comments.comment(self)))
   end
 
   def after_destroy_commit
-    Broadcasts.remove(stream: "article_#{@article_id}_comments", target: "#{self.dom_prefix}_#{self.dom_record_key}")
-    parent = self.article
+    Broadcasts.remove(stream: "article_#{@article_id}_comments", target: "#{dom_prefix}_#{dom_record_key}")
+    parent = article
     return if parent.nil?
     Broadcasts.replace(stream: "articles", target: "#{parent.dom_prefix}_#{parent.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Articles.article(parent)))
   end

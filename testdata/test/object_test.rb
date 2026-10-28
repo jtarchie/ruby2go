@@ -691,7 +691,7 @@ module ObjectTests
     def self.build(n) = new(n + 1)
 
     #: (Integer) -> CmShape
-    def self.build_explicit(n) = self.new(n * 2)
+    def self.build_explicit(n) = new(n * 2)
 
     #: () -> String
     def describe = "#{self.class.kind}:#{self.class.name}(#{size}) sides=#{self.class.sides}"
@@ -2506,7 +2506,7 @@ module ObjectTests
     end
 
     #: () -> String
-    def open = "#{name} opened with #{masked} #{self.check(4)}"
+    def open = "#{name} opened with #{masked} #{check(4)}"
 
     #: () -> String
     def via_top = top_helper(pin % 10)
