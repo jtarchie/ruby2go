@@ -28,7 +28,7 @@ class Article < ApplicationRecord
   end
 
   def created_at
-    @__t_created_at ||= ActiveSupport.parse_db_time(@created_at_raw)
+    @created_at ||= ActiveSupport.parse_db_time(@created_at_raw)
   end
 
   def created_at_raw
@@ -45,7 +45,7 @@ class Article < ApplicationRecord
   end
 
   def updated_at
-    @__t_updated_at ||= ActiveSupport.parse_db_time(@updated_at_raw)
+    @updated_at ||= ActiveSupport.parse_db_time(@updated_at_raw)
   end
 
   def updated_at_raw

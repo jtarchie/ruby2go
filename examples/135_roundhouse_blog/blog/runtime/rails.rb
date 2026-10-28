@@ -100,7 +100,7 @@ module Rails
   # One store per process. A fresh `Cache.new` per call would make every
   # `fetch_str` a miss, which is the no-op this used to be.
   def self.cache
-    @cache_store ||= Cache.new
+    @cache ||= Cache.new
   end
 
   def self.logger

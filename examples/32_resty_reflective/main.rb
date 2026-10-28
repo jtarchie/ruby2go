@@ -92,7 +92,7 @@ module Resty
 
     #: () -> untyped
     def constant
-      @class ||= begin
+      @constant ||= begin
         "#{namespace}::#{controller_path.camelize}Controller".constantize
       rescue NameError => e
         NullController
@@ -372,7 +372,7 @@ module Resty
 
       #: () -> untyped
       def resource
-        @resources ||= action.new(params).resource
+        @resource ||= action.new(params).resource
       end
 
       private
@@ -408,7 +408,7 @@ module Resty
 
       #: () -> untyped
       def resource
-        @resources ||= action.new(params).resource
+        @resource ||= action.new(params).resource
       end
 
       private
@@ -435,7 +435,7 @@ module Resty
 
       #: () -> untyped
       def resource
-        @resources ||= action.new(params).resource
+        @resource ||= action.new(params).resource
       end
 
       private
