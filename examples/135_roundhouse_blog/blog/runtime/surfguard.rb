@@ -122,10 +122,8 @@ module Surfguard
     out = []
     addresses.each do |ip|
       out << ip.to_s if ip.ipv4? && !blocked_ipaddr?(ip)
-    end
-    addresses.each do |ip|
-      out << ip.to_s if !ip.ipv4? && !blocked_ipaddr?(ip)
-    end
+    out << ip.to_s if !ip.ipv4? && !blocked_ipaddr?(ip)
+     end
     out
   end
 

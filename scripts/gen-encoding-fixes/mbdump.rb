@@ -40,16 +40,12 @@ elsif form == "4"
           out.puts "s #{hex(s)} #{st(s, e)}"
         end
       end
-    end
-  end
-  (0x81..0xfe).each do |a|
-    (0x30..0x39).each do |b|
-      [0x20, 0x7f, 0xff].each do |c|
+  [0x20, 0x7f, 0xff].each do |c|
         s = [a, b, c].pack("CCC")
         out.puts "s #{hex(s)} #{st(s, e)}"
       end
-    end
-  end
+     end
+   end
 end
 (0..0x10FFFF).each do |cp|
   next if cp.between?(0xD800, 0xDFFF)
