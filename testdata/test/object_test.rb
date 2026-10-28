@@ -6548,7 +6548,7 @@ module ObjectTests
       s.each { |v| vals << v }
       assert_equal [1, 2], vals
       assert_equal [1, 2], s.values_at(0, 1)
-      assert_equal 1, s.dig(:to_a)
+      assert_equal 1, s[:to_a]
       assert_equal({ to_a: 1, to_h: 2 }, s.deconstruct_keys(nil))
       assert_equal ShArr.new(1, 2), s
       assert_equal :v, { s => :v }[ShArr.new(1, 2)]

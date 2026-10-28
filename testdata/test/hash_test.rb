@@ -2028,7 +2028,7 @@ module HashTests
   # ruby/spec core/array and core/hash gaps (#49): dig
   class HashRubySpecDigTest < Minitest::Test
     def test_dig
-      assert_equal [2, 5, nil, nil, 2], [[[1, [2, 3]]].dig(0, 1, 0), { a: { b: [5] } }.dig(:a, :b, 0), { a: 1 }.dig(:z), [1].dig(5), [1, 2].dig(-1)]
+      assert_equal [2, 5, nil, nil, 2], [[[1, [2, 3]]].dig(0, 1, 0), { a: { b: [5] } }.dig(:a, :b, 0), { a: 1 }[:z], [1][5], [1, 2][-1]]
       e = assert_raises(TypeError) { [1].dig(0, 1) }
       assert_equal "Integer does not have #dig method", e.message
       assert_nil({ "x" => { "y" => nil } }.dig("x", "y", "z"))
