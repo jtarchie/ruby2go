@@ -4819,7 +4819,7 @@ module ControlTests
         1
       rescue StandardError
         2
-    else
+      else
       raise ArgumentError, "from else"
       end
       assert_equal "from else", e.message
