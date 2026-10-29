@@ -857,10 +857,15 @@ func (f *fctx) dynEachForward(n parser.Node, recv expr) expr {
 	// as MRI's `x.each(&nil)` is (decision 410)
 	rt, out := f.newTmp(), f.newTmp()
 	f.emit("var %s any = %s", rt, f.coerce(n, recv, TAny{}))
-	without := f.genDynCall(n, expr{code: rt, typ: TAny{}}, "each", nil)
+	// a lazy Enumerator over x's each, pulled one value at a time as MRI's is: an eager one collects every value first,
+	// which never ends for prime's infinite generator
+	without := fmt.Sprintf("rbEnumOf(rbSeq(func(y func(any)) { rbEachAny(%s, 1, func(xs_ ...any) { y(xs_[0]) }) }), %s, \"each\", nil, nil)", rt, rt)
+	if k != 1 {
+		without = f.coerce(n, f.genDynCall(n, expr{code: rt, typ: TAny{}}, "each", nil), TAny{})
+	}
 	f.emit("var %s any", out)
 	f.emit("if blk == nil {")
-	f.emit("\t%s = %s", out, f.coerce(n, without, TAny{}))
+	f.emit("\t%s = %s", out, without)
 	f.emit("} else {")
 	f.emit("\t%s = rbEachAny(%s, %d, func(xs_ ...any) { %s })", out, rt, k, call)
 	f.emit("}")

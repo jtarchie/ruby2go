@@ -55,10 +55,49 @@ func (f *fctx) bignumLocals() map[string]bool {
 
 // promotedType is Bignum for an unannotated write of an Integer or Bignum to a promoted local, else annotated.
 func (f *fctx) promotedType(name string, val expr, annotated Type) Type {
+	if annotated == nil && f.nilElemLocals[name] {
+		if t := optElemArray(val.typ); t != nil {
+			return t
+		}
+	}
 	if annotated != nil || !f.promoted[name] || !isClass(val.typ, "Integer") && !isClass(val.typ, "Bignum") {
 		return annotated
 	}
 	return f.cls("Bignum")
+}
+
+// optElemArray is Array[T?] for an Array[T] whose T cannot hold nil, else nil.
+func optElemArray(t Type) Type {
+	c, ok := t.(TClass)
+	if !ok || c.C.RubyName != "Array" || len(c.Args) != 1 {
+		return nil
+	}
+	if e := c.Args[0]; !isOpt(e) && !isAny(e) && !isNil(e) && !isUnion(e) {
+		return TClass{C: c.C, Args: []Type{TOpt{Elem: e}}}
+	}
+	return nil
+}
+
+// nilElemLocals are the locals a gem method stores nil into an element of (prime's sieve: `segment[i] = nil` after
+// `segment = range.step(2).to_a`): each is typed Array[T?], as if annotated, and its Array[T] value converted where it
+// is assigned (decision 411). ponytail: the conversion copies, so an alias of the assigned Array no longer sees the
+// writes; a fresh value (to_a, map, a literal) is the case this serves.
+func nilElemLocals(body parser.Node) map[string]bool {
+	var out map[string]bool
+	walkNode(body, func(n parser.Node) (bool, bool) {
+		if c, ok := n.(*parser.CallNode); ok && c.Name == "[]=" {
+			args := callArgs(c)
+			_, isNil := lastNode(args).(*parser.NilNode)
+			if r, local := c.Receiver.(*parser.LocalVariableReadNode); local && isNil && len(args) == 2 {
+				if out == nil {
+					out = map[string]bool{}
+				}
+				out[r.Name] = true
+			}
+		}
+		return false, !opensScope(n)
+	})
+	return out
 }
 
 // growthLocals is spinel's loop-growth promotion (analyze_pass.c): `f = f * i`, `f *= i`, `c = a + b; a = b; b = c`.

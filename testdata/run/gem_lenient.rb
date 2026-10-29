@@ -14,3 +14,5 @@ p g.names, g.args
 g.reset
 p g.names, g.args
 p g.multi
+p g.sieve(10)
+p g.upto_inf(3)

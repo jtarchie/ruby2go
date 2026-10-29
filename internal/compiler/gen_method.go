@@ -19,6 +19,12 @@ func (f *fctx) genBody(body parser.Node, params []*local, t tail, prologue func(
 	if f.intMode() == "promote" {
 		f.promoted = growthLocals(body)
 	}
+	savedNil := f.nilElemLocals
+	defer func() { f.nilElemLocals = savedNil }()
+	f.nilElemLocals = nil
+	if f.lenient() {
+		f.nilElemLocals = nilElemLocals(body)
+	}
 	closures, lambdaClosure, loops, begins, unionArm, retryFlag, retryDepth := f.closures, f.lambdaClosure, f.loops, f.begins, f.unionArm, f.retryFlag, f.retryDepth
 	fresh := func() {
 		f.locals = map[localKey]*localInfo{}

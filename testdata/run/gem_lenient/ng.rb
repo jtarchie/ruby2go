@@ -23,4 +23,23 @@ class Ng
     name = "n" if @names
     [name, arg]
   end
+
+  # nil stored into a fresh Array's element widens it to Array[T?] (prime's sieve, decision 411)
+  def sieve(max)
+    segment = (2..max).to_a
+    segment.each_index { |i| segment[i] = nil if segment[i].even? && segment[i] > 2 }
+    segment.compact!
+    segment
+  end
+
+  # an endless Float range runs until break (prime's `(1..Float::INFINITY).each`)
+  def upto_inf(n)
+    seen = []
+    (1..Float::INFINITY).each do |i|
+      break if i > n
+
+      seen << i
+    end
+    seen
+  end
 end

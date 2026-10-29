@@ -39,8 +39,8 @@ func (f *fctx) countedLoopHead(n *parser.CallNode, e *entry, recv expr, codes []
 		return fmt.Sprintf("for %s := %s; %s >= %s && %s <= %s; %s-- {", gp, from, gp, to, gp, from, gp)
 	case m.Owner == f.c.classes["Range"] && m.Name == "each" && len(codes) == 0 && isClass(rangeElem(recv.typ), "Integer"):
 		rn := rangeLiteral(n.Receiver)
-		if rn == nil || rn.Left == nil || rn.Right == nil {
-			return "" // endless, beginless or a Range value: rbRangeEach knows its flags
+		if rn == nil || rn.Left == nil || rn.Right == nil || !f.integerNode(rn.Right) {
+			return "" // endless, beginless, `1..Float::INFINITY` (prime's sieve: an inf flag, e unset) or a Range value: rbRangeEach knows its flags
 		}
 		if gp = f.countedVar(n, names, gp); gp == "" {
 			return ""
@@ -90,4 +90,11 @@ func rangeLiteral(n parser.Node) *parser.RangeNode {
 			return nil
 		}
 	}
+}
+
+// integerNode: n's value is an Integer (a range's end that the counted loop can compare against).
+func (f *fctx) integerNode(n parser.Node) bool {
+	var e expr
+	f.probe(func() { e = f.genExpr(n, nil) })
+	return isClass(e.typ, "Integer")
 }
