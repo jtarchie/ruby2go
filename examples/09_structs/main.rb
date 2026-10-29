@@ -46,7 +46,7 @@ class Bird < Animal
 end
 
 zoo = [Dog.new("Rex"), Bird.new("Tweety"), Animal.new("Blob", 0)]
-zoo.each do |a| 
+zoo.each do |a|
   puts a.speak
                puts a
 end
