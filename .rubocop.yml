@@ -161,3 +161,66 @@ Style/GlobalVars:
   Enabled: false
 Style/MultilineBlockChain:
   Enabled: false
+Style/StringConcatenation:
+  # tests exercise String#+ and << chains; the prelude builds Go text with +
+  Enabled: false
+Style/SpecialGlobalVars:
+  # tests exercise $! $~ $0 and friends by their short names
+  Enabled: false
+Style/InfiniteLoop:
+  # tests exercise while true / until false
+  Enabled: false
+Style/NumericPredicate:
+  # tests exercise == 0 / > 0 comparisons themselves
+  Enabled: false
+Lint/Loop:
+  # tests exercise begin...end while
+  Enabled: false
+Style/For:
+  # tests exercise for loops
+  Enabled: false
+Style/YodaCondition:
+  # tests exercise literal-first comparisons
+  Enabled: false
+Style/DoubleNegation:
+  # tests exercise !!x
+  Enabled: false
+Naming/MemoizedInstanceVariableName:
+  # fixtures memoize under their own ivar names
+  Enabled: false
+Style/ClassAndModuleChildren:
+  # tests exercise class A::B compact definitions
+  Enabled: false
+Style/GlobalStdStream:
+  # tests exercise STDOUT/STDERR constants
+  Enabled: false
+Lint/InheritException:
+  # tests exercise subclassing Exception
+  Enabled: false
+Style/HashEachMethods:
+  # tests exercise each_pair/keys.each forms
+  Enabled: false
+Lint/BooleanSymbol:
+  # tests exercise :true and :false
+  Enabled: false
+Lint/InterpolationCheck:
+  # tests exercise single-quoted #{} text
+  Enabled: false
+Style/MutableConstant:
+  # tests and the prelude rely on unfrozen constants (Go bodies mutate them)
+  Enabled: false
+Style/RedundantInterpolation:
+  # tests exercise "#{x}" for to_s coercion
+  Enabled: false
+Style/CombinableLoops:
+  # tests exercise consecutive loops over one collection
+  Enabled: false
+Style/SymbolProc:
+  # tests exercise explicit block forms against &:sym
+  Enabled: false
+Style/FormatString:
+  # tests exercise format, sprintf and String#% alike
+  Enabled: false
+Style/PercentLiteralDelimiters:
+  # the prelude's %x{} Go bodies use braces; other delimiters break on unbalanced Go text
+  Enabled: false
