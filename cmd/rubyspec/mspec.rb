@@ -342,6 +342,18 @@ def ruby_exe(*, **) = raise(Minitest::Skip, "rugaroo: ruby_exe runs Ruby source 
 #: (*untyped, **untyped) -> bot
 def ruby_cmd(*, **) = raise(Minitest::Skip, "rugaroo: ruby_cmd runs Ruby source in a subprocess (no eval)")
 
+# mspec's argv: ARGV holds the given words while the block runs (library/getoptlong).
+#: [T] (Array[String]) { () -> T } -> T
+def argv(args)
+  saved = ARGV.dup
+  ARGV.replace(args)
+  begin
+    yield
+  ensure
+    ARGV.replace(saved)
+  end
+end
+
 # mspec's suppress_warning: the block runs with $VERBOSE nil, so warn prints nothing.
 #: [T] () { () -> T } -> T
 def suppress_warning

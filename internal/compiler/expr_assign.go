@@ -583,6 +583,10 @@ func (f *fctx) assignCall(t parser.Node, recv parser.Node, name string, args []p
 func (f *fctx) multiLiteral(arr *parser.ArrayNode, lefts []parser.Node) []expr {
 	vals := make([]expr, 0, len(arr.Elements))
 	for i, el := range arr.Elements {
+		if _, lit := el.(*parser.NilNode); lit && f.lenient() && f.targetType(lefts[i]) == nil {
+			vals = append(vals, expr{code: "nil", typ: TNil{}}) // `name, arg = nil, ""` (getoptlong): the target is written nil, as `name = nil` is (decision 410)
+			continue
+		}
 		e := f.genExpr(el, f.targetType(lefts[i]))
 		if isNil(e.typ) {
 			t := f.targetType(lefts[i])

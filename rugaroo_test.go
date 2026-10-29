@@ -659,16 +659,7 @@ func testExample(t *testing.T, dir, gen string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compile := CompileWithGems                         // gems as the CLI finds them (decision 173)
-	if gems := directives(src, "gem"); len(gems) > 0 { // `# gem: dir`: a directory compiled as a gem, as `rugaroo build -gem dir` (decision 406)
-		gemDirs := make([]string, len(gems))
-		for i, g := range gems {
-			gemDirs[i] = filepath.Join(dir, g)
-		}
-		compile = func(ctx context.Context, name string, s []byte, lp ...string) ([]byte, []string, error) {
-			return CompileWithGemDirs(ctx, name, s, gemDirs, lp...)
-		}
-	}
+	compile := gemCompile(dir, src)
 	if len(directives(src, "trace")) > 0 { // `# trace: why`: compiled from what an MRI run loads, as `rugaroo build -trace` (decision 296)
 		compile = func(ctx context.Context, name string, _ []byte, lp ...string) ([]byte, []string, error) {
 			return CompileTrace(ctx, name, [][]string{nil}, nil, lp...) // ponytail: one run with no args; pass `# args:` here when a traced example takes some
@@ -724,7 +715,7 @@ func transpile(t *testing.T, name string, src []byte) string {
 	t.Helper()
 	gen := t.TempDir()
 	writeModule(t, gen)
-	writeGenerated(t, gen, name, src, CompileWithGems) // a test file requiring rackup compiles the gem (decision 176)
+	writeGenerated(t, gen, name, src, gemCompile(filepath.Dir(name), src)) // a test file requiring rackup compiles the gem (decision 176)
 	stablePreludeLines(t, filepath.Join(gen, "main.go"))
 	return gen
 }
@@ -741,6 +732,22 @@ func stablePreludeLines(t *testing.T, path string) {
 	err = os.WriteFile(path, preludeLine.ReplaceAll(code, []byte("${1}:1")), 0o600) //nolint:gosec // under t.TempDir()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// gemCompile is CompileWithGems, which finds gems as the CLI does (decision 173), with each `# gem: dir` (relative to dir)
+// compiled as a gem the program carries, as `rugaroo build -gem dir` (decision 406).
+func gemCompile(dir string, src []byte) func(context.Context, string, []byte, ...string) ([]byte, []string, error) {
+	gems := directives(src, "gem")
+	if len(gems) == 0 {
+		return CompileWithGems
+	}
+	gemDirs := make([]string, len(gems))
+	for i, g := range gems {
+		gemDirs[i] = filepath.Join(dir, g)
+	}
+	return func(ctx context.Context, name string, s []byte, lp ...string) ([]byte, []string, error) {
+		return CompileWithGemDirs(ctx, name, s, gemDirs, lp...)
 	}
 }
 

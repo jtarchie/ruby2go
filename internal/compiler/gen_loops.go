@@ -221,6 +221,17 @@ func (f *fctx) genBreak(n *parser.BreakNode) {
 		f.emitBreak(l)
 		return
 	}
+	if n.Arguments != nil && f.lenient() && len(f.loops) > 0 && f.loops[len(f.loops)-1].kind == loopIter {
+		// a gem's `break v` out of an iterator whose value nothing reads (prime's each, yielding into a void block): v
+		// runs for its effects, and the call's value is nil, as a broken-out gem loop's is (decisions 233, 410)
+		for _, a := range n.Arguments.Arguments {
+			if v := f.genExpr(a, nil); v.code != "" && !v.done && !pureNode(a) {
+				f.emit("_ = %s", v.code)
+			}
+		}
+		f.emitBreak(f.loops[len(f.loops)-1])
+		return
+	}
 	if n.Arguments != nil {
 		f.errorf(n, "break with a value is not supported")
 	}

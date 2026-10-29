@@ -361,10 +361,123 @@ func (c *Compiler) collectClass(ctx context.Context, f *File, n *parser.ClassNod
 		c.hooks = append(c.hooks, classHook{name: "inherited", cls: cls, node: n, file: f})
 	}
 	c.collectBody(ctx, f, cls, n.Body, append(append([]*Class(nil), scope...), cls), true)
+	c.addInstanceDelegators(ctx, cls, append(append([]*Class(nil), scope...), cls))
 	if props, ok := f.sorbetStructs[n]; ok && cls.Methods["initialize"] == nil {
 		c.addStructInit(ctx, f, n, cls, props, append(append([]*Class(nil), scope...), cls))
 	}
 	c.addHashDefaultIdx(ctx, f, n, cls, append(append([]*Class(nil), scope...), cls))
+}
+
+// addInstanceDelegators makes each public instance method a delegator hook saw defined (after it, in its file) a
+// class method forwarding to the hook's target, `def self.each(...) = instance.each(...)`, as the hook's
+// def_delegator would at load time (prime's Prime.each, decision 410). A class method of the name already wins.
+func (c *Compiler) addInstanceDelegators(ctx context.Context, cls *Class, scope []*Class) {
+	h := cls.instanceDelegator
+	if h == nil {
+		return
+	}
+	var src strings.Builder
+	for _, m := range cls.MethodList {
+		if m.Kind != kindDef || m.Private || m.Node == nil || m.File != h.file || m.Node.Location.StartOffset < h.offset || !isIdentMethod(m.Name) ||
+			slices.ContainsFunc(cls.singletonDefs, func(d singletonDef) bool { return d.node.Name == m.Name }) {
+			continue
+		}
+		if def, ok := delegatorDef(m, h.target); ok {
+			src.WriteString(def)
+		}
+	}
+	if src.Len() == 0 {
+		return
+	}
+	const label = "instance delegators"
+	sf := c.synthFile(ctx, h.file, h.at, label, src.String(), synthOpt{Origin: originSource, Pin: true})
+	for _, d := range c.synthDefs(h.file, h.at, label, sf) {
+		c.addMethod(sf, cls, d, false, scope)
+	}
+}
+
+// delegatorDef is `def self.name(<m's parameters>) = target.name(<each passed on>)`: m's own parameter list, defaults
+// and all, so the gem's signature for the class method types it (prime's sig/), and a block passed on whether or not m
+// names one. False for a parameter list it cannot spell (a destructuring parameter).
+func delegatorDef(m *Method, target string) (string, bool) {
+	params, args, ok := delegatorParams(m)
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf("def self.%s(%s) = %s.%s(%s)\n", m.Name, strings.Join(params, ", "), target, m.Name, strings.Join(args, ", ")), true
+}
+
+// delegatorParams is m's parameter list as written and the arguments that pass each on, a block last whether or not m
+// names one; false for one it cannot spell (a destructuring parameter).
+func delegatorParams(m *Method) (params, args []string, ok bool) {
+	block := "&__blk"
+	defer func() {
+		if ok {
+			params, args = append(params, block), append(args, block)
+		}
+	}()
+	ps := m.Node.Parameters
+	if ps == nil {
+		return nil, nil, true
+	}
+	if ps.Block != nil && ps.Block.Name != nil {
+		block = "&" + *ps.Block.Name
+	}
+	for _, n := range slices.Concat(ps.Requireds, ps.Optionals) {
+		switch p := n.(type) {
+		case *parser.RequiredParameterNode:
+			params, args = append(params, p.Name), append(args, p.Name)
+		case *parser.OptionalParameterNode:
+			params, args = append(params, p.Name+" = "+m.File.text(p.Value.GetLocation())), append(args, p.Name)
+		default:
+			return nil, nil, false
+		}
+	}
+	rest, ok := spreadParam(ps.Rest, "*", "__rest")
+	if !ok {
+		return nil, nil, false
+	}
+	params, args = append(params, rest...), append(args, rest...)
+	for _, n := range ps.Posts {
+		p, isReq := n.(*parser.RequiredParameterNode)
+		if !isReq {
+			return nil, nil, false
+		}
+		params, args = append(params, p.Name), append(args, p.Name)
+	}
+	for _, n := range ps.Keywords {
+		switch p := n.(type) {
+		case *parser.RequiredKeywordParameterNode:
+			params, args = append(params, p.Name+":"), append(args, p.Name+": "+p.Name)
+		case *parser.OptionalKeywordParameterNode:
+			params, args = append(params, p.Name+": "+m.File.text(p.Value.GetLocation())), append(args, p.Name+": "+p.Name)
+		}
+	}
+	kwrest, ok := spreadParam(ps.KeywordRest, "**", "__kw")
+	if !ok {
+		return nil, nil, false
+	}
+	return append(params, kwrest...), append(args, kwrest...), true
+}
+
+// spreadParam is a `*rest` or `**opts` parameter as both its declaration and its pass-on (one string, used twice), named
+// fallback when anonymous; empty for none, false for a form it cannot spell (`**nil`).
+func spreadParam(n parser.Node, sigil, fallback string) ([]string, bool) {
+	var name *string
+	switch p := n.(type) {
+	case nil:
+		return nil, true
+	case *parser.RestParameterNode:
+		name = p.Name
+	case *parser.KeywordRestParameterNode:
+		name = p.Name
+	default:
+		return nil, false
+	}
+	if name == nil {
+		return []string{sigil + fallback}, true
+	}
+	return []string{sigil + *name}, true
 }
 
 // addHashDefaultIdx gives a Hash subclass that overrides `default(key)` but not `[]` a `[]` that calls it for a
@@ -473,6 +586,62 @@ func (c *Compiler) collectModule(ctx context.Context, f *File, n *parser.ModuleN
 }
 
 // collectSingletonClass is `class << self`: its defs are class methods, as `def self.x` (a bare private there makes them private).
+// delegatorHook is the target of `def method_added(m) = (class << self; self; end).def_delegator(:instance, m)` (or
+// `singleton_class.def_delegator`), a hook that forwards each instance method defined after it from the class: "" when
+// d is not one.
+func delegatorHook(d *parser.DefNode) string {
+	if d.Name != "method_added" || d.Parameters == nil || len(d.Parameters.Requireds) != 1 {
+		return ""
+	}
+	param, ok := d.Parameters.Requireds[0].(*parser.RequiredParameterNode)
+	if !ok {
+		return ""
+	}
+	var call *parser.CallNode
+	switch b := d.Body.(type) {
+	case *parser.StatementsNode:
+		if len(b.Body) == 1 {
+			call, _ = b.Body[0].(*parser.CallNode)
+		}
+	case *parser.CallNode:
+		call = b
+	}
+	if call == nil || call.Name != "def_delegator" || !singletonSelf(call.Receiver) {
+		return ""
+	}
+	args := callArgs(call)
+	if len(args) != 2 {
+		return ""
+	}
+	target, ok := symbolName(args[0])
+	if r, isLocal := args[1].(*parser.LocalVariableReadNode); !ok || !isLocal || r.Name != param.Name {
+		return ""
+	}
+	return target
+}
+
+// singletonSelf is `(class << self; self; end)` or `singleton_class`: the class's singleton class.
+func singletonSelf(n parser.Node) bool {
+	if p, ok := n.(*parser.ParenthesesNode); ok {
+		if st, ok := p.Body.(*parser.StatementsNode); ok && len(st.Body) == 1 {
+			n = st.Body[0]
+		}
+	}
+	switch x := n.(type) {
+	case *parser.CallNode:
+		return x.Name == "singleton_class" && (x.Receiver == nil || isSelf(x.Receiver)) && x.Arguments == nil
+	case *parser.SingletonClassNode:
+		_, self := x.Expression.(*parser.SelfNode)
+		st, ok := x.Body.(*parser.StatementsNode)
+		if !self || !ok || len(st.Body) != 1 {
+			return false
+		}
+		_, ret := st.Body[0].(*parser.SelfNode)
+		return ret
+	}
+	return false
+}
+
 func (c *Compiler) collectSingletonClass(f *File, cls *Class, n *parser.SingletonClassNode, scope []*Class) {
 	if _, ok := n.Expression.(*parser.SelfNode); !ok || cls == nil {
 		target, _ := c.lookupConst(f, n.Expression, scope) // `class << Section`: that class's singleton, from wherever it is opened
@@ -491,6 +660,10 @@ func (c *Compiler) collectSingletonClass(f *File, cls *Class, n *parser.Singleto
 		case *parser.DefNode:
 			if s.Receiver != nil {
 				c.errorf(f, s, "a def with a receiver inside `class << self` is not supported")
+			}
+			if target := delegatorHook(s); target != "" && c.gemFile(f) { // its methods are made here, at compile time (decision 410)
+				cls.instanceDelegator = &instanceDelegator{target: target, file: f, offset: s.Location.StartOffset, at: s}
+				continue
 			}
 			cls.singletonDefs = append(cls.singletonDefs, singletonDef{node: s, private: private, scope: scope, file: f})
 		case *parser.CallNode:

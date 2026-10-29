@@ -813,6 +813,24 @@ class Array < Object
     return out
   }
 
+  # MRI's compact!: the nils removed in place; nil when there were none (prime's EratosthenesSieve).
+  #: () -> Array[E]?
+  def compact! = %x{
+    self.rbCheckFrozen()
+    out := self.s[:0]
+    for _, x := range self.s {
+      if rbUnbox(any(x)) != nil {
+        out = append(out, x)
+      }
+    }
+    if len(out) == len(self.s) {
+      return nil
+    }
+    clear(self.s[len(out):]) // the tail no longer holds elements: let them be collected
+    self.s = out
+    return &self
+  }
+
   #: () -> self
   def clear = %x{
     self.rbCheckFrozen()

@@ -780,14 +780,14 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	case isOptRecv:
 		recv = f.nilGuard(n, recv, n.Name)
 	}
+	valued := f.kernelLoopValue(n, t)
+	f.iterValue = valued
 	f.genIterLoop(n, e, recv)
 	if safe {
 		f.indent--
 		f.emit("}")
 	}
-	if t.kind != tailNone {
-		f.emptyTail(n, t)
-	}
+	f.iterEmptyTail(n, t, valued)
 	return true
 }
 
@@ -947,6 +947,27 @@ func (f *fctx) genFor(n *parser.ForNode, t tail) {
 	f.emptyTail(n, t)
 }
 
+// iterEmptyTail is an iterator call's value when the loop ends: nil, unless a valued loop's assignment already started it so.
+func (f *fctx) iterEmptyTail(n parser.Node, t tail, valued *tail) {
+	if t.kind != tailNone && (valued == nil || t.kind != tailAssign) {
+		f.emptyTail(n, t)
+	}
+}
+
+// kernelLoopValue is the tail a gem's `loop do ... break v ... end` in value position puts v in, or nil (prime's each,
+// decision 410), as a valued while's (decision 364).
+func (f *fctx) kernelLoopValue(n *parser.CallNode, t tail) *tail {
+	blk, ok := n.Block.(*parser.BlockNode)
+	if !ok || n.Name != "loop" || !kernelRecv(n) || !f.lenient() {
+		return nil
+	}
+	st, ok := blk.Body.(*parser.StatementsNode)
+	if !ok {
+		return nil
+	}
+	return f.loopValue(st, t)
+}
+
 // genIterLoop emits the range loop of iterator entry e on recv.
 func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	e, recv, args := f.numericIterArgs(e, recv, callArgs(n))
@@ -982,6 +1003,7 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	head := f.countedLoopHead(n, e, recv, codes, names, goParams) // its temps go above the label pushLoop places
 	f.zipVal = false
 	f.pushLoop(loopIter)
+	f.loops[len(f.loops)-1].value, f.iterValue = f.iterValue, nil
 	switch {
 	case head != "":
 		f.emit("%s", head)

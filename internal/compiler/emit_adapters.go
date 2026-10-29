@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -387,14 +388,20 @@ func kwAdapterArgs(sm *Method, env map[string]Type) []parser.Node {
 }
 
 // seqDropped counts the trailing nil-defaulted params an `each` seq adapter leaves out, so it answers Enumerable's
-// `each()` slot (concurrent-ruby's `each(head = nil)`); it passes nil for them.
+// `each()` slot (concurrent-ruby's `each(head = nil)`); it passes nil for them. When the callee runs its own defaults
+// (rbArgc), every trailing optional param is left out and runs its default (prime's `each(ubound = nil, generator =
+// EratosthenesGenerator.new)`, decision 410).
 func seqDropped(m *Method) int {
 	if m.Name != "each" {
 		return 0
 	}
 	k := 0
 	for i := len(m.Params) - 1; i >= 0; i-- {
-		if _, ok := m.Params[i].Default.(*parser.NilNode); !ok || m.Params[i].Keyword || m.calleeDefaults {
+		p := m.Params[i]
+		if p.Keyword || p.Rest || p.Default == nil {
+			break
+		}
+		if _, isNil := p.Default.(*parser.NilNode); !isNil && !m.calleeDefaults {
 			break
 		}
 		k++
@@ -402,13 +409,23 @@ func seqDropped(m *Method) int {
 	return k
 }
 
-// seqArgs is argNames(m) with the params seqDropped leaves out passed as nil.
+// seqArgs is argNames(m) with the params seqDropped leaves out passed as nil: a value-optional's zero (`ubound = nil`
+// that a call typed Integer is an rbOpt[Integer], prime's each, decision 410), else Go's nil.
 func (c *Compiler) seqArgs(m *Method) string {
 	as := strings.Split(c.argNames(m), ", ")
-	for _, p := range m.Params[len(m.Params)-seqDropped(m):] {
+	dropped := seqDropped(m)
+	for _, p := range m.Params[len(m.Params)-dropped:] {
 		if i := slices.Index(as, goLocalName(p.Name)); i >= 0 {
 			as[i] = "nil"
+			if t := c.goType(p.Type); m.calleeDefaults {
+				as[i] = "rbZero[" + t + "]()" // the callee runs the default: rbArgc says it was not passed
+			} else if strings.HasPrefix(t, "rbOpt[") {
+				as[i] = t + "{}"
+			}
 		}
+	}
+	if m.calleeDefaults && len(as) > 0 && as[0] == "rbArgc" {
+		as[0] = strconv.Itoa(len(m.Params) - dropped)
 	}
 	return strings.Join(as, ", ")
 }
@@ -563,6 +580,7 @@ func (c *Compiler) seqAdapterSig(m *Method, env map[string]Type) (name, params, 
 	it := *m
 	it.Iterator = true
 	it.Params = m.Params[:len(m.Params)-seqDropped(m)]
+	it.calleeDefaults = m.calleeDefaults && slices.ContainsFunc(it.Params, func(p Param) bool { return p.Default != nil }) // the adapter passes the count, its callers do not
 	params, ret = c.sig(&it, env)
 	return goMethodName(m.Name), params, ret
 }

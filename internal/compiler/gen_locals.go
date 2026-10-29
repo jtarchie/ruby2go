@@ -105,7 +105,17 @@ func (f *fctx) readLocal(n *parser.LocalVariableReadNode) *local {
 }
 
 // assignLocal emits `x := v` / `x = v` and returns the local.
+// gemVoidValue is a gem's void value as an assignment's: `last_value = yield x` into a block the gem's sig says is void
+// (prime's each) runs the call and assigns nil (decisions 119, 410).
+func (f *fctx) gemVoidValue(val expr) expr {
+	if isVoid(val.typ) && !isNil(val.typ) && f.lenient() {
+		return f.voidAsNil(val)
+	}
+	return val
+}
+
 func (f *fctx) assignLocal(n parser.Node, name string, val expr, annotated Type) expr {
+	val = f.gemVoidValue(val)
 	existing := f.visibleLocal(name)
 	if existing == nil {
 		existing = f.sameScopeLocal(name)

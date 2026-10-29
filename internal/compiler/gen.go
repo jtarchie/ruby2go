@@ -10,6 +10,7 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
+	iterValue      *tail                         // the value tail the next genIterLoop gives its loop frame, for `break v` (decision 410)
 	storageWrite   bool                          // discovery: the ivar write generating stores a value read out of a container (decision 392)
 	destructuring  bool                          // discovery: a multiple assignment's targets take fields of a container (decision 392)
 	aliasSrc       map[localKey]*parser.CallNode // a gem local holding an Array slot's String, which its bang edits write back (decision 331)

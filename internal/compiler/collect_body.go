@@ -678,6 +678,17 @@ func (c *Compiler) folds(f *File, n parser.Node, scope []*Class) bool {
 	return ok
 }
 
+// singletonVisibility is `public :a, :b` / `private :a` inside `class << self`: it sets the named class methods'.
+func (c *Compiler) singletonVisibility(f *File, cls *Class, s *parser.CallNode) {
+	for _, name := range c.symbolArgs(f, s, callArgs(s)) {
+		for i := range cls.singletonDefs {
+			if cls.singletonDefs[i].node.Name == name {
+				cls.singletonDefs[i].private = s.Name == "private"
+			}
+		}
+	}
+}
+
 // collectSingletonCall is one call in a `class << self` body; it returns the private/public default after it.
 func (c *Compiler) collectSingletonCall(f *File, cls *Class, s *parser.CallNode, private bool, scope []*Class) bool {
 	switch {
@@ -686,13 +697,7 @@ func (c *Compiler) collectSingletonCall(f *File, cls *Class, s *parser.CallNode,
 	case s.Name == "public" && s.Receiver == nil && s.Arguments == nil:
 		private = false
 	case (s.Name == "public" || s.Name == "private") && s.Receiver == nil: // `public :a, :b`: of an extended module's method, ignored as collectVisibilityCall does
-		for _, name := range c.symbolArgs(f, s, callArgs(s)) {
-			for i := range cls.singletonDefs {
-				if cls.singletonDefs[i].node.Name == name {
-					cls.singletonDefs[i].private = s.Name == "private"
-				}
-			}
-		}
+		c.singletonVisibility(f, cls, s)
 	case s.Receiver == nil && slices.Contains([]string{"attr", "attr_reader", "attr_writer", "attr_accessor", "alias_method"}, s.Name):
 		cls.singletonMisc = append(cls.singletonMisc, singletonMisc{node: s, private: private, scope: scope, file: f})
 	case (s.Name == "require" || s.Name == "require_relative") && s.Receiver == nil && c.methodRequiresRuntime: // the traced entry loaded it (decision 197)
@@ -704,6 +709,9 @@ func (c *Compiler) collectSingletonCall(f *File, cls *Class, s *parser.CallNode,
 			cls.extends = append(cls.extends, cls.Includes[last])
 			cls.Includes = cls.Includes[:last]
 		}
+	case s.Name == "extend" && s.Receiver == nil && c.gemFile(f):
+		// ponytail: `class << self; extend Forwardable`: the singleton class's own singleton, which only a load-time hook
+		// (prime's def_delegator) calls; the hook's methods are made at compile time (decision 410)
 	case s.Name == "prepend" && s.Receiver == nil && !f.isPrelude(): // X.singleton_class.prepend(M) (decision 199)
 		for _, a := range callArgs(s) {
 			c.prepends = append(c.prepends, pendingPrepend{target: cls, singleton: true, mod: constRef{node: a, scope: scope, file: f}})

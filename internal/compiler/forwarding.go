@@ -60,7 +60,7 @@ func (c *Compiler) resolveForwarding(m *Method) {
 		tps = tps[given:]
 	}
 	for _, p := range tps {
-		if p.Default != nil && target.File != m.File && !isPlainLiteral(p.Default) { // a literal means the same in any file
+		if p.Default != nil && target.File != m.File && !isPlainLiteral(p.Default) && !sameSource(m.File, target.File) { // a literal means the same in any file
 			c.errorf(m.File, call, "def %s(...): %s's defaults are in another file; annotate %s instead", m.Name, target, m.Name)
 		}
 		m.Params = append(m.Params, p)
@@ -240,4 +240,10 @@ func (c *Compiler) forwardArgs(m *Method, call parser.Node, lead, given int) {
 			n.Block = blk
 		}
 	}
+}
+
+// sameSource: a generated file that stands for the real one (an instance delegator made for its class, decision 410)
+// resolves a copied default's constants as the real file does.
+func sameSource(gen, real *File) bool {
+	return gen != nil && real != nil && gen.synth && gen.path != "" && gen.path == real.path
 }

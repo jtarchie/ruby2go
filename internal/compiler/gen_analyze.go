@@ -322,5 +322,8 @@ func refineContainer(t Type, open bool, elems [2][]Type) Type {
 			return nil
 		}
 	}
+	if isOpt(t) { // a container ivar a gem resets to nil stays optional (decision 410)
+		return TOpt{Elem: TClass{C: c.C, Args: args}}
+	}
 	return TClass{C: c.C, Args: args}
 }

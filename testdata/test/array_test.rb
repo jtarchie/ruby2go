@@ -1035,6 +1035,15 @@ module ArrayTests
       assert_equal ["1", "3"], seen
     end
 
+    # compact! drops them in place, and answers nil when there were none (prime's sieve)
+    def test_compact_bang_in_place
+      xs = [1, nil, 2, nil] #: Array[Integer?]
+      assert_equal [1, 2], xs.compact!
+      assert_equal [1, 2], xs
+      assert_nil xs.compact!
+      assert_equal [1, 2], xs
+    end
+
     # == across element types
     def test_across_element_types
       ints = [1, 2] #: Array[Integer]

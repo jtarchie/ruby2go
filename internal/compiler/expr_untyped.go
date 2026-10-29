@@ -850,7 +850,21 @@ func (f *fctx) dynEachForward(n parser.Node, recv expr) expr {
 	if !isVoid(f.blockSig.Ret) {
 		call = "_ = " + call
 	}
-	return expr{code: fmt.Sprintf("rbEachAny(any(%s), %d, func(xs_ ...any) { %s })", recv.code, k, call), typ: TAny{}}
+	if f.m == nil || f.m.Block == nil || !f.m.Block.Optional && !f.m.Block.Untyped {
+		return expr{code: fmt.Sprintf("rbEachAny(any(%s), %d, func(xs_ ...any) { %s })", recv.code, k, call), typ: TAny{}}
+	}
+	// called without a block (prime's `Prime.instance.each` over a generator a mock made untyped): x.each with none,
+	// as MRI's `x.each(&nil)` is (decision 410)
+	rt, out := f.newTmp(), f.newTmp()
+	f.emit("var %s any = %s", rt, f.coerce(n, recv, TAny{}))
+	without := f.genDynCall(n, expr{code: rt, typ: TAny{}}, "each", nil)
+	f.emit("var %s any", out)
+	f.emit("if blk == nil {")
+	f.emit("\t%s = %s", out, f.coerce(n, without, TAny{}))
+	f.emit("} else {")
+	f.emit("\t%s = rbEachAny(%s, %d, func(xs_ ...any) { %s })", out, rt, k, call)
+	f.emit("}")
+	return expr{code: out, typ: TAny{}}
 }
 
 // isClassObjHook is the synthesized receiver of a class hook call (hookCall): a class object.

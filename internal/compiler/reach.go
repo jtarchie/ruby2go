@@ -154,6 +154,7 @@ func (c *Compiler) pruneGemMethods() {
 				changed = true
 				for _, p := range ps {
 					r.from, r.file, r.scope = "constant "+name, p.file, p.scope
+					r.nestedWrites(p.value)
 					r.walk(p.value, false)
 				}
 			}
@@ -389,6 +390,7 @@ func (r *reach) walk(n parser.Node, skipDefs bool) {
 			r.pending[n.Name] = append(r.pending[n.Name], pendingConst{value: n.Value, file: r.file, scope: r.scope})
 			return
 		}
+		r.nestedWrites(n.Value) // the write runs: the constants its value assigns are initialized with it (decision 410)
 	case *parser.XStringNode:
 		r.scanGo(n.Unescaped.Value)
 	case *parser.CallNode:
@@ -438,6 +440,16 @@ func (r *reach) nameConst(n parser.Node, name string) {
 		r.named[cls] = true
 	} else {
 		r.byName[name] = true
+	}
+}
+
+// nestedWrites reaches the constants a constant's value assigns as it is evaluated (`ORDERINGS = [REQUIRE_ORDER = 0,
+// PERMUTE = 1]`, getoptlong): a live value initializes them, whether or not anything names them (decision 410).
+func (r *reach) nestedWrites(value parser.Node) {
+	var inner []*parser.ConstantWriteNode
+	liftConstWrites(value, &inner)
+	for _, w := range inner {
+		r.consts[w.Name] = true
 	}
 }
 

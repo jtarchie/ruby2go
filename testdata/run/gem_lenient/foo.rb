@@ -1,0 +1,7 @@
+class Foo
+  ORDERINGS = [REQUIRE_ORDER = 0, PERMUTE = 1, RETURN_IN_ORDER = 2]
+  FLAGS = [NO_ARGUMENT = 0, REQUIRED_ARGUMENT = 1,
+           OPTIONAL_ARGUMENT = 2]
+
+  def self.ordered? = ORDERINGS.include?(PERMUTE)
+end

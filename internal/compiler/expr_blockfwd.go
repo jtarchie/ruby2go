@@ -78,6 +78,10 @@ func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
 		}
 		args = strings.Join(conv, ", ")
 	}
+	guard := !f.iterator && f.m != nil && f.m.Block != nil && (f.m.Block.Optional || f.m.Block.Untyped)
+	if guard { // `generator.each(&block)` called without one (prime's Prime.each(20)): no block, so nothing is yielded (decision 410)
+		f.emit("if blk != nil {")
+	}
 	f.emit("%s", rangeHead(list, call))
 	if f.iterator {
 		f.emit("\tif !yield(%s) {", args)
@@ -87,6 +91,9 @@ func (f *fctx) forwardIter(n parser.Node, call string, yields []Type) {
 		f.emit("\tblk(%s)", args)
 	}
 	f.emit("}")
+	if guard {
+		f.emit("}")
+	}
 }
 
 // forwardClosure passes the method's own block on to a closure-taking

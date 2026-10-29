@@ -33,44 +33,45 @@ type Class struct {
 	// primitive types too, so their free funcs take `Self any`.
 	universal bool
 	// ivar type annotations `# @rbs @x: T`, resolved in resolveSigs
-	ivarDecls     []ivarDecl
-	singletonDefs []singletonDef
-	perRun        []string // a Class.new literal whose block runs statements: a fresh class object per evaluation, its body `self.rugaroo_class_body` taking these captured locals (decision 259)
-	isPerRun      bool
-	singletonMisc []singletonMisc   // attr_*/alias inside `class << self`, applied to the metaclass once it exists
-	privateNew    bool              // `private_class_method :new`
-	undefs        map[string]bool   // `undef x`: calls through this class find nothing, even inherited
-	cvars         map[string]*Const // @@x first assigned in this body, emitted as package variables
-	extends       []Include         // `extend M`: included into the class object
-	mixesIn       []Include         // Sorbet's `mixes_in_class_methods(M)` in a module: its includers extend M (decision 241)
-	includers     []*Class          // a module's: the classes and modules that include it (linkInclude)
-	delegations   []delegation
-	singleFwd     bool       // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
-	fwdSingle     bool       // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
-	meta          *Class     // the class object's class (holds `def self.` methods)
-	metaOf        *Class     // for a metaclass: the class it describes
-	constNames    []string   // constants (classes included) declared directly inside, in order
-	value         *valueSpec // set on a Struct.new / Data.define class
-	msetCache     []entry
-	msetIndex     map[string]int // name → index in msetCache; the dynamic pass asks every class about every name
-	selfCallCache map[string]bool
-	gemSelfCalls  map[string]bool   // what gem methods added to a core module call on self: dynamic, not in the constraint (selfCalls)
-	scratchIvars  map[string]*Ivar  // a gem module a value class (Pathname) includes: its ivars are per-call locals
-	prepended     []*Class          // modules prepended to it, in prepend order: ancestors lists them before it, last first
-	slotsLinked   bool              // linkOverrides ran
-	Display       string            // the name Ruby shows, when the declaration has none of its own (a describe's class)
-	specChild     bool              // a nested describe's class: MRI undefines the test methods it inherits
-	specTests     int               // its it/specify count, for MRI's test_0001_ names
-	hidden        bool              // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
-	ivarBits      bool              // its objects record which ivars were assigned (decision 153)
-	template      *Class            // an instance's generic class (decision 308)
-	instArgs      []Type            // an instance's type arguments
-	instances     []*Class          // a template's instances
-	superArgs     []rbs.Type        // `class Min < Base #[E]` / a sig's `< Base[E]`: the superclass's type arguments (decision 309)
-	superInst     *Class            // the superclass instance superArgs name, made with the instances
-	tmpl          bool              // a template: markTemplates decided before link
-	bounds        map[string]string // a template's `generic P < Comparable` bounds, by parameter (decision 312)
-	helperOf      *Class            // a helper template: the generic class it is nested in, whose arguments it takes (decision 311)
+	ivarDecls         []ivarDecl
+	singletonDefs     []singletonDef
+	instanceDelegator *instanceDelegator // `class << self; def method_added(m) = singleton_class.def_delegator(:instance, m)`: prime's (decision 410)
+	perRun            []string           // a Class.new literal whose block runs statements: a fresh class object per evaluation, its body `self.rugaroo_class_body` taking these captured locals (decision 259)
+	isPerRun          bool
+	singletonMisc     []singletonMisc   // attr_*/alias inside `class << self`, applied to the metaclass once it exists
+	privateNew        bool              // `private_class_method :new`
+	undefs            map[string]bool   // `undef x`: calls through this class find nothing, even inherited
+	cvars             map[string]*Const // @@x first assigned in this body, emitted as package variables
+	extends           []Include         // `extend M`: included into the class object
+	mixesIn           []Include         // Sorbet's `mixes_in_class_methods(M)` in a module: its includers extend M (decision 241)
+	includers         []*Class          // a module's: the classes and modules that include it (linkInclude)
+	delegations       []delegation
+	singleFwd         bool       // `extend SingleForwardable` seen: def_single_delegator(s) and single_delegate work
+	fwdSingle         bool       // the later of Forwardable/SingleForwardable extended was SingleForwardable: def_delegator(s) and delegate define class methods
+	meta              *Class     // the class object's class (holds `def self.` methods)
+	metaOf            *Class     // for a metaclass: the class it describes
+	constNames        []string   // constants (classes included) declared directly inside, in order
+	value             *valueSpec // set on a Struct.new / Data.define class
+	msetCache         []entry
+	msetIndex         map[string]int // name → index in msetCache; the dynamic pass asks every class about every name
+	selfCallCache     map[string]bool
+	gemSelfCalls      map[string]bool   // what gem methods added to a core module call on self: dynamic, not in the constraint (selfCalls)
+	scratchIvars      map[string]*Ivar  // a gem module a value class (Pathname) includes: its ivars are per-call locals
+	prepended         []*Class          // modules prepended to it, in prepend order: ancestors lists them before it, last first
+	slotsLinked       bool              // linkOverrides ran
+	Display           string            // the name Ruby shows, when the declaration has none of its own (a describe's class)
+	specChild         bool              // a nested describe's class: MRI undefines the test methods it inherits
+	specTests         int               // its it/specify count, for MRI's test_0001_ names
+	hidden            bool              // `# @hidden` on a prelude module MRI lacks: left out of ancestors (decision 139)
+	ivarBits          bool              // its objects record which ivars were assigned (decision 153)
+	template          *Class            // an instance's generic class (decision 308)
+	instArgs          []Type            // an instance's type arguments
+	instances         []*Class          // a template's instances
+	superArgs         []rbs.Type        // `class Min < Base #[E]` / a sig's `< Base[E]`: the superclass's type arguments (decision 309)
+	superInst         *Class            // the superclass instance superArgs name, made with the instances
+	tmpl              bool              // a template: markTemplates decided before link
+	bounds            map[string]string // a template's `generic P < Comparable` bounds, by parameter (decision 312)
+	helperOf          *Class            // a helper template: the generic class it is nested in, whose arguments it takes (decision 311)
 }
 
 // displayName is the class's name as Ruby shows it.
@@ -425,6 +426,15 @@ func callArgs(n *parser.CallNode) []parser.Node {
 		return nil
 	}
 	return n.Arguments.Arguments
+}
+
+// instanceDelegator is a class-body hook that makes each instance method defined after it a class method forwarding
+// to the class's `instance` (prime's Prime.each, Prime.prime?): at offset in file.
+type instanceDelegator struct {
+	target string
+	file   *File
+	offset int
+	at     parser.Node
 }
 
 type singletonDef struct {

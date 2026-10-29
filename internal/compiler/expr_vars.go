@@ -39,6 +39,7 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 		ann = f.parseTypeAnn(n, t)
 		exp = ann
 	} else if iv := f.c.findIvar(f.owner, n.Name); iv != nil {
+		f.widenNilReset(n, iv)
 		exp = iv.Type
 	} else if f.discover {
 		exp = f.openType(n.Value) // `@a = Array.new(n, nil)` is open as `@a = []` is
@@ -71,6 +72,17 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	f.storing--
 	f.markIvar(iv)
 	return f.ivarWritten(n, iv, val, code)
+}
+
+// widenNilReset makes a gem's ivar T? when a method resets it to nil (getoptlong's terminate: `@canonical_names = nil`
+// after `Hash.new` in initialize), as MRI holds nil after it (decision 410). A program's own ivar keeps its type.
+func (f *fctx) widenNilReset(n *parser.InstanceVariableWriteNode, iv *Ivar) {
+	if _, reset := n.Value.(*parser.NilNode); !reset || !f.discover || !f.lenient() || iv.Owner != f.owner {
+		return
+	}
+	if !isOpt(iv.Type) && !isAny(iv.Type) && !isNil(iv.Type) {
+		iv.Type = TOpt{Elem: iv.Type}
+	}
 }
 
 // ivarWritten is an ivar write's value: what was assigned, as narrow as the write shows it.
