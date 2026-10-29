@@ -618,26 +618,35 @@ func (f *fctx) overload(e *entry, recvT Type, args []parser.Node) *entry {
 	if r := owner.lookup(name + "same"); r != nil && len(args) >= 2 && f.sameArgs(r.M, args) {
 		return r // `assert_equal 3, h[:a]`: both sides one static type
 	}
-	if len(args) >= 1 && classTwins(m.Name) && !optOn(owner, m) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) }) {
-		var a expr
-		f.probe(func() { a = f.genExpr(args[0], nil) })
-		if o, ok := a.typ.(TOpt); ok && !nilEqualOps[m.Name] && (f.lenient() || f.nilTwin(m, o)) { // a gem's T? is its T, nil raising where used (decisions 172, 393); `==` answers false (decision 404)
-			a.typ = o.Elem
-		}
-		if c, ok := a.typ.(TClass); ok {
-			if r := f.secondArgOverload(owner, name+snake(c.C.RubyName), args); r != nil {
-				return r
-			}
-			if r := owner.lookup(name + snake(c.C.RubyName)); r != nil && len(args) >= requiredArgs(r.M) && (len(args) <= len(r.M.Params) || slices.ContainsFunc(r.M.Params, func(p Param) bool { return p.Rest })) {
-				return r
-			}
-		}
+	if r := f.classOverload(m, owner, name, args); r != nil {
+		return r
 	}
 	rest := slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest })
 	if len(args) >= requiredArgs(m) && (rest || len(args) <= len(m.Params)) {
 		return nil
 	}
 	return owner.lookup(name + strconv.Itoa(len(args)))
+}
+
+// classOverload is `__<name>_<class>` for the first argument's class (secondArgOverload adds the second's).
+func (f *fctx) classOverload(m *Method, owner *Class, name string, args []parser.Node) *entry {
+	if !(len(args) >= 1 && classTwins(m.Name) && !optOn(owner, m) && slices.ContainsFunc(owner.methodSet(), func(x entry) bool { return strings.HasPrefix(x.M.Name, name) })) {
+		return nil
+	}
+	var a expr
+	f.probe(func() { a = f.genExpr(args[0], nil) })
+	if o, ok := a.typ.(TOpt); ok && !nilEqualOps[m.Name] && (f.lenient() || f.nilTwin(m, o)) { // a gem's T? is its T, nil raising where used (decisions 172, 393); `==` answers false (decision 404)
+		a.typ = o.Elem
+	}
+	if c, ok := a.typ.(TClass); ok {
+		if r := f.secondArgOverload(owner, name+snake(c.C.RubyName), args); r != nil {
+			return r
+		}
+		if r := owner.lookup(name + snake(c.C.RubyName)); r != nil && len(args) >= requiredArgs(r.M) && (len(args) <= len(r.M.Params) || slices.ContainsFunc(r.M.Params, func(p Param) bool { return p.Rest })) {
+			return r
+		}
+	}
+	return nil
 }
 
 // secondArgOverload is `__<name>_<first>_<second>` by the second argument's class too: `gsub(/re/, hash)` (decision 404).

@@ -488,6 +488,38 @@ func (p *appendProof) sealAt(c parser.Node) {
 	p.seal = max(p.seal, end)
 }
 
+// useAsArgument is why n, one of the arguments of the call (or return, or next) above up, holds the String elsewhere, or "".
+func (p *appendProof) useAsArgument(n parser.Node, up []parser.Node, held string) string {
+	if len(up) == 0 {
+		return held
+	}
+	switch g := up[len(up)-1].(type) {
+	case *parser.ReturnNode:
+		if p.depth == 0 && !p.out {
+			return ""
+		}
+	case *parser.NextNode:
+		for i := len(up) - 1; i >= 0; i-- {
+			if b, ok := up[i].(*parser.BlockNode); ok {
+				return p.use(b.Body, append(up[:i:i], b))
+			}
+		}
+	case *parser.CallNode:
+		if p.argSafe(g) {
+			return ""
+		}
+		if p.f.outCallArg(g, n) { // the callee appends through it: an append here (decision 405)
+			if p.later > 0 {
+				return fmt.Sprintf("`%s` is passed to %s inside a block that may run after its call returns", p.name, g.Name)
+			}
+			p.sealAt(g)
+			return ""
+		}
+		return fmt.Sprintf("`%s` is passed to %s", p.name, g.Name)
+	}
+	return held
+}
+
 // use is why n's value (the local's String) may end up held elsewhere, or "" (stack ends at n's parent).
 func (p *appendProof) use(n parser.Node, stack []parser.Node) string {
 	held := "`" + p.name + "` is stored or passed"
@@ -538,33 +570,7 @@ func (p *appendProof) use(n parser.Node, stack []parser.Node) string {
 		}
 		return fmt.Sprintf("`%s` is a block's value", p.name)
 	case *parser.ArgumentsNode:
-		if len(up) == 0 {
-			return held
-		}
-		switch g := up[len(up)-1].(type) {
-		case *parser.ReturnNode:
-			if p.depth == 0 && !p.out {
-				return ""
-			}
-		case *parser.NextNode:
-			for i := len(up) - 1; i >= 0; i-- {
-				if b, ok := up[i].(*parser.BlockNode); ok {
-					return p.use(b.Body, append(up[:i:i], b))
-				}
-			}
-		case *parser.CallNode:
-			if p.argSafe(g) {
-				return ""
-			}
-			if p.f.outCallArg(g, n) { // the callee appends through it: an append here (decision 405)
-				if p.later > 0 {
-					return fmt.Sprintf("`%s` is passed to %s inside a block that may run after its call returns", p.name, g.Name)
-				}
-				p.sealAt(g)
-				return ""
-			}
-			return fmt.Sprintf("`%s` is passed to %s", p.name, g.Name)
-		}
+		return p.useAsArgument(n, up, held)
 	}
 	return held
 }

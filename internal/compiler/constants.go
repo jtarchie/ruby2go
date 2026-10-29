@@ -161,6 +161,18 @@ func (c *Compiler) methodClassVars() {
 // privateRef: generated source may name a private constant by path (a Struct's `==` names Homebrew's private Vulns::Scanner::Target).
 func (c *Compiler) privateRef(f *File, full string) bool { return c.privateConsts[full] && !f.synth }
 
+// selfConstParent is `self::X` in a class body or class method: the lexical class, unless a subclass has its own X,
+// which MRI would pick by the receiver at run time.
+func (c *Compiler) selfConstParent(f *File, n *parser.ConstantPathNode, scope []*Class) *Class {
+	parent := scope[len(scope)-1]
+	for _, sub := range c.classList {
+		if sub != parent && sub.isSubclassOf(parent) && (c.consts[sub.RubyName+"::"+*n.Name] != nil || c.classes[sub.RubyName+"::"+*n.Name] != nil) {
+			c.errorf(f, n, "self::%s: %s has its own %s, which MRI picks by the receiver at run time; name the class", *n.Name, sub.RubyName, *n.Name)
+		}
+	}
+	return parent
+}
+
 // lookupConst resolves Foo, Foo::Bar, ::Foo as Ruby does: lexical scope innermost-out, the innermost class's ancestors, then top level; at most one result is non-nil.
 func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, *Const) {
 	switch n := n.(type) {
@@ -173,14 +185,7 @@ func (c *Compiler) lookupConst(f *File, n parser.Node, scope []*Class) (*Class, 
 		var parent *Class
 		var k *Const
 		if _, ok := n.Parent.(*parser.SelfNode); ok && len(scope) > 0 {
-			// `self::X` in a class body or class method: the lexical class, unless a subclass
-			// has its own X, which MRI would pick by the receiver at run time
-			parent = scope[len(scope)-1]
-			for _, sub := range c.classList {
-				if sub != parent && sub.isSubclassOf(parent) && (c.consts[sub.RubyName+"::"+*n.Name] != nil || c.classes[sub.RubyName+"::"+*n.Name] != nil) {
-					c.errorf(f, n, "self::%s: %s has its own %s, which MRI picks by the receiver at run time; name the class", *n.Name, sub.RubyName, *n.Name)
-				}
-			}
+			parent = c.selfConstParent(f, n, scope)
 		} else {
 			parent, k = c.lookupConst(f, n.Parent, scope)
 		}

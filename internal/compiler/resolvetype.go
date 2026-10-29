@@ -162,22 +162,24 @@ func rbsInterface(name string) bool {
 	return strings.HasPrefix(name[strings.LastIndex(name, "::")+1:], "_")
 }
 
+// scopeTypeVar is the method's or class's type variable t names, or its instance's argument for it, or nil.
+func scopeTypeVar(t rbs.Name, sc typeScope) Type {
+	if slices.Contains(sc.methodTPs, t.Name) {
+		return TVar{Name: t.Name}
+	}
+	if sc.class == nil {
+		return nil
+	}
+	if slices.Contains(sc.class.TypeParams, t.Name) {
+		return TVar{Name: t.Name}
+	}
+	return instParam(sc.class, t)
+}
+
 // resolveNameType resolves a `Foo` / `Foo[A]` type: a type variable or a class.
 func (c *Compiler) resolveNameType(t rbs.Name, sc typeScope) Type {
-	for _, p := range sc.methodTPs {
-		if p == t.Name {
-			return TVar{Name: p}
-		}
-	}
-	if sc.class != nil {
-		for _, p := range sc.class.TypeParams {
-			if p == t.Name {
-				return TVar{Name: p}
-			}
-		}
-		if a := instParam(sc.class, t); a != nil {
-			return a
-		}
+	if v := scopeTypeVar(t, sc); v != nil {
+		return v
 	}
 	lex := sc.lex
 	if t.Absolute { // `::Pathname` inside a module that has its own Pathname

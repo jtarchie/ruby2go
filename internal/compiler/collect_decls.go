@@ -12,6 +12,29 @@ import (
 	"github.com/jtarchie/rugaroo/internal/rbs"
 )
 
+// collectTopRequire: a file on the -I path loads like require_relative (decision 131); stdlib requires are meaningless
+// here, unless the prelude hooks one (decision 78): `require "a/b"` → __require_a_b.
+func (c *Compiler) collectTopRequire(ctx context.Context, f *File, n *parser.CallNode) {
+	if uf, ok := c.userRequire(ctx, f, n); ok {
+		if uf != nil {
+			c.addMainStmt(f, &loadFile{call: n, file: uf})
+		}
+	} else if hook := c.requireHook(f, n); hook != nil {
+		c.addMainStmt(f, hook)
+	}
+}
+
+// collectTopPrepend is `X.prepend(M)` or `X.singleton_class.prepend(M)` (decision 199).
+func (c *Compiler) collectTopPrepend(f *File, n *parser.CallNode) {
+	recv, single := prependTarget(n), false
+	if sc, ok := recv.(*parser.CallNode); ok {
+		recv, single = sc.Receiver, true
+	}
+	for _, a := range callArgs(n) {
+		c.prepends = append(c.prepends, pendingPrepend{targetRef: constRef{node: recv, file: f}, singleton: single, mod: constRef{node: a, file: f}})
+	}
+}
+
 // collectTopCall takes the top-level calls that act at compile time: require_relative, describe, include, require.
 func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNode) {
 	switch {
@@ -32,24 +55,9 @@ func (c *Compiler) collectTopCall(ctx context.Context, f *File, n *parser.CallNo
 			c.addInclude(f, n, c.classes["Object"], a, nil)
 		}
 	case n.Receiver == nil && n.Name == "require":
-		// a file on the -I path loads like require_relative (decision 131);
-		// stdlib requires are meaningless here, unless the prelude
-		// hooks one (decision 78): `require "a/b"` → __require_a_b
-		if uf, ok := c.userRequire(ctx, f, n); ok {
-			if uf != nil {
-				c.addMainStmt(f, &loadFile{call: n, file: uf})
-			}
-		} else if hook := c.requireHook(f, n); hook != nil {
-			c.addMainStmt(f, hook)
-		}
+		c.collectTopRequire(ctx, f, n)
 	case n.Name == "prepend" && !f.isPrelude() && prependTarget(n) != nil: // `X.prepend(M)`, `X.singleton_class.prepend(M)` (decision 199)
-		recv, single := prependTarget(n), false
-		if sc, ok := recv.(*parser.CallNode); ok {
-			recv, single = sc.Receiver, true
-		}
-		for _, a := range callArgs(n) {
-			c.prepends = append(c.prepends, pendingPrepend{targetRef: constRef{node: recv, file: f}, singleton: single, mod: constRef{node: a, file: f}})
-		}
+		c.collectTopPrepend(f, n)
 	case n.Receiver == nil && n.Name == "autoload":
 		if sym, ok := symbolName(firstArg(callArgs(n))); ok {
 			c.noteAutoload(sym)

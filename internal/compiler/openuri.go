@@ -30,6 +30,23 @@ func (f *fctx) needOpenURILib(n parser.Node, instance bool, name string) {
 	f.errorf(n, "%s needs require \"open-uri\"", what)
 }
 
+// openURIMode splits a leading String mode argument off rest; a Hash (headers and options) is not one.
+func (f *fctx) openURIMode(rest []parser.Node) (parser.Node, []parser.Node) {
+	if len(rest) == 0 || isHashLiteral(rest[0]) {
+		return nil, rest
+	}
+	var e expr
+	f.probe(func() { e = f.genExpr(rest[0], nil) })
+	t, ok := e.typ.(TClass)
+	if ok && t.C == f.c.classes["Hash"] {
+		return nil, rest
+	}
+	if !ok || t.C != f.c.classes["String"] {
+		f.errorf(rest[0], "open-uri: the mode must be a String (an Integer mode or permission is not supported)")
+	}
+	return rest[0], rest[1:]
+}
+
 // genOpenURI compiles URI.open (recv nil) and URI::Generic#open/#read: MRI's one options Hash mixes headers (String keys) and options (Symbol keys), so it is split into a Hash[String, String] and OpenOptions.new keywords to type both (decision 134).
 func (f *fctx) genOpenURI(n parser.Node, recv *expr, name string, args []parser.Node, block parser.Node) expr {
 	f.needOpenURILib(n, recv != nil, name)
@@ -48,17 +65,7 @@ func (f *fctx) genOpenURI(n parser.Node, recv *expr, name string, args []parser.
 	if recv == nil {
 		rest = args[1:]
 	}
-	var mode parser.Node
-	if len(rest) > 0 && !isHashLiteral(rest[0]) {
-		var e expr
-		f.probe(func() { e = f.genExpr(rest[0], nil) })
-		if t, ok := e.typ.(TClass); !ok || t.C != f.c.classes["Hash"] {
-			if !ok || t.C != f.c.classes["String"] {
-				f.errorf(rest[0], "open-uri: the mode must be a String (an Integer mode or permission is not supported)")
-			}
-			mode, rest = rest[0], rest[1:]
-		}
-	}
+	mode, rest := f.openURIMode(rest)
 	if mode != nil && name == "read" {
 		f.errorf(mode, "URI#read takes only an options Hash")
 	}

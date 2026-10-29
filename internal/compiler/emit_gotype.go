@@ -8,6 +8,45 @@ import (
 
 // ---- Go type rendering
 
+// goFuncType is a function type's Go type: its self, its params, and a rest param as the slice it is.
+func (c *Compiler) goFuncType(t TFunc) string {
+	params := make([]string, 0, len(t.Params)+1)
+	if t.Self != nil {
+		params = append(params, c.goType(t.Self))
+	}
+	for _, p := range t.Params {
+		params = append(params, c.goType(p))
+	}
+	s := "func(" + strings.Join(params, ", ") + ")"
+	if t.Rest {
+		last := len(t.Params) - 1
+		rest := make([]string, 0, len(t.Params))
+		if t.Self != nil {
+			rest = append(rest, c.goType(t.Self))
+		}
+		for _, p := range t.Params[:last] {
+			rest = append(rest, c.goType(p))
+		}
+		s = "func(" + strings.Join(rest, ", ")
+		if len(rest) > 0 {
+			s += ", "
+		}
+		s += "..." + c.goType(t.Params[last]) + ")"
+	}
+	if !isVoid(t.Ret) {
+		s += " " + c.goType(t.Ret)
+	}
+	if t.Proc {
+		var vars []string
+		if freeVars(t, &vars); len(vars) == 0 {
+			c.procTypes["*"+s] = true
+			c.procFuncs["*"+s] = t
+		}
+		return "*" + s
+	}
+	return s
+}
+
 // goType renders a resolved Ruby type as a Go type.
 func (c *Compiler) goType(t Type) string {
 	switch t := t.(type) {
@@ -52,41 +91,7 @@ func (c *Compiler) goType(t Type) string {
 	case TVar:
 		return t.Name
 	case TFunc:
-		params := make([]string, 0, len(t.Params)+1)
-		if t.Self != nil {
-			params = append(params, c.goType(t.Self))
-		}
-		for _, p := range t.Params {
-			params = append(params, c.goType(p))
-		}
-		s := "func(" + strings.Join(params, ", ") + ")"
-		if t.Rest {
-			last := len(t.Params) - 1
-			rest := make([]string, 0, len(t.Params))
-			if t.Self != nil {
-				rest = append(rest, c.goType(t.Self))
-			}
-			for _, p := range t.Params[:last] {
-				rest = append(rest, c.goType(p))
-			}
-			s = "func(" + strings.Join(rest, ", ")
-			if len(rest) > 0 {
-				s += ", "
-			}
-			s += "..." + c.goType(t.Params[last]) + ")"
-		}
-		if !isVoid(t.Ret) {
-			s += " " + c.goType(t.Ret)
-		}
-		if t.Proc {
-			var vars []string
-			if freeVars(t, &vars); len(vars) == 0 {
-				c.procTypes["*"+s] = true
-				c.procFuncs["*"+s] = t
-			}
-			return "*" + s
-		}
-		return s
+		return c.goFuncType(t)
 	case TAny, TNil, TUnion: // a union is an any whose classes the compiler knows (decision 150)
 		return "any"
 	case TVoid:

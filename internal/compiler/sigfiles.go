@@ -38,7 +38,7 @@ func (c *Compiler) loadSigs(sources []Source) {
 	}
 	for _, path := range slices.Sorted(maps.Keys(c.parsed)) { // a foo.rbs beside foo.rb, as roundhouse and spinel write them: hints, so last, any other sig wins (decision 404)
 		if side := strings.TrimSuffix(path, ".rb") + ".rbs"; side != path {
-			c.loadSigFile(side, true, true)
+			_ = c.loadSigFile(side, true, true) // a hint it cannot read is no hint (a source named with a NUL byte has no sidecar)
 		}
 	}
 }
