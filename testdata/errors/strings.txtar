@@ -317,3 +317,8 @@ V.into(s)
 -- loaded_features_computed.rb --
 # error: main.rb:2: $LOADED_FEATURES takes File.expand_path("file.rb", __dir__) only
 $LOADED_FEATURES << "x.rb"
+-- concat_no_args_value.rb --
+# error: main.rb:4: wrong number of arguments for String#concat
+# `s.concat` with no arguments used as a value once sent the append proof into unbounded recursion (a stack overflow in the compiler)
+s = +"a"
+puts s.concat.equal?(s)

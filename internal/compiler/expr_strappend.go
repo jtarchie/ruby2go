@@ -93,11 +93,22 @@ func (f *fctx) appendWhy(name string) string {
 	if why, ok := f.appendProofs[key]; ok {
 		return why
 	}
-	why := f.proveAppend(key)
 	if f.appendProofs == nil {
 		f.appendProofs = map[localKey]string{}
 	}
+	// The proof probes the type of calls it walks (outCallArg), and probing `s.concat` asks for this same proof again:
+	// answer that nested ask "fine", since a probe's output is discarded and the verdict below is the one the real
+	// codegen sees. A panic out of the proof must not leave the stand-in cached.
+	f.appendProofs[key] = ""
+	done := false
+	defer func() {
+		if !done {
+			delete(f.appendProofs, key)
+		}
+	}()
+	why := f.proveAppend(key)
 	f.appendProofs[key] = why
+	done = true
 	return why
 }
 
