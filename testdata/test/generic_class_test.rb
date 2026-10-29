@@ -117,7 +117,6 @@ module GenericClassTests
     alias extract_min dequeue
 
     #: (E, P) -> self
-
   end
 
   # @rbs generic A

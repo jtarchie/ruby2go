@@ -530,7 +530,6 @@ class DemoBlocked
 end
 
 class DemoThen < DemoBlocked
-
 end
 
 class DemoExec
@@ -859,7 +858,6 @@ class DemoTaskBase
 end
 
 class DemoThenTask < DemoTaskBase
-
 end
 
 # concurrent-ruby's ExecutorService#post(*args, &task): RubyExecutorService's override keeps `&task` as a value, so

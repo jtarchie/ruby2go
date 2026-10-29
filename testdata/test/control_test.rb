@@ -1568,7 +1568,6 @@ module ControlTests
 
   class Blank < StandardError
     #: () -> void
-
   end
 
   class WithCode < StandardError
@@ -1708,7 +1707,6 @@ module ControlTests
   # zsuper in an exception initialize forwards the (defaulted) message
   class MidPlain < StandardError
     #: (String) -> void
-
   end
 
   class MidDefaultMsg < StandardError
