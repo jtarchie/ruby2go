@@ -52,22 +52,22 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 
 ## Core classes — stable
 
-ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-27 (commit 7c2e5b6). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
+ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-29 (commit 6b5a0046). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
 
 | Class | Tier | ruby/spec pass (of those run) | Skipped | Notes |
 |---|---|---:|---:|---|
 | `Array` | stable | 597 of 689 (87%) | 526 |  |
 | `Array#pack`, `String#unpack` | stable | 2,556 of 3,004 (85%) | 173 | No C pointers (`P`, `p`); Bignum directives need `promote`. |
 | `Hash` | stable | 243 of 276 (88%) | 286 | Insertion-ordered; `Hash#[]` is typed `V?`. |
-| `String` | stable | 1,007 of 1,310 (77%) | 1,053 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)) and `setbyte` on one, or on an ivar in `initialize` ([decision 395](decisions/395.md)). |
+| `String` | stable | 987 of 1,296 (76%) | 1,039 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)) and `setbyte` on one, or on an ivar in `initialize` ([decision 395](decisions/395.md)). |
 | `Symbol` | stable | 83 of 103 (81%) | 75 |  |
 | `Integer` | stable | 185 of 265 (70%) | 333 | 64-bit; see below. |
 | `Float` | stable | 149 of 179 (83%) | 82 |  |
 | `Rational`, `Complex` | stable | 144 of 168 (86%) | 158 | Mixed arithmetic coerces as MRI. |
 | `Numeric` | stable | 27 of 53 (51%) | 262 |  |
 | `Range` | stable | 294 of 337 (87%) | 269 |  |
-| `Set` | stable | 69 of 78 (88%) | 98 | Core, as in MRI 4.0. |
-| `Struct`, `Data` | stable | 99 of 139 (71%) | 119 |  |
+| `Set` | stable | 67 of 76 (88%) | 98 | Core, as in MRI 4.0. |
+| `Struct`, `Data` | stable | 102 of 142 (72%) | 116 |  |
 | `Enumerable` | stable | 160 of 213 (75%) | 278 | Elements with equal keys can come out of `sort_by`, `max_by(n)` and `min_by(n)` in another order than MRI's, whose order depends on the platform's `qsort_r`. |
 | `Enumerator`, `Enumerator::Lazy`, arithmetic sequences | stable | 45 of 68 (66%) | 280 | `next`/`peek`, `Enumerator.new` generators. |
 | `Comparable` | stable | 0 of 46 (0%) | 8 | ruby/spec's fixture class doesn't compile, so every example errors; covered by rugaroo's own tests. |
@@ -84,8 +84,8 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-27 (commit 7c2e5b6). 
 | `Proc`, `Method`, `UnboundMethod` | stable | 85 of 230 (37%) | 168 |  |
 | `Module`, `Class` | stable | 186 of 323 (58%) | 781 | No `define_method` or runtime reopening in user code. |
 | `BasicObject`, `Object`, `nil`, `true`, `false` | stable | 66 of 114 (58%) | 69 |  |
-| `Thread`, `Queue`, `SizedQueue`, `Mutex`, `ThreadGroup` | stable | 156 of 223 (70%) | 247 | Goroutines and channels; `SizedQueue` is a Go channel (decision 403). |
-| `Fiber` | stable | 25 of 66 (38%) | 122 |  |
+| `Thread`, `Queue`, `SizedQueue`, `Mutex`, `ThreadGroup` | stable | 157 of 223 (70%) | 247 | Goroutines and channels; `SizedQueue` is a Go channel (decision 403). |
+| `Fiber` | stable | 25 of 67 (37%) | 121 |  |
 | `Signal`, `Process` | stable | 35 of 79 (44%) | 237 | `trap`, `Process.kill`, `spawn`, `wait`. |
 | `Marshal` | stable | 29 of 255 (11%) | 97 | Round-trips its own bytes, not MRI's, so specs that compare bytes fail. |
 | `Encoding` | stable | 69 of 121 (57%) | 17 | 60 encodings ([list](#encodings)), no per-String tag ([decision 136](decisions/136.md)). |

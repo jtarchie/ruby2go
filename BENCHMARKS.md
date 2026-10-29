@@ -1,8 +1,8 @@
 # Benchmarks
 
 Wall-clock times for the workloads in [`benchmarks/`](benchmarks/), measured
-on one Apple-silicon machine (MRI 4.0.7, Crystal 1.22.1, Go 1.27.3, spinel
-`baea3e28`) on 2026-10-26, after decision 388. Each cell is the median of 9 runs.
+on one Apple-silicon machine (MRI 4.0.9, Crystal 1.22.1, Go 1.27.3) on 2026-10-29, after decision 407; the spinel
+column (`baea3e28`, MRI 4.0.7) is carried from the 2026-10-26 run, there being no spinel build on this machine now. Each cell is the median of 9 runs.
 To reproduce:
 
 ```sh
@@ -12,33 +12,33 @@ COLS=ruby,rugaroo scripts/benchmark fib array  # some columns, some workloads
 
 | workload | MRI | MRI+YJIT | rugaroo | spinel | Crystal | Go |
 |---|---:|---:|---:|---:|---:|---:|
-| `fib(32)` | 0.27s | 0.093s | 0.017s | 0.015s | 0.017s | 0.015s |
-| `Hash` counting, 500k | 0.11s | 0.097s | 0.013s | 0.008s | 0.014s | 0.010s |
-| `Array#map`/`select`/`sum`, 1M | 0.15s | 0.13s | 0.018s | 0.011s | 0.012s | 0.011s |
-| string build/split, 100k | 0.11s | 0.11s | 0.023s | 0.018s | 0.024s | 0.017s |
-| `Math.sin`/`cos`, 200k | 0.086s | 0.073s | 0.010s | 0.007s | 0.009s | 0.008s |
+| `fib(32)` | 0.27s | 0.092s | 0.016s | 0.015s | 0.017s | 0.014s |
+| `Hash` counting, 500k | 0.11s | 0.096s | 0.012s | 0.008s | 0.013s | 0.010s |
+| `Array#map`/`select`/`sum`, 1M | 0.17s | 0.16s | 0.019s | 0.011s | 0.012s | 0.011s |
+| string build/split, 100k | 0.11s | 0.11s | 0.022s | 0.018s | 0.024s | 0.017s |
+| `Math.sin`/`cos`, 200k | 0.086s | 0.073s | 0.009s | 0.007s | 0.008s | 0.008s |
 | classes, polymorphic calls, Comparable | 0.26s | 0.17s | 0.035s | - | 0.014s | 0.012s |
-| binary trees (allocation), depth 10 | 0.082s | 0.069s | 0.011s | 0.009s | 0.011s | 0.008s |
-| splay tree | 0.21s | 0.12s | 0.016s | 0.020s | 0.019s | 0.013s |
-| blocks, procs, lambdas, enumerator chains | 0.35s | 0.33s | 0.037s | 0.15s | 0.036s | 0.013s |
-| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.11s | 0.077s | 2.50s | 0.019s |
-| regexp match/gsub/scan/tr, StringScanner | 0.74s | 0.71s | 0.20s | 0.83s | 0.20s | 0.28s |
-| sort_by/group_by/tally, Set, Struct | 0.54s | 0.52s | 0.12s | 1.10s | 0.052s | 0.068s |
+| binary trees (allocation), depth 10 | 0.080s | 0.069s | 0.009s | 0.009s | 0.010s | 0.007s |
+| splay tree | 0.21s | 0.12s | 0.014s | 0.020s | 0.019s | 0.012s |
+| blocks, procs, lambdas, enumerator chains | 0.36s | 0.34s | 0.037s | 0.15s | 0.036s | 0.012s |
+| raise/rescue/retry, catch/throw | 0.28s | 0.25s | 0.11s | 0.077s | 2.50s | 0.018s |
+| regexp match/gsub/scan/tr, StringScanner | 0.75s | 0.73s | 0.20s | 0.83s | 0.21s | 0.28s |
+| sort_by/group_by/tally, Set, Struct | 0.56s | 0.53s | 0.12s | 1.10s | 0.051s | 0.068s |
 | format, StringIO, case mapping | 0.48s | 0.44s | 0.12s | 0.20s | 0.14s | 0.10s |
 | JSON generate + parse | 0.14s | 0.15s | 0.12s | 0.23s | 0.13s | 0.25s |
-| Bignum: Fibonacci, 2000!, 1,200 digits of pi | 0.21s | 0.21s | 0.058s | 0.12s | 0.075s | 0.037s |
-| pairing_heap gem: Dijkstra + heapsort | 0.66s | 0.33s | 0.092s | - | 0.039s | 0.034s |
-| liquid gem: a template rendered 400 times | 0.37s | 0.30s | 0.15s | - | - | - |
-| kramdown gem: a 20-section document to HTML, 30 times | 0.44s | 0.55s | 0.38s | - | - | - |
-| total (rows each one ran) | 5.50s | 4.67s | 1.53s | 2.80s | 3.30s | 0.90s |
-| vs MRI on those rows | 1.0x | 1.2x | 3.6x | 1.4x | 1.4x | 5.2x |
+| Bignum: Fibonacci, 2000!, 1,200 digits of pi | 0.21s | 0.21s | 0.058s | 0.12s | 0.069s | 0.037s |
+| pairing_heap gem: Dijkstra + heapsort | 0.66s | 0.35s | 0.093s | - | 0.037s | 0.035s |
+| liquid gem: a template rendered 400 times | 0.38s | 0.29s | 0.15s | - | - | - |
+| kramdown gem: a 20-section document to HTML, 30 times | 0.46s | 0.58s | 0.41s | - | - | - |
+| total (rows each one ran) | 5.58s | 4.76s | 1.55s | 2.79s | 3.29s | 0.89s |
+| vs MRI on those rows | 1.0x | 1.2x | 3.6x | 1.4x | 1.4x | 5.3x |
 
-This run follows decisions 381-402 (the spinel parity work: per-file `int_overflow`, `String#<<` on an
-unaliased local, ivar and tuple-stack typing, window reuse for `each_cons`/`each_slice`, counted loops as Go `for`
-loops, an open-addressed Hash index): rugaroo's total went from 1.60s to 1.53s, blocks 0.045s to 0.038s, Hash
-counting 0.017s to 0.013s; the other rows are within noise. Their bigger effect is on spinel's own suite, below.
-`TestCompileCost` compiles 2,032 / 7,948 / 30,419 functions for 05_word_count / 64_observable / 116_cuba_web (2,014 /
-7,730 / 30,289 before; the Hash index's probe and insert helpers now compile once per key type).
+Re-measured on 2026-10-29 after decisions 403-407 and a rubocop pass over the Ruby sources, with no performance work aimed at
+these rows: rugaroo's total is 1.55s against 1.53s and MRI's 5.58s against 5.50s, so the 3.6x holds and the rows are within noise.
+Struct `==`/`eql?`/`hash` now guard against a struct that holds itself (decision 407): 2M `==` calls on an untyped two-member
+struct take 0.13s against 0.08s before and 0.50s in MRI.
+`TestCompileCost` compiles 2,058 / 7,923 / 30,325 functions for 05_word_count / 64_observable / 116_cuba_web (2,032 / 7,948 /
+30,419 on 2026-10-26; the two small programs are unchanged by this work, 116_cuba_web gained 45 for the struct helpers).
 
 ## What the columns are
 
