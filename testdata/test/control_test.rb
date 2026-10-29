@@ -3746,7 +3746,7 @@ module ControlTests
       assert_equal([100, 0, 2], list.map do |v|
 
         risky_int(v - 2)
-  rescue StandardError
+      rescue StandardError
     100
 
       end)
