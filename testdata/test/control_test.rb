@@ -94,7 +94,7 @@ def ens_ret2
   [1, 2, 3].each do |v|
     x += v
   ensure
-  return x if v == 2
+    return x if v == 2
   end
   x
 end
@@ -983,7 +983,7 @@ def first_big(out, list)
   list.each do |x|
     return x if x > 10
   ensure
-  out << "checked #{x}"
+    out << "checked #{x}"
   end
   -1
 end
@@ -1363,7 +1363,7 @@ end
 #: () -> Integer
 def control_block_local_first
   [1].each do |i|
-  item = ControlTests::Counter.new
+    item = ControlTests::Counter.new
   item.n += i
   end
   item = nil #: ControlTests::Counter?
@@ -2138,10 +2138,10 @@ module ControlTests
 
           out << "#{v} #{w}"
         ensure
-        out << "e #{v} #{w}"
+          out << "e #{v} #{w}"
         end
       ensure
-      out << "outer e #{v}"
+        out << "outer e #{v}"
       end
       assert_equal ["e 1 10", "1 20", "e 1 20", "outer e 1", "e 2 10", "e 2 20", "outer e 2", "e 3 10", "3 20", "e 3 20", "outer e 3"], out
     end
@@ -2464,14 +2464,14 @@ module ControlTests
     def test_next_with_value
       nv_h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
       assert_equal "{\"a\" => 1}", nv_h.select { |k, v|
-  next false if k == "b"
+        next false if k == "b"
 
   v.positive?
       }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
       assert_equal([1], nv_xs.select do |n|
-  next false if n > 1
+        next false if n > 1
 
   true
       end)
@@ -2769,7 +2769,7 @@ module ControlTests
       v = begin
         collide_risky(-1)
       rescue StandardError
-    p
+        p
       end
       assert_equal 7, v
       assert_equal "v2", doubled(1)
@@ -2876,20 +2876,20 @@ module ControlTests
         begin
           edges_risky(-1)
         rescue StandardError
-            edges_risky(-2)
+          edges_risky(-2)
         end
       rescue StandardError
-    3
+        3
       end
       assert_equal 3, v
       v2 = begin
         begin
           edges_risky(-1)
         rescue StandardError
-            edges_risky(4)
+          edges_risky(4)
         end
       rescue StandardError
-   3
+        3
       end
       assert_equal 4, v2
     end
@@ -2912,11 +2912,11 @@ module ControlTests
       [KeyError.new("k"), ArgumentError.new("a"), IOError.new("io")].each do |ex|
         raise ex
       rescue StandardError => e
-      kind = case e
-             when KeyError then "key"
-             when ArgumentError then "arg"
-             else "other #{e.class}"
-             end
+        kind = case e
+               when KeyError then "key"
+               when ArgumentError then "arg"
+               else "other #{e.class}"
+               end
       kinds << kind
       end
       assert_equal ["key", "arg", "other IOError"], kinds
@@ -3198,12 +3198,12 @@ module ControlTests
       rx = begin
         edges_risky(2)
       rescue StandardError
-   nil
+        nil
       end || 9
       ry = begin
         edges_risky(-2)
       rescue StandardError
-   nil
+        nil
       end || 9
       assert_equal 2, rx
       assert_equal 9, ry
@@ -3254,7 +3254,7 @@ module ControlTests
       e = assert_raises(KeyError) do
         raise ArgumentError, "first"
       ensure
-      out << "ensure raising"
+        out << "ensure raising"
       raise KeyError, "from ensure"
       end
       assert_equal ["ensure raising"], out
@@ -3355,7 +3355,7 @@ module ControlTests
       outer = assert_raises(KeyError) do
         raise KeyError, "orig"
       rescue KeyError => e
-      out << "logging #{e.message}"
+        out << "logging #{e.message}"
       raise e
       end
       assert_equal ["logging orig"], out
@@ -3427,9 +3427,9 @@ module ControlTests
       [1, 2].each do |i|
         raise "odd" if i.odd?
       rescue StandardError
-      out << "rescued #{i}"
+        out << "rescued #{i}"
       ensure
-      out << "ensure #{i}"
+        out << "ensure #{i}"
       end
       assert_equal ["rescued 1", "ensure 1", "ensure 2"], out
     end
@@ -3448,7 +3448,7 @@ module ControlTests
       outer = assert_raises(TypeError) do
         raise "inner"
       rescue RuntimeError
-      raise TypeError, "outer"
+        raise TypeError, "outer"
       end
       cause = outer.cause
       refute_nil cause
@@ -3460,18 +3460,18 @@ module ControlTests
       same = assert_raises(ArgumentError) do
         raise ArgumentError, "once"
       rescue ArgumentError => e
-      raise e
+        raise e
       end
       assert_nil same.cause
       # an exception that already has a cause keeps it
       kept = assert_raises(ArgumentError) do
         raise "first"
       rescue RuntimeError
-      begin
-        raise ArgumentError, "second"
-      rescue ArgumentError => e
-        raise e
-      end
+        begin
+          raise ArgumentError, "second"
+        rescue ArgumentError => e
+          raise e
+        end
       end
       kept_cause = kept.cause
       assert_equal "first", kept_cause.message if kept_cause
@@ -3526,7 +3526,7 @@ module ControlTests
       se = assert_raises(ScriptError) do
         raise NotImplementedError, "nie"
       rescue StandardError
-      got << "never"
+        got << "never"
       end
       assert_equal "script: NotImplementedError nie false", "script: #{se.class} #{se.message} #{se.is_a?(StandardError)}"
     end
@@ -3604,9 +3604,9 @@ module ControlTests
       ae = assert_raises(AppError) do
         raise "first"
       rescue StandardError => e1
-      raise AppError, "second from #{e1.message}"
+        raise AppError, "second from #{e1.message}"
       ensure
-      out << "inner ensure"
+        out << "inner ensure"
       end
       assert_equal "second from first", ae.message
       assert_equal ["e1", "e2", "caught x", "e3", "inner ensure"], out
@@ -3656,7 +3656,7 @@ module ControlTests
       [0, 3, -3].each do |d|
         out << (10 / d).to_s << (10 % d).to_s << (-7 / d).to_s
       rescue ZeroDivisionError => e
-      out << "zde #{e.message} #{e.class}"
+        out << "zde #{e.message} #{e.class}"
       end
       assert_equal ["zde divided by 0 ZeroDivisionError", "3", "1", "-3", "-4", "-2", "2"], out
       arr = [1, 2] #: Array[Integer]
@@ -3693,31 +3693,31 @@ module ControlTests
       a = begin
         risky_int(2)
       rescue StandardError
-    0
+        0
       end
       b = begin
         risky_int(-1)
       rescue StandardError
-    0
+        0
       end
       assert_equal 4, a
       assert_equal 0, b
       c = begin
         risky_int(-5)
       rescue StandardError
-    nil
+        nil
       end
       assert_nil c
       d = begin
         risky_int(-1)
       rescue StandardError
-    "failed"
+        "failed"
       end
       assert_equal "failed", d
       e2 = begin
         risky_int(3)
       rescue StandardError
-   "failed"
+        "failed"
       end
       assert_equal 6, e2
       assert_equal(-10, begin
@@ -3729,12 +3729,12 @@ module ControlTests
       f = begin
         risky_int(1)
       rescue StandardError
-    hits.push("f").size
+        hits.push("f").size
       end
       f2 = begin
         risky_int(-1)
       rescue StandardError
-   hits.push("f2").size
+        hits.push("f2").size
       end
       assert_equal 2, f
       assert_equal 1, f2
@@ -3743,18 +3743,18 @@ module ControlTests
         g = begin
           risky_int(99)
         rescue StandardError
-      -1
+          -1
         end
         flunk "got #{g}"
       end
       assert_equal "nie", ex.message
       list = [1, 2, 3] #: Array[Integer]
       assert_equal([100, 0, 2], list.map do |v|
-  begin
-        risky_int(v - 2)
-  rescue StandardError
-    100
-      end
+        begin
+              risky_int(v - 2)
+        rescue StandardError
+          100
+            end
       end)
       assert_equal 1, control_safe_fetch("a")
       assert_equal(-1, control_safe_fetch("b"))
@@ -3823,7 +3823,7 @@ module ControlTests
       assert_equal(-1, count)
       sum = 0
       doubled = [1, 2, 3].map do |x|
-  sum += x
+        sum += x
   x * 2
       end
       assert_equal 6, sum
@@ -4423,11 +4423,11 @@ module ControlTests
       end
       names = %w[ann bo] #: Array[String]
       names.each do |n|
-  s = n.upcase
+        s = n.upcase
   got << s
       end
       [4, 5].each do |c|
-  s = c * 2
+        s = c * 2
   got << s.to_s
       end
       assert_equal %w[2 4 s3 ANN BO 8 10], got
@@ -4582,9 +4582,9 @@ module ControlTests
         catch(:inner) do
           throw :outer, "deep"
         rescue Exception
-        log << "rescued"
+          log << "rescued"
         ensure
-        log << "ensure"
+          log << "ensure"
         end
         "not reached"
       end
@@ -4824,7 +4824,7 @@ module ControlTests
       e = assert_raises(ArgumentError) do
         1
       rescue StandardError
-      2
+        2
     else
       raise ArgumentError, "from else"
       end
@@ -5007,9 +5007,9 @@ module ControlTests
 
         raise TypeError, "type"
       rescue *CONTROL_NET_ERRORS => e
-      seen << [:net, e.message]
+        seen << [:net, e.message]
       rescue TypeError, *[KeyError] => e
-      seen << [:other, e.message]
+        seen << [:other, e.message]
       end
       assert_equal [[:net, "io"], [:net, "arg"], [:other, "type"]], seen
     end
@@ -5056,7 +5056,7 @@ module ControlTests
       e = assert_raises(IOError) do
         raise "inner"
       rescue StandardError => inner
-      inner.set_backtrace(["i.rb:1:in 'x'"])
+        inner.set_backtrace(["i.rb:1:in 'x'"])
       raise IOError, "outer"
       end
       e.set_backtrace(["o.rb:1:in 'y'", "o.rb:2:in 'z'"])
@@ -6199,7 +6199,7 @@ module ControlTests
       assert_equal [-1, 0, -1, -1, 0], got
       calls = 0
       lim = lambda {
-  calls += 1
+        calls += 1
   3
       }
       1.upto(lim.call) { |i| calls += i * 0 }

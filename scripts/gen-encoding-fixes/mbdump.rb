@@ -41,7 +41,7 @@ elsif form == "4"
         end
       end
   [0x20, 0x7f, 0xff].each do |c|
-        s = [a, b, c].pack("CCC")
+    s = [a, b, c].pack("CCC")
         out.puts "s #{hex(s)} #{st(s, e)}"
   end
     end

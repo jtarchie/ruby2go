@@ -144,7 +144,7 @@ module RegexpTests
         s.match?(/\Aabc/)
         raised << false
       rescue ArgumentError
-      raised << true
+        raised << true
       end
       assert_equal [false, true, false, true], raised
       assert_equal [true, 0, "abc"], [bad.b.match?(/\Aabc/n), big =~ /abc/, big.match(/\Aabc/)&.[](0)]

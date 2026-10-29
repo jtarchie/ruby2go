@@ -132,11 +132,11 @@ module AssertionTests
       assert_output("hi\n") { puts "hi" }
       assert_output(nil, "e\n") { warn "e" }
       assert_output(/h.+!/, "\n") do
-  print "hello!"
+        print "hello!"
   warn ""
       end
       assert_output("\"a 1\"\n", /^w/) do
-  p "a 1"
+        p "a 1"
   warn "warned"
       end
       assert_silent { nil }

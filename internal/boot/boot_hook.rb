@@ -109,7 +109,7 @@ module RugarooBoot
         m = begin
           owner.instance_method(name)
         rescue StandardError
-      nil
+          nil
         end
         from = m && m.original_name != name ? m.owner : nil
         @define_methods << {
@@ -133,7 +133,7 @@ module RugarooBoot
         m = begin
           owner.instance_method(tp.return_value)
         rescue StandardError
-      next
+          next
         end
         singleton = owner.singleton_class?
         @aliases << { "owner" => safe_name(singleton ? owner.attached_object : owner), "singleton" => singleton,
@@ -200,7 +200,7 @@ module RugarooBoot
           obj = begin
             mod.const_get(c, false)
           rescue StandardError
-      next
+            next
           end
           return "#{name}::#{c}" if obj.equal?(value)
 
@@ -409,7 +409,7 @@ module RugarooBoot
           v = begin
             MOD_CONST_GET.bind_call(owner, c, false)
           rescue StandardError
-        next
+            next
           end
           next unless v.is_a?(Module) # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
 
@@ -433,7 +433,7 @@ module RugarooBoot
         props = begin
           k.props
         rescue StandardError
-  next
+          next
         end
         out[MOD_NAME.bind_call(k)] = props.map do |name, rules|
           h = { "name" => name.to_s, "type" => rules[:type_object].to_s }

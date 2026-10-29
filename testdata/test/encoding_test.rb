@@ -338,7 +338,7 @@ module EncodingTests
         assert_equal [104, 0, 233, 0, 10, 0], File.binread(path).bytes
         File.open(path, "r:UTF-16LE:UTF-8") { |f| assert_equal ["hé\n", nil], [f.gets, f.gets] }
         File.open(path, "w:UTF-16") do |f|
-  f.write("é")
+          f.write("é")
   f.write("a")
         end
         assert_equal [254, 255, 0, 233, 0, 97], File.binread(path).bytes

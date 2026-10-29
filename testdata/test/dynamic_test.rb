@@ -3330,7 +3330,7 @@ module DynamicTests
       ok = begin
         [x.dyngen_both, x.dyngen_priv].map { "no" }
       rescue StandardError
-   :nomethod
+        :nomethod
       end
       assert_equal :nomethod, ok
     end

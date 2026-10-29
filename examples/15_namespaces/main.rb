@@ -46,15 +46,15 @@ end
 # Compact form: only Geometry::Circle is in the lexical scope here.
 module Geometry
   class Circle < Geometry::Point
-  attr_reader :r #: Integer
+    attr_reader :r #: Integer
 
   #: (Integer, Integer, Integer) -> void
-  def initialize(x, y, r)
-    super(x, y)
-    @r = r
-  end
+    def initialize(x, y, r)
+      super(x, y)
+      @r = r
+    end
 
-  def to_s = "circle #{super} r=#{r}"
+    def to_s = "circle #{super} r=#{r}"
   end
 end
 

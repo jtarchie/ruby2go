@@ -132,7 +132,7 @@ module Surfguard
   def self.blocked_address?(ip)
     blocked_ipaddr?(IPAddr.new(ip))
   rescue IPAddr::InvalidAddressError
-  true
+    true
   end
 
   # The same question over a parsed address. Branch order is the gem's:
@@ -175,7 +175,7 @@ module Surfguard
   def self.ip_literal(host)
     IPAddr.new(host)
   rescue IPAddr::InvalidAddressError
-  nil
+    nil
   end
 
   def self.disallowed_ipv4?(ipaddr)

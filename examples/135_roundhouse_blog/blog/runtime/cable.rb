@@ -500,7 +500,7 @@ module Cable
         channel.unsubscribed
         channel.after_unsubscribe
       rescue StandardError => e
-      warn "[cable] unsubscribe raised: #{e.message}"
+        warn "[cable] unsubscribe raised: #{e.message}"
       end
       @channels = []
       0

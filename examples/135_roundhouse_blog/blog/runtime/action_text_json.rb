@@ -16,8 +16,8 @@
 # `to_json(*args)` for the stdlib gem's calling convention.
 module ActionText
   class Content
-  def to_json
-    "\"#{JsonBuilder.encode_string(as_json)}\""
-  end
+    def to_json
+      "\"#{JsonBuilder.encode_string(as_json)}\""
+    end
   end
 end

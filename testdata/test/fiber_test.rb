@@ -92,7 +92,7 @@ module FiberTests
 
       in_thread = Thread.new do
         f = Fiber.new do
-  Fiber.yield Fiber.current.alive?
+          Fiber.yield Fiber.current.alive?
   :done
         end
         [f.resume, f.resume, f.alive?]

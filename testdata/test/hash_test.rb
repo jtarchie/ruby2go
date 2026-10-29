@@ -910,15 +910,15 @@ module HashTests
       sel_h = { "a" => 1, "bb" => 2 } #: Hash[String, Integer]
       got = [] #: Array[String]
       sel_h.select do |x|
-  got << x.inspect
+        got << x.inspect
   true
       end
       sel_h.filter do |x|
-  got << x.inspect
+        got << x.inspect
   false
       end
       sel_h.reject do |x|
-  got << x.inspect
+        got << x.inspect
   false
       end
       assert_equal ["\"a\"", "\"bb\"", "\"a\"", "\"bb\"", "\"a\"", "\"bb\""], got
@@ -1256,7 +1256,7 @@ module HashTests
       x = begin
         u.fetch("zz")
       rescue StandardError
-    -1
+        -1
       end
       assert_equal(-1, x)
       # formerly the uncaught KeyError that ended the file
@@ -1461,7 +1461,7 @@ module HashTests
       w.each_pair { |k, v| out << "#{k}#{v}" }
       assert_equal ["z1"], out
       snap = w.map do |k, v|
-  w[k] = v + 1
+        w[k] = v + 1
   k
       end
       assert_equal ["z"], snap
@@ -2502,7 +2502,7 @@ module HashTests
       raised = false
       begin
         h.delete_if do |_k, _v|
-  h[99] = 9
+          h[99] = 9
   false
         end
       rescue RuntimeError
