@@ -46,8 +46,8 @@ class Bird < Animal
 end
 
 zoo = [Dog.new("Rex"), Bird.new("Tweety"), Animal.new("Blob", 0)]
-zoo.each { |a| puts a.speak
-               puts a }
+zoo.each do |a| puts a.speak
+               puts a end
 
 rex = Dog.new("Rex")
 rex.learn("sit").learn("roll")
