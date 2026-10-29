@@ -1986,7 +1986,7 @@ module DynamicTests
       assert_equal false, dynamic_maybe(1) == dynamic_maybe(-1)
       assert_equal true, dynamic_maybe(2) != dynamic_maybe(3)
       assert_equal false, !dynamic_maybe(-1).nil?
-      assert_equal true, dynamic_maybe(-1) == nil
+      assert_equal true, dynamic_maybe(-1).nil?
       assert_equal true, dynamic_maybe(7) == 7
       assert_equal false, dynamic_maybe(7) != 7.0
     end
