@@ -1790,7 +1790,7 @@ module StdlibTests
       q = Queue.new #: Queue[Integer]
       t = Thread.new do
         q.pop
-  Thread.new { 1 }.group.equal?(g)
+        Thread.new { 1 }.group.equal?(g)
       end
       g.add(t)
       q << 1
@@ -1950,8 +1950,8 @@ module StdlibTests
     def test_popen_write
       assert_equal "a\nb\n", IO.popen("sort", "r+") { |io|
         io.write("b\na\n")
-  io.close_write
-  io.read
+        io.close_write
+        io.read
       }
       got = IO.popen(["sh", "-c", "read x; echo got $x"], "w+") do |io|
         io.puts "hi"

@@ -47,7 +47,7 @@ end
 
 zoo = [Dog.new("Rex"), Bird.new("Tweety"), Animal.new("Blob", 0)]
 zoo.each { |a| puts a.speak
-puts a }
+               puts a }
 
 rex = Dog.new("Rex")
 rex.learn("sit").learn("roll")

@@ -1360,7 +1360,7 @@ end
 def control_block_local_first
   [1].each do |i|
     item = ControlTests::Counter.new
-  item.n += i
+    item.n += i
   end
   item = nil #: ControlTests::Counter?
   item = ControlTests::Counter.new
@@ -2461,14 +2461,14 @@ module ControlTests
       assert_equal "{\"a\" => 1}", nv_h.select { |k, v|
         next false if k == "b"
 
-  v.positive?
+        v.positive?
       }.inspect
       nv_xs = [1, 2] #: Array[Integer]
       assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
       assert_equal([1], nv_xs.select do |n|
         next false if n > 1
 
-  true
+        true
       end)
     end
   end
@@ -2911,7 +2911,7 @@ module ControlTests
                when ArgumentError then "arg"
                else "other #{e.class}"
                end
-      kinds << kind
+        kinds << kind
       end
       assert_equal ["key", "arg", "other IOError"], kinds
     end
@@ -3249,7 +3249,7 @@ module ControlTests
         raise ArgumentError, "first"
       ensure
         out << "ensure raising"
-      raise KeyError, "from ensure"
+        raise KeyError, "from ensure"
       end
       assert_equal ["ensure raising"], out
       assert_equal "KeyError: from ensure", "#{e.class}: #{e.message}"
@@ -3350,7 +3350,7 @@ module ControlTests
         raise KeyError, "orig"
       rescue KeyError => e
         out << "logging #{e.message}"
-      raise e
+        raise e
       end
       assert_equal ["logging orig"], out
       assert_equal "outer KeyError orig", "outer #{outer.class} #{outer.message}"
@@ -3818,7 +3818,7 @@ module ControlTests
       sum = 0
       doubled = [1, 2, 3].map do |x|
         sum += x
-  x * 2
+        x * 2
       end
       assert_equal 6, sum
       assert_equal [2, 4, 6], doubled
@@ -4418,11 +4418,11 @@ module ControlTests
       names = %w[ann bo] #: Array[String]
       names.each do |n|
         s = n.upcase
-  got << s
+        got << s
       end
       [4, 5].each do |c|
         s = c * 2
-  got << s.to_s
+        got << s.to_s
       end
       assert_equal %w[2 4 s3 ANN BO 8 10], got
       out = [] #: Array[String]
@@ -5051,7 +5051,7 @@ module ControlTests
         raise "inner"
       rescue StandardError => inner
         inner.set_backtrace(["i.rb:1:in 'x'"])
-      raise IOError, "outer"
+        raise IOError, "outer"
       end
       e.set_backtrace(["o.rb:1:in 'y'", "o.rb:2:in 'z'"])
       assert_equal "o.rb:1:in 'y': outer (IOError)\n\tfrom o.rb:2:in 'z'\ni.rb:1:in 'x': inner (RuntimeError)\n", e.full_message(highlight: false)
@@ -6194,7 +6194,7 @@ module ControlTests
       calls = 0
       lim = lambda {
         calls += 1
-  3
+        3
       }
       1.upto(lim.call) { |i| calls += i * 0 }
       lim.call.times { calls += 0 }

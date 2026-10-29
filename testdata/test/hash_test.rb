@@ -911,15 +911,15 @@ module HashTests
       got = [] #: Array[String]
       sel_h.select do |x|
         got << x.inspect
-  true
+        true
       end
       sel_h.filter do |x|
         got << x.inspect
-  false
+        false
       end
       sel_h.reject do |x|
         got << x.inspect
-  false
+        false
       end
       assert_equal ["\"a\"", "\"bb\"", "\"a\"", "\"bb\"", "\"a\"", "\"bb\""], got
     end
@@ -1377,7 +1377,7 @@ module HashTests
       e = {} #: Hash[String, Integer]
       out = []
       e.each_key { |k| out << "never #{k}"
-      out << "never #{k}" }
+                       out << "never #{k}" }
       e.each_value { |v| out << "never #{v}" }
       e.each_pair { |k, _v| out << "never #{k}" }
       assert_equal [], out
@@ -1462,7 +1462,7 @@ module HashTests
       assert_equal ["z1"], out
       snap = w.map do |k, v|
         w[k] = v + 1
-  k
+        k
       end
       assert_equal ["z"], snap
       assert_equal "{\"z\" => 2}", w.inspect
@@ -2503,7 +2503,7 @@ module HashTests
       begin
         h.delete_if do |_k, _v|
           h[99] = 9
-  false
+          false
         end
       rescue RuntimeError
         raised = true

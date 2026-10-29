@@ -223,7 +223,7 @@ module EnumeratorTests
       assert_equal %w[a b], words.to_a
       procs = Enumerator.new do |y|
         y << 0
-  y.to_proc.call(5)
+        y.to_proc.call(5)
       end
       assert_equal [0, 5], procs.to_a
       calls = Enumerator.new { |y| y << "c" << "d" }
@@ -294,7 +294,7 @@ module EnumeratorTests
       pulled = []
       firsts = (1..).lazy.map do |x|
         pulled << x
-  x
+        x
       end.select(&:odd?).first(2)
       assert_equal [1, 3], firsts
       assert_equal [1, 2, 3], pulled
@@ -486,7 +486,7 @@ module EnumeratorTests
       pulled = []
       first = (1..).lazy.map do |x|
         pulled << x
-  x
+        x
       end.grep(Integer).first(2)
       assert_equal [1, 2], first
       assert_equal [1, 2], pulled

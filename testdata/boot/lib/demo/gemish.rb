@@ -637,7 +637,7 @@ class DemoFallbackExec
 
   def go = ns_execute(5) do |x|
     @log << x
-  x * 2
+    x * 2
   end
 end
 

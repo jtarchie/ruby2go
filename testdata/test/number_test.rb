@@ -2421,7 +2421,7 @@ module NumberTests
       n = 0
       (MX - 1..MX).each do |_i|
         n += 1
-  break if n > 5
+        break if n > 5
       end
       a = [] #: Array[Integer]
       (MX - 1...MX).each { |i| a << i }
@@ -2437,7 +2437,7 @@ module NumberTests
       r = number_class_of do
         (MX - 1..).each do |i|
           a << i
-        break if a.size >= 3
+          break if a.size >= 3
         end
       end
       assert_equal [MX - 1, MX], a.first(2)
@@ -2460,17 +2460,17 @@ module NumberTests
       n = 0
       (MX - 1).upto(MX) do |_i|
         n += 1
-  break if n > 5
+        break if n > 5
       end
       m = 0
       (MN + 1).downto(MN) do |_i|
         m += 1
-  break if m > 5
+        break if m > 5
       end
       k = 0
       (MX - 1).step(MX, 1) do |_i|
         k += 1
-  break if k > 5
+        break if k > 5
       end
       assert_equal [2, 2, 2], [n, m, k]
       a = [] #: Array[Integer]

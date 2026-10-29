@@ -133,11 +133,11 @@ module AssertionTests
       assert_output(nil, "e\n") { warn "e" }
       assert_output(/h.+!/, "\n") do
         print "hello!"
-  warn ""
+        warn ""
       end
       assert_output("\"a 1\"\n", /^w/) do
         p "a 1"
-  warn "warned"
+        warn "warned"
       end
       assert_silent { nil }
       out, err = capture_io do
