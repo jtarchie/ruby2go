@@ -23,6 +23,7 @@ module ActiveStorage
       out = "#{path}.poster.png"
       ok = system("ffmpeg", "-y", "-loglevel", "error", "-i", path, "-vf", FILTER, "-frames:v", "1", "-f", "image2", out)
       raise "ActiveStorage::Previewer: ffmpeg could not draw a poster for #{path} — is ffmpeg installed? (campfire's Dockerfile installs it)" if !ok || !File.exist?(out)
+
       png = File.binread(out)
       File.delete(out)
       png
