@@ -6,13 +6,37 @@ GEM
     cuba (4.0.3)
       rack (>= 3.0.0)
       rack-session (>= 2.0.0)
+    date (3.6.0)
+    drb (2.2.3)
     ffi (1.17.3)
+    ffi (1.17.3-arm64-darwin)
+    forwardable (1.4.0)
+    getoptlong (0.2.1)
+    ipaddr (1.3.0)
     kramdown (2.5.2)
       rexml (>= 3.4.4)
     liquid (4.0.4)
     logger (1.7.0)
+    matrix (0.4.3)
+    mutex_m (0.3.0)
+    net-ftp (0.3.9)
+      net-protocol
+      time
+    net-imap (0.6.8)
+      date
+      net-protocol
+    net-pop (0.1.2)
+      net-protocol
+    net-protocol (0.4.0)
+      timeout
+    net-smtp (0.5.2)
+      net-protocol
     pairing_heap (3.1.2)
+    prime (0.1.4)
+      forwardable
+      singleton
     prism (1.9.0)
+    pstore (0.2.1)
     rack (3.2.7)
     rack-session (2.1.2)
       base64 (>= 0.1.0)
@@ -26,11 +50,24 @@ GEM
     rbs-inline (0.14.0)
       prism (>= 0.29)
       rbs (~> 4.0)
+    resolv (0.8.1)
+    resolv-replace (0.1.1)
+      resolv
     rexml (3.4.4)
+    rinda (0.2.0)
+      drb
+      forwardable
+      ipaddr
+    rss (0.3.3)
+      rexml
+    singleton (0.3.0)
     sorbet-runtime (0.6.13544)
     sqlite3 (2.10.1-arm64-darwin)
     sqlite3 (2.10.1-x86_64-darwin)
     sqlite3 (2.10.1-x86_64-linux-gnu)
+    time (0.5.0)
+      date
+    timeout (0.6.1)
     tsort (0.2.0)
     tyda (0.0.20261012123826-arm64-darwin)
     tyda (0.0.20261012123826-x86_64-darwin)
@@ -39,20 +76,34 @@ GEM
 
 PLATFORMS
   arm64-darwin-25
+  arm64-darwin-27
   x86_64-darwin
   x86_64-linux
 
 DEPENDENCIES
   bigdecimal (~> 3.1)
   cuba (~> 4.0)
+  drb (~> 2.2.3)
   ffi (~> 1.17)
+  getoptlong (~> 0.2.1)
   kramdown (~> 2.5)
   liquid (~> 4.0)
+  matrix (~> 0.4.3)
+  mutex_m (~> 0.3.0)
+  net-ftp (~> 0.3.9)
+  net-imap (~> 0.6.4)
+  net-pop (~> 0.1.2)
+  net-smtp (~> 0.5.1)
   pairing_heap (~> 3.1)
+  prime (~> 0.1.4)
+  pstore (~> 0.2.1)
   rack (~> 3.2, >= 3.2.7)
   rackup (~> 2.3)
   rbs (~> 4.0)
   rbs-inline (~> 0.14)
+  resolv-replace (~> 0.1.1)
+  rinda (~> 0.2.0)
+  rss (~> 0.3.2)
   sorbet-runtime (~> 0.6)
   sqlite3 (~> 2.10)
   tyda
@@ -61,23 +112,46 @@ DEPENDENCIES
 CHECKSUMS
   base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
   bigdecimal (3.3.1) sha256=eaa01e228be54c4f9f53bf3cc34fe3d5e845c31963e7fcc5bedb05a4e7d52218
+  bundler (4.0.20) sha256=7978a8ac648767f5e635bc522445b79e80a52b907a39a36c2d8085ed6bc762ae
   cuba (4.0.3) sha256=c67e3bc476719518cfbc5002273a8a9480a9f86a375ab0ce5c95aacfc7e24589
-  ffi (1.17.3)
+  date (3.6.0) sha256=18ac945c4e24ebd93534f8eab8c2fd8c5604b3e977105b3798d62a1e8d27b580
+  drb (2.2.3) sha256=0b00d6fdb50995fe4a45dea13663493c841112e4068656854646f418fda13373
+  ffi (1.17.3) sha256=0e9f39f7bb3934f77ad6feab49662be77e87eedcdeb2a3f5c0234c2938563d4c
+  ffi (1.17.3-arm64-darwin) sha256=0c690555d4cee17a7f07c04d59df39b2fba74ec440b19da1f685c6579bb0717f
+  forwardable (1.4.0) sha256=f1cd40cc9812937980e1c76f1aa053660990a7c9b6a98fc37d945468afcce838
+  getoptlong (0.2.1) sha256=fd23f07397b994bf9310d4531cfdb4332629a9b8e8c9c457c32b7edf5bf21ba5
+  ipaddr (1.3.0) sha256=a841664ae075a44adce606010bfa68d238f22fbadea50f7f416b23a810d49b72
   kramdown (2.5.2) sha256=1ba542204c66b6f9111ff00dcc26075b95b220b07f2905d8261740c82f7f02fa
   liquid (4.0.4) sha256=4fcfebb1a045e47918388dbb7a0925e7c3893e58d2bd6c3b3c73ec17a2d8fdb3
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
+  matrix (0.4.3) sha256=a0d5ab7ddcc1973ff690ab361b67f359acbb16958d1dc072b8b956a286564c5b
+  mutex_m (0.3.0) sha256=cfcb04ac16b69c4813777022fdceda24e9f798e48092a2b817eb4c0a782b0751
+  net-ftp (0.3.9) sha256=307817ccf7f428f79d083f7e36dbb46a9d1d375e0d23027824de1866f0b13b65
+  net-imap (0.6.8) sha256=eb30bb62227b64a3af6b518b04b2375113d69f68f15de59b0193b07d98acf6d9
+  net-pop (0.1.2) sha256=848b4e982013c15b2f0382792268763b748cce91c9e91e36b0f27ed26420dff3
+  net-protocol (0.4.0) sha256=f9f90c8c6f64794a45160bf422177a336db12809de3beeeaa26b88fcd2e8c853
+  net-smtp (0.5.2) sha256=35103cc04d6b2d94632f9928ede07483c24b70b9c0db1f231fea43909b678f3c
   pairing_heap (3.1.2) sha256=b78986e392cf9d6d67c51d434289bcc78656ce6254d637c04ee35b185ebf015b
+  prime (0.1.4) sha256=4d755ebf7c2994a6f3a3fee0d072063be3fff2d4042ebff6cd5eebd4747a225e
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
+  pstore (0.2.1) sha256=03904d0f2c66579e96d1e6704cdabc0c88df7ea8ed8782d9f3569f6f6c702c1a
   rack (3.2.7) sha256=93e13e1c24f93556671d85d2d79fa228c3485815c50d7e2f265b5330c6528fb7
   rack-session (2.1.2) sha256=595434f8c0c3473ae7d7ac56ecda6cc6dfd9d37c0b2b5255330aa1576967ffe8
   rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
   rbs (4.2.0) sha256=51f7b886dcc05bc09e10b901daa6a81829f6adc03101d6ca9ea4aac6103e0674
   rbs-inline (0.14.0) sha256=eaf47b46690d63acddab1f6804c9cc205a4bc78e637cfc421a0b1239874ef51c
+  resolv (0.8.1) sha256=7452071b413d0b63054654e4646f07dc717f3e5d3ed1c7dfaf34f7f054d13027
+  resolv-replace (0.1.1) sha256=473519b05a0189452034f950f0e0af7fa745b2657ab3db85402953ac6beb688f
   rexml (3.4.4) sha256=19e0a2c3425dfbf2d4fc1189747bdb2f849b6c5e74180401b15734bc97b5d142
+  rinda (0.2.0) sha256=bb4566af73c9b78e80bc41202140860e33150ee2a0eacdf6dfe583e1aa0b03fa
+  rss (0.3.3) sha256=37ef1ec4d691d67edbe92159079a4e89a0965e6a6b32246009ae3d734d12d1ab
+  singleton (0.3.0) sha256=83ea1bca5f4aa34d00305ab842a7862ea5a8a11c73d362cb52379d94e9615778
   sorbet-runtime (0.6.13544) sha256=30c6d716f5771da7fe81d5c51b90fc027756de32fa8c9c75cd2c4a8103792f30
   sqlite3 (2.10.1-arm64-darwin) sha256=45f74dad0a8ee57ae5fadfac39bf160d1f09fb0484a442223310d869cd957d92
   sqlite3 (2.10.1-x86_64-darwin) sha256=00d1cd2e8ecff5ad9fffa0c97de59d4f85c5fc54eada2587d53ca0bd933b7a5d
   sqlite3 (2.10.1-x86_64-linux-gnu) sha256=661ecede31e23a412059cd8c684ed84e332f64f167e4a90902cf99e8ea2c8718
+  time (0.5.0) sha256=abea008a7c3e8d2727f95f6fab334b7862004c514fbb4b3315285910e8d1650f
+  timeout (0.6.1) sha256=78f57368a7e7bbadec56971f78a3f5ecbcfb59b7fcbb0a3ed6ddc08a5094accb
   tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f
   tyda (0.0.20261012123826-arm64-darwin) sha256=cf59fe85eee4a886ffb941a92041a86f9bcf5bbad596b8a112f03e1f8084a4ed
   tyda (0.0.20261012123826-x86_64-darwin) sha256=394db007871d00ac7b5463a45393374dedc90fb8e5052510f7ff1282f2f31037

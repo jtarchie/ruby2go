@@ -62,7 +62,7 @@ end
 	if err != nil {
 		t.Fatal(err)
 	}
-	prog, err := load(ctx, p, root, []string{"core/x/abs_spec.rb"})
+	prog, err := load(ctx, p, root, []string{"core/x/abs_spec.rb"}, root)
 	if err != nil {
 		t.Fatal(err)
 	}

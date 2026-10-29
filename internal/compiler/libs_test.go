@@ -27,3 +27,12 @@ func TestSupportDoc(t *testing.T) {
 		t.Errorf("docs/support.md has no `name` for these require names (decision 373): %s", strings.Join(missing, ", "))
 	}
 }
+
+// mriLib answers by whole name or first path segment: net/protocol is the stdlib's, net/ftp a bundled gem to look up (decision 409).
+func TestMRILib(t *testing.T) {
+	for name, want := range map[string]bool{"pathname": true, "io/console": true, "net/protocol": true, "net/protocol.rb": true, "net/ftp": false, "net/smtp": false, "net": false, "matrix": false} {
+		if got := mriLib(name); got != want {
+			t.Errorf("mriLib(%q) = %v, want %v", name, got, want)
+		}
+	}
+}

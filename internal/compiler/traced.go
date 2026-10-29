@@ -46,7 +46,7 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 		if f == main {
 			continue
 		}
-		if m := gemDir.FindStringSubmatch(f); m != nil && (builtinLib(m[1]) || mriLibs[m[1]]) {
+		if m := gemDir.FindStringSubmatch(f); m != nil && (builtinLib(m[1]) || mriLib(m[1])) {
 			add(m[1]) // a gem the prelude is: the vendored copy's files are its
 			continue
 		} else if lib := strings.ReplaceAll(m1(m), "-", "/"); m != nil && builtinLib(lib) {
@@ -57,7 +57,7 @@ func TracedEntry(l *boot.Loaded, main string) (src []byte, dirs []string) {
 		}
 		if dir, rel := under(f, l.StdDirs); dir != "" {
 			name := strings.TrimSuffix(rel, filepath.Ext(rel))
-			if first, _, _ := strings.Cut(name, "/"); builtinLib(name) || mriLibs[first] && first != "enc" && first != "bundler" && first != "rubygems" { // Bundler set up the load path the trace recorded; rerun at boot it hangs (decision 404)
+			if first, _, _ := strings.Cut(name, "/"); builtinLib(name) || mriLib(name) && first != "enc" && first != "bundler" && first != "rubygems" { // Bundler set up the load path the trace recorded; rerun at boot it hangs (decision 404)
 				add(name) // MRI internals (encodings, portable Ruby's helpers) have no rugaroo meaning
 			}
 			continue

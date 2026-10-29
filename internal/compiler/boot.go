@@ -54,17 +54,46 @@ func CompileWithGemDirs(ctx context.Context, preludeFS, gemSigs fs.FS, sources [
 	if err != nil {
 		return nil, nil, err //nolint:wrapcheck // the caller adds "rugaroo: "
 	}
-	all := slices.Clip(gemDirs)
-	for _, d := range found {
-		if m := gemDir.FindStringSubmatch(d + "/"); m != nil && builtinLib(m[1]) {
-			continue // a gem the prelude is (base64, sqlite3) came back as a dependency: the prelude's copy serves, and its shipped sig/ would type the prelude's by its own (decisions 173, 406)
-		}
-		all = append(all, d)
-	}
+	all := carriedGemDirs(gemDirs, found)
 	if len(all) == 0 {
 		return CompileFilesWithWarnings(ctx, preludeFS, sources, loadPath...)
 	}
 	return CompileWithBoot(ctx, preludeFS, gemSigs, sources, all, loadPath...)
+}
+
+// carriedGemDirs is gemDirs plus the installed gems' lib dirs found, less a gem the prelude is (base64, sqlite3) that came
+// back as a dependency: the prelude's copy serves, and its shipped sig/ would type the prelude's by its own (decisions 173, 406).
+func carriedGemDirs(gemDirs, found []string) []string {
+	all := slices.Clip(gemDirs)
+	for _, d := range found {
+		if m := gemDir.FindStringSubmatch(d + "/"); m != nil && builtinLib(m[1]) {
+			continue
+		}
+		all = append(all, d)
+	}
+	return all
+}
+
+// CompileTestsSkippingWithGems is CompileTestsSkipping for a suite whose requires an installed gem answers (cmd/rubyspec's
+// library specs, decision 409): the gems are looked up under MRI from dir (its Gemfile, when it has one; decision 173) and
+// compiled as a program's gems are (leniently, pruned to what the suite reaches). The sources are in memory, so nothing is
+// booted: a gem whose load phase defines methods (decision 198) is compiled from its source alone.
+func CompileTestsSkippingWithGems(ctx context.Context, preludeFS, gemSigs fs.FS, sources []Source, seed *Inference, dir string) ([]byte, []string, []SkippedTest, error) {
+	if len(sources) == 0 {
+		return nil, nil, nil, errors.New("no Ruby files to compile")
+	}
+	names, err := gemRequires(ctx, sources, nil, nil)
+	var found []string
+	if err == nil && len(names) > 0 {
+		found, err = boot.FindGems(ctx, dir, names)
+	}
+	if err != nil {
+		return nil, nil, nil, err //nolint:wrapcheck // the caller adds "rugaroo: "
+	}
+	opts := options{skipTests: true, seed: seed, gemDirs: carriedGemDirs(nil, found), gemSigs: gemSigs}
+	opts.pruneGems = len(opts.gemDirs) > 0
+	out, err := compile(ctx, preludeFS, sources, &opts)
+	return out, opts.warnings, opts.skipped, err
 }
 
 // bootSources runs boot on sources[0] and appends the files its resolved

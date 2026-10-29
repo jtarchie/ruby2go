@@ -39,3 +39,19 @@ gem "sqlite3", "~> 2.10"
 
 # C calls under MRI for example 127; rugaroo maps `require "ffi"` onto its own port over Fiddle (decision 375).
 gem "ffi", "~> 1.17"
+
+# Bundled gems ruby/spec's library/ directories exercise (decision 409): pinned to what Ruby 4.0.9 bundles, so the spec
+# numbers in docs/support.md name one version. rugaroo compiles them unmodified, as installed gems.
+gem "matrix", "~> 0.4.3"
+gem "prime", "~> 0.1.4"
+gem "getoptlong", "~> 0.2.1"
+gem "net-ftp", "~> 0.3.9"
+gem "net-smtp", "~> 0.5.1"
+gem "net-pop", "~> 0.1.2"
+gem "net-imap", "~> 0.6.4"
+gem "drb", "~> 2.2.3"
+gem "rinda", "~> 0.2.0"
+gem "pstore", "~> 0.2.1"
+gem "mutex_m", "~> 0.3.0"
+gem "resolv-replace", "~> 0.1.1"
+gem "rss", "~> 0.3.2"

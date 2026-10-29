@@ -88,12 +88,14 @@ var preludeLibs = map[string]string{
 	"psych":                    "prelude/yaml.rb",
 }
 
-// mriLibs are MRI 4.0's standard library (first path segment): never a gem to look up, so requiring them never starts Ruby.
+// mriLibs are MRI 4.0's standard library, by first path segment or whole name (`net/protocol` is the stdlib's; `net/ftp`,
+// `net/smtp`, `net/pop` and `net/imap` are bundled gems to look up, decision 409): never a gem to look up, so requiring
+// them never starts Ruby.
 var mriLibs = map[string]bool{
 	"English": true, "bundler": true, "cgi": true, "complex": true, "continuation": true, "coverage": true, "date": true,
 	"date_core": true, "delegate": true, "did_you_mean": true, "digest": true, "enc": true, "enumerator": true, "erb": true,
 	"error_highlight": true, "etc": true, "expect": true, "fcntl": true, "fiber": true, "fileutils": true, "find": true,
-	"forwardable": true, "io": true, "ipaddr": true, "json": true, "mkmf": true, "monitor": true, "net": true,
+	"forwardable": true, "io": true, "ipaddr": true, "json": true, "mkmf": true, "monitor": true, "net/protocol": true,
 	"objspace": true, "open-uri": true, "open3": true, "optionparser": true, "optparse": true,
 	"pathname": true, "pp": true, "prettyprint": true, "prism": true, "psych": true, "pty": true, "random": true,
 	"rational": true, "rbconfig": true, "resolv": true, "ripper": true, "ruby2_keywords": true, "rubygems": true,
@@ -107,6 +109,12 @@ var mriLibs = map[string]bool{
 // a gem and is compiled here as user code (strict typing, extern synthesis), never looked up as an installed gem (decision 328).
 var vendoredLibs = map[string]string{
 	"sqlite3": "vendored/sqlite3-fiddle/sqlite3.rb",
+}
+
+// mriLib reports a require name MRI's standard library answers (mriLibs, by whole name or first path segment).
+func mriLib(name string) bool {
+	name = strings.TrimSuffix(name, ".rb")
+	return mriLibs[name] || mriLibs[strings.SplitN(name, "/", 2)[0]]
 }
 
 // builtinLib reports a require name the prelude or a vendored gem answers.
@@ -138,7 +146,7 @@ func gemRequires(ctx context.Context, sources []Source, loadPath, gemDirs []stri
 	// ponytail: a missing gem's require under `rescue LoadError` still errors; mark guarded requires in requireScan to skip them.
 	for _, lib := range libs {
 		name := strings.TrimSuffix(lib, ".rb")
-		if !builtinLib(name) && !mriLibs[strings.SplitN(name, "/", 2)[0]] {
+		if !builtinLib(name) && !mriLib(name) {
 			names = append(names, name)
 		}
 	}
@@ -341,7 +349,7 @@ func (f *fctx) genRuntimeRequire(n *parser.CallNode) expr {
 	}
 	switch {
 	case target != "" && f.c.loaded[f.c.real(target)]:
-	case target == "" && n.Name == "require" && (builtinLib(name) || mriLibs[strings.SplitN(name, "/", 2)[0]]):
+	case target == "" && n.Name == "require" && (builtinLib(name) || mriLib(name)):
 	default:
 		call := &parser.CallNode{Location: n.Location, Name: "__rugaroo_load_error", Arguments: &parser.ArgumentsNode{Location: n.Location, Arguments: []parser.Node{str}}}
 		return f.genExpr(call, nil)

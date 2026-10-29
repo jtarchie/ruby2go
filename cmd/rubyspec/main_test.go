@@ -259,3 +259,22 @@ func captureStdout(t *testing.T, f func()) string {
 	b, _ := io.ReadAll(r)
 	return string(b)
 }
+
+// Three files in a row failing for one reason stop the isolation: the rest are listed with that reason, not compiled.
+func TestIsolationStopsOnRepeatedFatal(t *testing.T) {
+	calls := 0
+	run := func(f string) *result {
+		calls++
+		if f == "d/ok_spec.rb" {
+			return &result{name: f, pass: 1}
+		}
+		return &result{name: f, fatal: "gem.rb:1: unsupported call\nmore"}
+	}
+	merged := isolate(target{name: "d", files: []string{"d/a_spec.rb", "d/b_spec.rb", "d/c_spec.rb", "d/ok_spec.rb", "d/e_spec.rb"}}, &result{name: "d"}, run)
+	if calls != 3 || len(merged.failedFiles) != 5 || merged.pass != 0 {
+		t.Errorf("calls = %d, failed = %v, pass = %d; want 3 compiles, 5 failed files (two assumed)", calls, merged.failedFiles, merged.pass)
+	}
+	if merged.failedFiles[4] != "d/e_spec.rb: gem.rb:1: unsupported call" {
+		t.Errorf("assumed file = %q", merged.failedFiles[4])
+	}
+}

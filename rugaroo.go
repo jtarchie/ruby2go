@@ -142,6 +142,20 @@ func CompileFiles(ctx context.Context, files []File, loadPath ...string) ([]byte
 	return out, warnings, nil
 }
 
+// CompileTestsSkippingWithGems is CompileTestsSkipping for a suite that requires installed gems: a require only a gem
+// answers is looked up under MRI from dir (its Gemfile, when it has one), as CompileWithGems does for a program.
+func CompileTestsSkippingWithGems(ctx context.Context, files []File, seed *Inference, dir string) ([]byte, []string, []SkippedTest, error) {
+	srcs := make([]compiler.Source, len(files))
+	for i, f := range files {
+		srcs[i] = compiler.Source{Name: f.Name, Src: f.Src}
+	}
+	out, warnings, skipped, err := compiler.CompileTestsSkippingWithGems(ctx, Prelude, GemSigs, srcs, seed, dir)
+	if err != nil {
+		return nil, warnings, skipped, fmt.Errorf("rugaroo: %w", err)
+	}
+	return out, warnings, skipped, nil
+}
+
 // SkippedTest is a test method CompileTestsSkipping could not compile and turned into a skip.
 type SkippedTest = compiler.SkippedTest
 

@@ -41,6 +41,7 @@ type options struct {
 	verbose bool
 	timeout time.Duration
 	keep    bool
+	gems    string // -gems
 }
 
 func main() {
@@ -51,6 +52,7 @@ func main() {
 	flag.BoolVar(&opts.verbose, "v", false, "list every unsupported example and each program's failures")
 	flag.DurationVar(&opts.timeout, "timeout", 3*time.Second, "a test that prints nothing for this long is skipped as hung")
 	flag.BoolVar(&opts.keep, "work", false, "keep each program's module (main.go) and print its path")
+	flag.StringVar(&opts.gems, "gems", ".", "directory whose Gemfile (else its installed gems) answers the specs' requires of gems (library/matrix needs matrix in it)")
 	printRoot := flag.Bool("print-root", false, "print the pinned checkout (fetching it if absent) and exit; scripts/rubyspec-coverage uses it")
 	flag.Parse()
 	err := opts.validate()
@@ -273,16 +275,37 @@ func runIsolating(ctx context.Context, p *parser.Parser, root string, t target, 
 	if r.fatal == "" || len(t.files) < 2 || ctx.Err() != nil {
 		return r
 	}
+	return isolate(t, r, func(f string) *result { return runTarget(ctx, p, root, target{name: f, files: []string{f}}, opts) })
+}
+
+// isolate runs each of t's files alone through run and adds up their results; r is the directory's failed program.
+func isolate(t target, r *result, run func(string) *result) *result {
 	merged := &result{name: t.name, took: r.took}
-	for _, f := range t.files {
-		sub := runTarget(ctx, p, root, target{name: f, files: []string{f}}, opts)
+	last, same := "", 0
+	for i, f := range t.files {
+		if same >= sameFatalLimit { // a gem or prelude that does not compile fails every file the same way: the rest are not compiled
+			merged.failedFiles = append(merged.failedFiles, f+": "+last)
+			continue
+		}
+		sub := run(f)
 		merged.merge(sub)
-		if sub.fatal != "" {
-			merged.failedFiles = append(merged.failedFiles, f+": "+firstLine(sub.fatal))
+		if sub.fatal == "" {
+			same = 0
+			continue
+		}
+		reason := firstLine(sub.fatal)
+		merged.failedFiles = append(merged.failedFiles, f+": "+reason)
+		if reason == last && i > 0 {
+			same++
+		} else {
+			last, same = reason, 1
 		}
 	}
 	return merged
 }
+
+// sameFatalLimit is how many files in a row may fail with one reason before the rest are assumed to.
+const sameFatalLimit = 3
 
 // merge adds a file's results to its directory's.
 func (r *result) merge(o *result) {
@@ -302,7 +325,7 @@ func runTarget(ctx context.Context, p *parser.Parser, root string, t target, opt
 	start := time.Now()
 	r := &result{name: t.name}
 	defer func() { r.took = time.Since(start) }()
-	prog, err := load(ctx, p, root, t.files)
+	prog, err := load(ctx, p, root, t.files, opts.gems)
 	if err != nil {
 		r.fatal = err.Error()
 		return r
@@ -585,6 +608,8 @@ type program struct {
 	seed       *rugaroo.Inference // parameter types from the last compile, which each cut barely changes
 	mocks      []*mockClass       // mocks the rewrite made classes of, loaded as one more file
 	mockN      int
+	gems       string   // the directory whose Gemfile answers the specs' gem requires
+	noGems     bool     // the bundle lacks a gem the specs require: compiled without gems
 	hoisted    []string // classes and modules examples define, moved to the top level
 }
 
@@ -592,8 +617,8 @@ type source struct {
 	name, text string
 }
 
-func load(ctx context.Context, p *parser.Parser, root string, specs []string) (*program, error) {
-	prog := &program{p: p, root: root, byName: map[string]*source{}, shared: map[string]sharedSpec{}}
+func load(ctx context.Context, p *parser.Parser, root string, specs []string, gems string) (*program, error) {
+	prog := &program{p: p, root: root, gems: gems, byName: map[string]*source{}, shared: map[string]sharedSpec{}}
 	text := mspec
 	if os.Getenv("RUGAROO_INT_OVERFLOW") == "promote" { // a Bignum exists (decision 372), so mspec's helper does too
 		text += "\ndef bignum_value(plus = 0) = 0x8000_0000_0000_0000 + plus\n"
@@ -705,7 +730,19 @@ func (prog *program) compile(ctx context.Context, r *result) ([]byte, error) {
 	if prog.seed == nil {
 		prog.seed = rugaroo.NewInference()
 	}
-	code, _, skips, err := rugaroo.CompileTestsSkipping(ctx, files, prog.seed)
+	var code []byte
+	var skips []rugaroo.SkippedTest
+	var err error
+	if prog.noGems {
+		code, _, skips, err = rugaroo.CompileTestsSkipping(ctx, files, prog.seed)
+	} else {
+		code, _, skips, err = rugaroo.CompileTestsSkippingWithGems(ctx, files, prog.seed, prog.gems)
+		if err != nil && strings.Contains(err.Error(), "cannot load such file") { // a gem the bundle lacks: the specs run without it, as they did before gems were looked up
+			prog.noGems = true
+			r.dropped = append(r.dropped, skipped{"gems", firstLine(strings.TrimPrefix(err.Error(), "rugaroo: "))})
+			code, _, skips, err = rugaroo.CompileTestsSkipping(ctx, files, prog.seed)
+		}
+	}
 	r.compiles, r.compileTime = r.compiles+1, r.compileTime+time.Since(start)
 	if err == nil {
 		r.compileSkips = r.compileSkips[:0] // this compile's, not the last's
