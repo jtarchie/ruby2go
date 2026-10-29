@@ -231,8 +231,6 @@ module RugarooBoot
         nil
       end.equal?(x)
                          "::#{n}"
-                       else
-                         nil
                        end
       when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
       when String then x.size > 100_000 ? nil : x.inspect
