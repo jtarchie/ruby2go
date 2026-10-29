@@ -1,5 +1,6 @@
 # prelude/shellwords.rb
 # rbs_inline: enabled
+
 #
 # Shellwords: Bourne-shell word splitting and escaping, as MRI's. Loads only on a literal `require "shellwords"` (decision 155).
 

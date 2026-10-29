@@ -229,6 +229,7 @@ class Rational < Object
   #: (Rational, ?Rational) { (Rational) -> void } -> void
   def step(limit, by = 1r)
     raise ArgumentError, "step can't be 0" if by.zero?
+
     i = self
     while by.positive? ? i <= limit : i >= limit
       yield i

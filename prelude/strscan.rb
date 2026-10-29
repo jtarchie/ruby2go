@@ -1,5 +1,6 @@
 # prelude/strscan.rb
 # rbs_inline: enabled
+
 #
 # StringScanner over a byte position, as MRI's. A pattern is matched
 # against the rest of the string, so ^ and \A match at the scan pointer

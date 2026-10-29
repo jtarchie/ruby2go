@@ -59,7 +59,7 @@ class SplayTree
     sl = dummy
     sr = dummy
     t = @root
-    loop do
+    while true
       if key < t.key
         break if t.left.nil?
 

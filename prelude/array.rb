@@ -1,5 +1,6 @@
 # prelude/array.rb
 # rbs_inline: enabled
+
 #
 # Array as a Go struct holding its slice and its frozen flag (decision 96), always handled as a pointer.
 
@@ -58,6 +59,7 @@ class Array < Object
   #: [X] (Integer) ?{ (Integer) -> X } -> Array[X]
   def self.__new_1(n)
     raise ArgumentError, "negative array size" if n < 0
+
     __check_size(n)
     out = [] #: Array[X]
     if block_given?
@@ -150,6 +152,7 @@ class Array < Object
     i = size - 1
     while i >= 0
       return i if self[i] == v
+
       i -= 1
     end
     nil
@@ -197,6 +200,7 @@ class Array < Object
   def __idx_range(r)
     s = r.__slice(size)
     return nil unless s
+
     __idx_2(s[0], s[1])
   end
 
@@ -224,6 +228,7 @@ class Array < Object
   def slice!(r)
     s = r.__slice(size)
     return nil unless s
+
     out = __idx_2(s[0], s[1])
     __cut(s[0], s[1])
     out
@@ -254,6 +259,7 @@ class Array < Object
     v = self[i]
     return v if v
     return default if default
+
     raise IndexError, "index #{i} outside of array bounds: #{-size}...#{size}"
   end
 
@@ -407,10 +413,10 @@ class Array < Object
   #: (?Integer) -> Array[E]
   def rotate(n = 1)
     return [] if empty?
+
     k = n % size
     (self[k..] || []) + (self[0, k] || [])
   end
-
 
   #: [U] (Array[U]) -> Array[[E, U]]
   def product(other)
@@ -622,6 +628,7 @@ class Array < Object
   def __idxset_range(r, v)
     span = r.__span(size)
     raise RangeError, "#{r.inspect} out of range" unless span
+
     __idxset_3(span[0], span[1], v)
   end
 
@@ -647,6 +654,7 @@ class Array < Object
     if at.is_a?(Range)
       span = at.__span(n)
       raise RangeError, "#{at.inspect} out of range" unless span
+
       start, count = span
     else
       start = at || 0
@@ -733,6 +741,7 @@ class Array < Object
   #: (Integer) -> Array[E]
   def __last_1(n)
     raise ArgumentError, "negative array size" if n < 0
+
     self[[size - n, 0].max.to_i, n] || []
   end
 
@@ -1159,6 +1168,7 @@ class Array < Object
     out = {} #: Hash[U, U]
     each_with_index do |r, i|
       raise ArgumentError, "wrong array length at #{i} (expected 2, was #{r.size})" unless r.size == 2
+
       out[r.fetch(0)] = r.fetch(1)
     end
     out

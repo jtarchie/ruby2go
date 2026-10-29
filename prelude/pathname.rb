@@ -1,5 +1,6 @@
 # prelude/pathname.rb
 # rbs_inline: enabled
+
 #
 # Pathname: an object holding its path, with a fluent API over File/Dir
 # (decision 65).
@@ -415,7 +416,6 @@ class Pathname < Object
 end
 
 module Kernel
-
   private
 
   #: (untyped) -> Pathname

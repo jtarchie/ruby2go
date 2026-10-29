@@ -1,5 +1,6 @@
 # prelude/exception.rb
 # rbs_inline: enabled
+
 #
 # The exception hierarchy.
 
@@ -31,6 +32,7 @@ class Exception < Object
   def to_s
     m = @message
     return m if m
+
     __class_name
   end
 
@@ -42,12 +44,14 @@ class Exception < Object
   def ==(other)
     return true if equal?(other)
     return false unless other.is_a?(Exception) && other.class == self.class
+
     message == other.message && backtrace == other.backtrace
   end
 
   #: (?String?) -> self
   def exception(msg = nil)
     return self if msg.nil?
+
     e = dup
     e.__set_message(msg)
     e
@@ -63,11 +67,13 @@ class Exception < Object
   def detailed_message(highlight: false)
     m = message
     return __bare_name(highlight) if m.empty?
+
     i = m.index("\n")
     first = i ? m[0, i] || "" : m
     head = highlight ? "\e[1m#{first} (\e[1;4m#{__class_name}\e[m\e[1m)\e[m" : "#{first} (#{__class_name})"
     return head unless i
     return head if i == m.size - 1
+
     rest = m[i + 1, m.size] || ""
     rest = rest.split("\n", -1).map { |l| l.empty? ? l : "\e[1m#{l}\e[m" }.join("\n") if highlight
     "#{head}\n#{rest}"
@@ -79,8 +85,10 @@ class Exception < Object
     hl = highlight.nil? ? $stderr.tty? : highlight
     bottom = order == :bottom
     raise ArgumentError, "expected :top or :bottom as order: #{order.inspect}" unless order.nil? || bottom || order == :top
+
     shown = [] #: Array[Exception]
     return "#{hl ? "\e[1mTraceback\e[m" : "Traceback"} (most recent call last):\n#{__report(hl, true, shown)}" if bottom
+
     __report(hl, false, shown)
   end
 
@@ -115,6 +123,7 @@ class Exception < Object
     bt = backtrace || []
     n = bt.size
     return "" if n < 2
+
     width = (n - 1).to_s.size
     (1...n).map { |i| bottom ? "\t#{(n - i).to_s.rjust(width)}: from #{bt[n - i]}\n" : "\tfrom #{bt[i]}\n" }.join
   end
@@ -128,6 +137,7 @@ class Exception < Object
     s = to_s
     return __class_name if s.empty?
     return "#<#{__class_name}:#{s.inspect}>" if s.include?("\n")
+
     "#<#{__class_name}: #{s}>"
   end
 
@@ -174,99 +184,131 @@ module Errno
   class EINVAL < SystemCallError
     Errno = ::Errno::EINVAL.new.errno.to_i #: Integer
   end
+
   class ENOENT < SystemCallError
     Errno = ::Errno::ENOENT.new.errno.to_i #: Integer
   end
+
   class EBADF < SystemCallError
     Errno = ::Errno::EBADF.new.errno.to_i #: Integer
   end
+
   class ECHILD < SystemCallError
     Errno = ::Errno::ECHILD.new.errno.to_i #: Integer
   end
+
   class EEXIST < SystemCallError
     Errno = ::Errno::EEXIST.new.errno.to_i #: Integer
   end
+
   class EISDIR < SystemCallError
     Errno = ::Errno::EISDIR.new.errno.to_i #: Integer
   end
+
   class ENOTDIR < SystemCallError
     Errno = ::Errno::ENOTDIR.new.errno.to_i #: Integer
   end
+
   class EACCES < SystemCallError
     Errno = ::Errno::EACCES.new.errno.to_i #: Integer
   end
+
   class ENOTEMPTY < SystemCallError
     Errno = ::Errno::ENOTEMPTY.new.errno.to_i #: Integer
   end
+
   class EBUSY < SystemCallError
     Errno = ::Errno::EBUSY.new.errno.to_i #: Integer
   end
+
   class EROFS < SystemCallError
     Errno = ::Errno::EROFS.new.errno.to_i #: Integer
   end
+
   class ELOOP < SystemCallError
     Errno = ::Errno::ELOOP.new.errno.to_i #: Integer
   end
+
   class EAGAIN < SystemCallError
     Errno = ::Errno::EAGAIN.new.errno.to_i #: Integer
   end
+
   class ECONNREFUSED < SystemCallError
     Errno = ::Errno::ECONNREFUSED.new.errno.to_i #: Integer
   end
+
   class EADDRINUSE < SystemCallError
     Errno = ::Errno::EADDRINUSE.new.errno.to_i #: Integer
   end
+
   class EADDRNOTAVAIL < SystemCallError
     Errno = ::Errno::EADDRNOTAVAIL.new.errno.to_i #: Integer
   end
+
   class EPIPE < SystemCallError
     Errno = ::Errno::EPIPE.new.errno.to_i #: Integer
   end
+
   class ESPIPE < SystemCallError
     Errno = ::Errno::ESPIPE.new.errno.to_i #: Integer
   end
+
   class ECONNRESET < SystemCallError
     Errno = ::Errno::ECONNRESET.new.errno.to_i #: Integer
   end
+
   class ECONNABORTED < SystemCallError
     Errno = ::Errno::ECONNABORTED.new.errno.to_i #: Integer
   end
+
   class ENOTCONN < SystemCallError
     Errno = ::Errno::ENOTCONN.new.errno.to_i #: Integer
   end
+
   class EISCONN < SystemCallError
     Errno = ::Errno::EISCONN.new.errno.to_i #: Integer
   end
+
   class EDESTADDRREQ < SystemCallError
     Errno = ::Errno::EDESTADDRREQ.new.errno.to_i #: Integer
   end
+
   class ETIMEDOUT < SystemCallError
     Errno = ::Errno::ETIMEDOUT.new.errno.to_i #: Integer
   end
+
   class EHOSTUNREACH < SystemCallError
     Errno = ::Errno::EHOSTUNREACH.new.errno.to_i #: Integer
   end
+
   class ENETUNREACH < SystemCallError
     Errno = ::Errno::ENETUNREACH.new.errno.to_i #: Integer
   end
+
   class EAFNOSUPPORT < SystemCallError
     Errno = ::Errno::EAFNOSUPPORT.new.errno.to_i #: Integer
   end
+
   class EMFILE < SystemCallError
     Errno = ::Errno::EMFILE.new.errno.to_i #: Integer
   end
+
   class ENOTTY < SystemCallError
     Errno = ::Errno::ENOTTY.new.errno.to_i #: Integer
   end
+
   class ENODEV < SystemCallError
     Errno = ::Errno::ENODEV.new.errno.to_i #: Integer
   end
+
   class ERANGE < SystemCallError
     Errno = ::Errno::ERANGE.new.errno.to_i #: Integer
   end
+
   class ENOSYS < SystemCallError
     Errno = ::Errno::ENOSYS.new.errno.to_i #: Integer
   end
+
   class EOPNOTSUPP < SystemCallError
     Errno = ::Errno::EOPNOTSUPP.new.errno.to_i #: Integer
   end

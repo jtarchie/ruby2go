@@ -1,5 +1,6 @@
 # prelude/hash.rb
 # rbs_inline: enabled
+
 #
 # Hash: insertion-ordered, an entry array plus an open-addressed index of it (decisions 350, 388).
 
@@ -48,12 +49,14 @@ class Hash < Object
         x.each_with_index do |pair, i|
           raise ArgumentError, "wrong element type #{pair.class} at #{i} (expected array)" unless pair.is_a?(Array)
           raise ArgumentError, "invalid number of elements (#{pair.size} for 1..2)" unless pair.size == 1 || pair.size == 2
+
           h[pair[0]] = pair[1]
         end
         return h
       end
     end
     raise ArgumentError, "odd number of arguments for Hash" if xs.size.odd?
+
     i = 0
     while i < xs.size
       h[xs[i]] = xs[i + 1]
@@ -222,6 +225,7 @@ class Hash < Object
     v = __fetch_opt(k, nil)
     return v if v
     return default if default
+
     raise KeyError.__for("key not found: #{k.inspect}", self, k)
   end
 

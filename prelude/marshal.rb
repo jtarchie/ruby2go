@@ -14,6 +14,7 @@ module Marshal
   def self.__dump_2(obj, arg)
     return __dump_limit(obj, arg) if arg.is_a?(Integer)
     raise TypeError, "instance of IO needed" unless arg.respond_to?(:write)
+
     arg.write(dump(obj))
     arg
   end
@@ -22,6 +23,7 @@ module Marshal
   # @dynamic
   def self.__dump_3(obj, io, limit)
     raise TypeError, "instance of IO needed" unless io.respond_to?(:write)
+
     io.write(__dump_limit(obj, limit))
     io
   end
@@ -35,6 +37,7 @@ module Marshal
     return __load(source, nil) if source.is_a?(String)
     return __load_io(source) if __exact_io?(source)
     raise TypeError, "instance of IO needed" unless source.respond_to?(:read)
+
     __load(source.read, nil)
   end
 

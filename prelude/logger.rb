@@ -10,7 +10,7 @@ class Logger < Object
   UNKNOWN = 5
 
   SEV_LABEL = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL", "ANY"] #: Array[String]
-  LEVELS = {"debug" => 0, "info" => 1, "warn" => 2, "error" => 3, "fatal" => 4, "unknown" => 5} #: Hash[String, Integer]
+  LEVELS = { "debug" => 0, "info" => 1, "warn" => 2, "error" => 3, "fatal" => 4, "unknown" => 5 } #: Hash[String, Integer]
   DEFAULT_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%6N" #: String
 
   attr_accessor :progname #: String?
@@ -36,6 +36,7 @@ class Logger < Object
     else
       val = LEVELS[severity.to_s.downcase]
       raise ArgumentError, "invalid log level: #{severity}" if val.nil?
+
       @level = val
     end
     @level
@@ -47,6 +48,7 @@ class Logger < Object
   #: () { () -> untyped } -> bool
   def __debug_block
     return true if @io.nil? || DEBUG < @level
+
     __write_entry(DEBUG, yield)
     true
   end
@@ -57,6 +59,7 @@ class Logger < Object
   #: () { () -> untyped } -> bool
   def __info_block
     return true if @io.nil? || INFO < @level
+
     __write_entry(INFO, yield)
     true
   end
@@ -67,6 +70,7 @@ class Logger < Object
   #: () { () -> untyped } -> bool
   def __warn_block
     return true if @io.nil? || WARN < @level
+
     __write_entry(WARN, yield)
     true
   end
@@ -77,6 +81,7 @@ class Logger < Object
   #: () { () -> untyped } -> bool
   def __error_block
     return true if @io.nil? || ERROR < @level
+
     __write_entry(ERROR, yield)
     true
   end
@@ -87,6 +92,7 @@ class Logger < Object
   #: () { () -> untyped } -> bool
   def __fatal_block
     return true if @io.nil? || FATAL < @level
+
     __write_entry(FATAL, yield)
     true
   end
@@ -97,6 +103,7 @@ class Logger < Object
   #: () { () -> untyped } -> bool
   def __unknown_block
     return true if @io.nil? || UNKNOWN < @level
+
     __write_entry(UNKNOWN, yield)
     true
   end
@@ -104,6 +111,7 @@ class Logger < Object
   #: (Integer, ?untyped) -> bool
   def add(severity, msg = nil)
     return true if @io.nil? || severity < @level
+
     __write_entry(severity, msg)
     true
   end
@@ -119,6 +127,7 @@ class Logger < Object
     line = fmtr ? fmtr.call(label, now, @progname, msg) : __default_format(label, now, msg)
     io = @io
     return unless io
+
     io.write(line)
     io.flush if io.respond_to?(:flush)
   end

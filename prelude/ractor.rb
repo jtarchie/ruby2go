@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 #
 # Ractor (decision 103): an isolated goroutine with a port. Ractor.new's
 # block is checked for isolation at compile time (internal/compiler/ractor.go),

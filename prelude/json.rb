@@ -1,5 +1,6 @@
 # prelude/json.rb
 # rbs_inline: enabled
+
 #
 # JSON, matching the json gem (2.x): `require "json"` gives every object
 # #to_json, and JSON.parse/.load reads a document back (decision 25).
@@ -74,6 +75,7 @@ module JSON
     return __dump_state(obj, arg) if arg.nil? || arg.is_a?(Hash)
     raise NotImplementedError, "JSON.dump limit is not supported" if arg.is_a?(Integer)
     raise TypeError, "no implicit conversion of #{arg.class} into Integer" unless arg.respond_to?(:write)
+
     arg.write(dump(obj))
     arg
   end

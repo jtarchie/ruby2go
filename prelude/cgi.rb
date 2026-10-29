@@ -1,5 +1,6 @@
 # prelude/cgi.rb
 # rbs_inline: enabled
+
 #
 # cgi/escape: CGI's URL and HTML escaping (all that remains of CGI in Ruby 4).
 

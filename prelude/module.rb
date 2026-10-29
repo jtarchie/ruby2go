@@ -1,5 +1,6 @@
 # prelude/module.rb
 # rbs_inline: enabled
+
 #
 # Class objects. Every class and module has one: an instance of its
 # metaclass, which the transpiler generates and which inherits from Class
@@ -101,6 +102,7 @@ class Module < Object
   def __method_sym(name)
     return name if name.is_a?(Symbol)
     return name.to_sym if name.is_a?(String)
+
     raise TypeError, "#{name.inspect} is not a symbol nor a string"
   end
 
@@ -189,6 +191,7 @@ class Module < Object
   def const_set(name, value)
     n = __method_sym(name).to_s
     raise NameError, "wrong constant name #{n}" unless n.match?(/\A[A-Z]\w*\z/)
+
     value
   end
 end

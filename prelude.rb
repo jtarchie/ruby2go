@@ -1,5 +1,6 @@
 # prelude.rb
 # rbs_inline: enabled
+
 #
 # The core library, compiled by the same transpiler as user code. It reopens
 # core classes, so it never runs on MRI. Only `%x{}` leaves drop into Go.

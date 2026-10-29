@@ -58,6 +58,7 @@ module FileUtils
     __mkdir1(dir, mode)
   rescue SystemCallError
     raise unless File.directory?(dir)
+
     nil
   end
 
@@ -97,6 +98,7 @@ module FileUtils
     nil
   rescue StandardError
     raise unless force
+
     nil
   end
 
@@ -314,6 +316,7 @@ module FileUtils
     File.delete(path.to_s)
   rescue StandardError
     raise unless force
+
     nil
   end
 

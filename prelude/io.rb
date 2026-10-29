@@ -73,6 +73,7 @@ module IOReadable
   def readline(chomp: false)
     line = gets
     raise EOFError, "end of file reached" unless line
+
     chomp && line.end_with?("\n") ? line.chomp : line # a final "x\r" keeps its \r, as MRI
   end
 
@@ -121,13 +122,13 @@ class IO < Object
     __check_mode_opts(mode, opts)
     m = mode || opts[:mode]&.to_s || "" # none: the descriptor's own access mode
     io = if opts[:autoclose] == false
-      # a dup: closing it, by close or by Go's finalizer on the os.File, leaves the caller's descriptor alone
-      b = __for_fd(__dup_fd(fd), m)
-      b.__borrowed = true
-      b
-    else
-      __for_fd(fd, m)
-    end
+           # a dup: closing it, by close or by Go's finalizer on the os.File, leaves the caller's descriptor alone
+           b = __for_fd(__dup_fd(fd), m)
+           b.__borrowed = true
+           b
+         else
+           __for_fd(fd, m)
+         end
     io.binmode if m.split(":").first.to_s.include?("b") || opts[:binmode]
     io
   end
@@ -142,6 +143,7 @@ class IO < Object
     if enc && (opts.key?(:encoding) || opts.key?(:external_encoding) || opts.key?(:internal_encoding))
       raise ArgumentError, "encoding specified twice"
     end
+
     a = access.to_s
     raise ArgumentError, "binmode specified twice" if a.include?("b") && opts.key?(:binmode)
     raise ArgumentError, "textmode specified twice" if a.include?("t") && opts.key?(:textmode)
@@ -938,7 +940,7 @@ ARGF = ARGFClass.new #: ARGFClass
 
 # Kernel#warn writes through Warning.warn; the category switches are MRI 4.0's defaults (decision 129).
 module Warning
-  CATEGORIES__ = {deprecated: false, experimental: true, performance: false, strict_unused_block: false} #: Hash[Symbol, bool]
+  CATEGORIES__ = { deprecated: false, experimental: true, performance: false, strict_unused_block: false } #: Hash[Symbol, bool]
 
   #: (Symbol) -> bool
   def self.[](category)

@@ -1,5 +1,6 @@
 # prelude/enumerable.rb
 # rbs_inline: enabled
+
 #
 # Enumerable, written once against `each`.
 
@@ -261,8 +262,10 @@ module Enumerable
   #: (Integer) -> Array[E]
   def first(n)
     raise ArgumentError, __negative_first if n < 0
+
     out = [] #: Array[E]
     return out if n == 0
+
     each do |x|
       out << x
       break if out.size >= n # before the next element: a generator stops where MRI's does
@@ -336,6 +339,7 @@ module Enumerable
   #: (Integer) -> Array[E]
   def take(n)
     raise ArgumentError, "attempt to take negative size" if n < 0
+
     first(n)
   end
 
@@ -569,6 +573,7 @@ module Enumerable
     out = [] #: Array[E]
     each do |x|
       break unless yield(x)
+
       out << x
     end
     out
@@ -588,6 +593,7 @@ module Enumerable
   #: (Integer) -> Array[E]
   def drop(n)
     raise ArgumentError, "attempt to drop negative size" if n < 0
+
     out = [] #: Array[E]
     i = 0
     each do |x|
@@ -794,6 +800,7 @@ module Enumerable
     i = 0
     each do |x|
       return i if x == v
+
       i += 1
     end
     nil
@@ -804,6 +811,7 @@ module Enumerable
     i = 0
     each do |x|
       return i if yield(x)
+
       i += 1
     end
     nil
@@ -833,6 +841,7 @@ module Enumerable
   def cycle(n = nil)
     all = to_a
     return if all.empty?
+
     if n
       n.times { all.each { |x| yield x } }
       return

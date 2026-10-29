@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 #
 # Forwardable: `extend Forwardable` then def_delegators/def_delegator/
 # delegate in a class body. The compiler writes each delegated method out

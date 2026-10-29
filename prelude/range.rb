@@ -287,6 +287,7 @@ class Range < Object
     raise RangeError, "cannot get the minimum of beginless range" if __beginless?
     return super unless __endless?
     raise ArgumentError, "negative array size (or size too big)" if n < 0
+
     first(n)
   end
 
@@ -295,8 +296,10 @@ class Range < Object
     raise RangeError, "cannot get the maximum of endless range" if __endless?
     return super unless __beginless?
     raise ArgumentError, "negative array size (or size too big)" if n < 0
+
     out = [] #: Array[E]
     return out if n == 0
+
     reverse_each do |x|
       out << x
       break if out.size == n

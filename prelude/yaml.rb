@@ -64,13 +64,13 @@ module Psych
   def self.unsafe_load(yaml, opts = {}) = __load(yaml, opts, nil)
 
   #: (String, ?Hash[Symbol, untyped]) -> untyped
-  def self.load_file(filename, opts = {}) = load(File.read(filename), {filename: filename}.merge(opts))
+  def self.load_file(filename, opts = {}) = load(File.read(filename), { filename: filename }.merge(opts))
 
   #: (String, ?Hash[Symbol, untyped]) -> untyped
-  def self.safe_load_file(filename, opts = {}) = safe_load(File.read(filename), {filename: filename}.merge(opts))
+  def self.safe_load_file(filename, opts = {}) = safe_load(File.read(filename), { filename: filename }.merge(opts))
 
   #: (String, ?Hash[Symbol, untyped]) -> untyped
-  def self.unsafe_load_file(filename, opts = {}) = unsafe_load(File.read(filename), {filename: filename}.merge(opts))
+  def self.unsafe_load_file(filename, opts = {}) = unsafe_load(File.read(filename), { filename: filename }.merge(opts))
 
   # Every document, unrestricted as Psych's load_stream (ponytail: no block form; add a yield over the Array when a program needs it).
   #: (untyped, ?Hash[Symbol, untyped]) -> Array[untyped]

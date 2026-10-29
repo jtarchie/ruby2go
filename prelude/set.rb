@@ -98,6 +98,7 @@ class Set < Object
   #: (E) -> Set[E]?
   def add?(x)
     return nil if include?(x)
+
     add(x)
   end
 
@@ -110,6 +111,7 @@ class Set < Object
   #: (E) -> Set[E]?
   def delete?(x)
     return nil unless include?(x)
+
     delete(x)
   end
 

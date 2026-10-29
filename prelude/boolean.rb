@@ -1,5 +1,6 @@
 # prelude/boolean.rb
 # rbs_inline: enabled
+
 #
 # Boolean: RBS `bool`, standing in for TrueClass/FalseClass.
 

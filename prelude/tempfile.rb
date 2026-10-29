@@ -7,7 +7,6 @@ require_relative "delegate"
 
 # Wraps File over os.CreateTemp; no finalizer (unlike MRI's GC-driven one), so callers must close/unlink explicitly (decision 63).
 class Tempfile < DelegateClass(File)
-
   # tmpdir nil is Dir.tmpdir.
   #: (?(String | Array[String]), ?String?) -> void
   def initialize(basename = "", tmpdir = nil)

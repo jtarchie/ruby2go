@@ -1,4 +1,5 @@
 # rbs_inline: enabled
+
 #
 # OptionParser (decision 101): MRI's optparse over a Go engine
 # (prelude/go/optparse.go). `on`'s block is typed at compile time from its

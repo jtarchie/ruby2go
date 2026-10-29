@@ -300,6 +300,7 @@ class BasicSocket < Object
   def readline
     line = gets
     raise EOFError, "end of file reached" unless line
+
     line
   end
 
@@ -307,6 +308,7 @@ class BasicSocket < Object
   def readpartial(n)
     s = @h.readpartial(n)
     raise EOFError, "end of file reached" unless s
+
     s
   end
 
@@ -376,7 +378,6 @@ class IPSocket < BasicSocket
 
   #: () -> [String, Integer, String, String]
   def peeraddr = remote_address.__addr
-
 end
 
 class TCPSocket < IPSocket

@@ -199,7 +199,6 @@ module Kernel
   # Replaces the program with the command (decision 107); only a failure to start returns, as Errno::ENOENT.
   #: (String, *String) -> void
   def exec(cmd, *args) = %x{ rbExec(string(cmd), rest_) }
-
 end
 
 # Kernel#trap / Signal.trap (decision 100): a block runs on the signal

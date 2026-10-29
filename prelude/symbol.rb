@@ -1,5 +1,6 @@
 # prelude/symbol.rb
 # rbs_inline: enabled
+
 #
 # Symbol as a named Go string, distinct from String.
 

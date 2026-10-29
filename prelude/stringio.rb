@@ -158,6 +158,7 @@ class StringIO < Object
   def readline(chomp: false)
     line = gets
     raise EOFError, "end of file reached" unless line
+
     chomp && line.end_with?("\n") ? line.chomp : line # a final "x\r" keeps its \r, as MRI
   end
 
@@ -165,6 +166,7 @@ class StringIO < Object
   def readchar
     c = getc
     raise EOFError, "end of file reached" unless c
+
     c
   end
 
@@ -172,6 +174,7 @@ class StringIO < Object
   def readbyte
     b = getbyte
     raise EOFError, "end of file reached" unless b
+
     b
   end
 
@@ -323,4 +326,3 @@ class StringIO < Object
     return Integer(0)
   }
 end
-

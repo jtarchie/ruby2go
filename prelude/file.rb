@@ -14,6 +14,7 @@ class File < Object
     if opts[:newline] && (opts[:binmode] || (m.is_a?(String) && m.split(":").first.to_s.include?("b")))
       raise ArgumentError, "newline decorator with binary mode"
     end
+
     extra = __int(opts.fetch(:flags, 0))
     return __new_flags(path, m | extra, perm || 0o666) if m.is_a?(Integer)
 
@@ -206,6 +207,7 @@ class File < Object
 
     mode = opts[:mode]
     raise IOError, "not opened for reading" if !opts.key?(:open_args) && mode.is_a?(String) && mode.start_with?("w", "a") && !mode.include?("+")
+
     data = length.nil? && offset.nil? ? __read_all(path) : __read_at(path, length || -1, offset || 0)
     enc = opts[:encoding]
     if enc.is_a?(String) && enc.include?(":")
@@ -1096,6 +1098,7 @@ class Dir < Object
   #: (String) -> void
   def initialize(path)
     raise Errno::ENOTDIR, "Not a directory @ dir_initialize - #{path}" if File.exist?(path) && !File.directory?(path)
+
     Dir.children(path) # ENOENT, as MRI's dir_initialize
     @path = path
   end

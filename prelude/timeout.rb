@@ -1,5 +1,6 @@
 # prelude/timeout.rb
 # rbs_inline: enabled
+
 #
 # Timeout.timeout races the block against a timer goroutine (decision 71).
 # Go cannot preempt a running goroutine the way MRI can interrupt a stuck
@@ -14,6 +15,7 @@ module Timeout
   #: [X] (Float?, singleton(StandardError)?, String?) { () -> X } -> X
   def self.timeout(sec = nil, klass = nil, message = nil, &block)
     return block.call if sec.nil?
+
     k = klass || Error
     msg = message || "execution expired"
     __race(sec, -> { k.new(msg) }, &block)

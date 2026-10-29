@@ -1,5 +1,6 @@
 # prelude/string.rb
 # rbs_inline: enabled
+
 #
 # String as a named Go string (frozen: no mutating methods).
 
@@ -890,10 +891,12 @@ class String < Object
       return
     end
     return if (self <=> last) > 0
+
     s = self
     while true
       yield s
       break if s == last
+
       s = s.succ
       break if s.size > last.size || s.empty?
     end

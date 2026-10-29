@@ -110,7 +110,6 @@ end
 # @rbs generic E
 # @go_type struct { q *rbQueue[E] }
 class Queue < Object
-
   # @rbs [X] (Array[X]) -> Queue[X]
   def self.new(items) = %x{
     q := &Queue[X]{q: newRbQueue[X](0)}

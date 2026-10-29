@@ -1,5 +1,6 @@
 # prelude/struct.rb
 # rbs_inline: enabled
+
 #
 # The superclass of every `Name = Struct.new(:a, :b)` class. The transpiler
 # generates each struct's accessors, initialize, ==, eql?, hash, to_a,

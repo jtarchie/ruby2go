@@ -1,5 +1,6 @@
 # prelude/object.rb
 # rbs_inline: enabled
+
 #
 # The root of the hierarchy: BasicObject, Kernel, Object, Comparable.
 
@@ -265,6 +266,7 @@ module Comparable
     raise ArgumentError, "min argument must be less than or equal to max argument" if (lo <=> hi) > 0
     return lo if (self <=> lo) < 0
     return hi if (self <=> hi) > 0
+
     self
   end
 end

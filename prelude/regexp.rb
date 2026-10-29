@@ -1,5 +1,6 @@
 # prelude/regexp.rb
 # rbs_inline: enabled
+
 #
 # Regexp on Go's RE2. The transpiler translates literals (every Ruby regexp
 # gets `(?m)`: `^`/`$` are line anchors in Ruby) and rejects what RE2 cannot
@@ -51,6 +52,7 @@ class Regexp < Object
     }
     return Encoding_US_ASCII
   }
+
   # A subject is a String for typed callers; an untyped one may also be a
   # Symbol (its name is matched) or nil (no match), as in MRI.
   #: (String | untyped) -> bool
@@ -186,6 +188,7 @@ class Regexp < Object
     # ponytail: MRI's empty union is /(?!)/, which RE2 cannot compile; this never-matching class inspects differently
     return Regexp.new("[^\\s\\S]") if pats.empty?
     return pats[0] if pats.size == 1 && pats[0].is_a?(Regexp)
+
     parts = pats.map { |x| x.is_a?(Regexp) ? x.to_s : Regexp.escape(x.to_s) }
     Regexp.new(parts.join("|"))
   end
@@ -198,6 +201,7 @@ class Regexp < Object
     out = {} #: Hash[String, Array[Integer]]
     __group_names.each_with_index do |n, i|
       next if n.empty?
+
       (out[n] ||= []) << i
     end
     out

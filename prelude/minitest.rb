@@ -1350,13 +1350,12 @@ module Minitest
     def __assert_respond_to_lit(obj, meth, test, msg, refute)
       __mt_trace(refute ? "refute_respond_to" : "assert_respond_to", obj, meth.to_sym)
       m = if refute
-        message(msg, ".", -> { "Expected #{__mt_pp(obj)} to not respond to #{meth}" })
-      else
-        message(msg, ".", -> { "Expected #{__mt_pp(obj)} (#{__mt_class_name(obj)}) to respond to ##{meth}" })
-      end
+            message(msg, ".", -> { "Expected #{__mt_pp(obj)} to not respond to #{meth}" })
+          else
+            message(msg, ".", -> { "Expected #{__mt_pp(obj)} (#{__mt_class_name(obj)}) to respond to ##{meth}" })
+          end
       __assert(refute ? !test : test, m)
     end
-
 
     #: () -> Array[String]
     def self.runnable_methods

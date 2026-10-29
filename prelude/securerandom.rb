@@ -1,5 +1,6 @@
 # prelude/securerandom.rb
 # rbs_inline: enabled
+
 #
 # SecureRandom on crypto/rand. Loads only on a literal `require "securerandom"` (decision 155).
 
@@ -47,6 +48,7 @@ module SecureRandom
   def self.alphanumeric(n = 16, opts = {})
     chars = opts[:chars]
     return __alphanumeric_default(n) if chars.nil?
+
     (0...n).map { chars.fetch(random_number(chars.size)) }.join
   end
 

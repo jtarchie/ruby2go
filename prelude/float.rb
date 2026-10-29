@@ -1,5 +1,6 @@
 # prelude/float.rb
 # rbs_inline: enabled
+
 #
 # Float as a named Go float64.
 
@@ -307,6 +308,7 @@ class Float
   #: (Float) -> Integer
   def div(other)
     raise ZeroDivisionError, "divided by 0" if other == 0
+
     (self / other).floor
   end
 

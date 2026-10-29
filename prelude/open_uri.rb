@@ -66,6 +66,7 @@ class StringIO
     cs = __charset
     return cs if cs
     return yield if block_given?
+
     content_type.start_with?("text/") ? "utf-8" : nil # an unparsed header is application/octet-stream
   end
 
@@ -147,6 +148,7 @@ module OpenURI
     unless __read_mode?(mode)
       raise NotImplementedError, "URI.open of a local file in mode #{mode} is not supported; use File.open"
     end
+
     StringIO.new(File.read(name))
   end
 
@@ -167,12 +169,14 @@ module OpenURI
   #: (URI::Generic, Hash[String, String], OpenOptions, ?String) -> StringIO
   def self.__open_uri(uri, headers, opts, mode = "r")
     raise ArgumentError, "invalid access mode #{mode} (#{uri.class} resource is read only.)" unless __read_mode?(mode)
+
     uri_set = {} #: Hash[String, bool]
     max = opts.max_redirects || 64
     auth = opts.http_basic_authentication
     cur = uri
     while true
       raise NotImplementedError, "open-uri: #{cur.scheme} is not supported" unless cur.is_a?(URI::HTTP)
+
       res, io = __open_http(cur, headers, opts, auth)
       status = io.status.join(" ")
       case res
@@ -182,6 +186,7 @@ module OpenURI
       when Net::HTTPMovedPermanently, Net::HTTPFound, Net::HTTPSeeOther, Net::HTTPTemporaryRedirect, Net::HTTPPermanentRedirect
         loc = res["location"]
         raise HTTPError.new("#{status} (Invalid Location URI)", io) unless loc
+
         begin
           target = URI.parse(loc)
         rescue URI::InvalidURIError
@@ -190,9 +195,11 @@ module OpenURI
         target = cur.merge(loc) unless target.scheme
         raise HTTPRedirect.new(status, io, target) unless opts.redirect
         raise "redirection forbidden: #{cur} -> #{target}" unless __redirectable?(cur, target)
+
         auth = nil
         cur = target
         raise "HTTP redirection loop: #{cur}" if uri_set.key?(cur.to_s)
+
         uri_set[cur.to_s] = true
         raise TooManyRedirects.new("Too many redirects", io) if uri_set.size > max
       else
@@ -213,6 +220,7 @@ module OpenURI
   #: (URI::HTTP, Hash[String, String], OpenOptions, Array[String]?) -> [Net::HTTPResponse, StringIO]
   def self.__open_http(uri, headers, opts, auth)
     raise ArgumentError, "userinfo not supported.  [RFC3986]" if uri.userinfo
+
     http = Net::HTTP.new(uri.host || "", uri.port || 80)
     if uri.is_a?(URI::HTTPS)
       http.use_ssl = true
@@ -245,6 +253,7 @@ module URI
     #: (Hash[String, String], OpenURI::OpenOptions, ?String) -> StringIO
     def __open(headers, opts, mode = "r")
       raise NoMethodError, "undefined method 'open' for an instance of #{self.class}" unless is_a?(URI::HTTP)
+
       OpenURI.__open_uri(self, headers, opts, mode)
     end
 
@@ -261,6 +270,7 @@ module URI
     #: (Hash[String, String], OpenURI::OpenOptions) -> String
     def __read(headers, opts)
       raise NoMethodError, "undefined method 'read' for an instance of #{self.class}" unless is_a?(URI::HTTP)
+
       io = OpenURI.__open_uri(self, headers, opts)
       s = io.read
       io.close

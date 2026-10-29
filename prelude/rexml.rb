@@ -791,6 +791,7 @@ module REXML
       out = [] #: Array[untyped]
       t = step.test
       return [n] if t == "."
+
       if t == ".."
         out << n.parent if n.is_a?(Child) && n.parent
         return out

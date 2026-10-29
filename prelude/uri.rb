@@ -33,6 +33,7 @@ module URI
     def user
       ui = @userinfo
       return nil unless ui
+
       ui.split(":", 2)[0]
     end
 
@@ -40,8 +41,10 @@ module URI
     def password
       ui = @userinfo
       return nil unless ui
+
       parts = ui.split(":", 2)
       return nil if parts.length < 2
+
       parts[1]
     end
 

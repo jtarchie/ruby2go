@@ -281,7 +281,7 @@ class Enumerator
     def __relabel(src, meth) = %x{ return rbLazy(self.seq, src, string(meth)) }
 
     #: () { (E) -> bool } -> Lazy[E]
-    def reject =%x{ return rbLazyFilter(self, func(x E) bool { return !bool(blk(x)) }, "reject") }
+    def reject = %x{ return rbLazyFilter(self, func(x E) bool { return !bool(blk(x)) }, "reject") }
 
     #: [U] () { (E) -> U? } -> Lazy[U]
     def filter_map = %x{

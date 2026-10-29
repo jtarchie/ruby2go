@@ -57,7 +57,7 @@ class Bignum < Object
   def **(e) = %x{ rbBigPow(self, e) }
 
   #: (Integer) -> Bignum
-  def pow(e) = self ** e
+  def pow(e) = self**e
 
   #: () -> Bignum
   def -@ = %x{ rbBigNeg(self) }
@@ -232,5 +232,5 @@ class Integer
   def **(e) = %x{ rbBigPow(Bignum{i: self}, e) }
 
   #: (Integer) -> Bignum
-  def pow(e) = self ** e
+  def pow(e) = self**e
 end

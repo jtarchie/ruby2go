@@ -177,6 +177,7 @@ class BigDecimal < Object
     raise ArgumentError, "min argument must be less than or equal to max argument" if BigDecimal.__from(lo).__order(hi) > 0
     return lo if __order(lo) < 0
     return hi if __order(hi) > 0
+
     self
   end
 
@@ -383,6 +384,7 @@ class BigDecimal < Object
     lim = BigDecimal.__from(limit)
     inc = BigDecimal.__from(by)
     raise ArgumentError, "step can't be 0" if inc.zero?
+
     i = self
     while inc.positive? ? i <= lim : i >= lim
       yield i

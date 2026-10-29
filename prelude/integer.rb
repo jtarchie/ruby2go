@@ -1,5 +1,6 @@
 # prelude/integer.rb
 # rbs_inline: enabled
+
 #
 # Integer as a named Go int. Where MRI would promote to a Bignum or a
 # Rational, it raises RangeError instead (decision 35).
@@ -251,6 +252,7 @@ class Integer < Object
       }
     }
   }
+
   #: (Integer) -> Integer
   def gcd(other) = %x{
     a, b := uint64(self), uint64(other)
@@ -272,6 +274,7 @@ class Integer < Object
   #: (Integer) -> Integer
   def lcm(other)
     return 0 if zero? || other.zero?
+
     (self / gcd(other) * other).abs
   end
 
@@ -300,6 +303,7 @@ class Integer < Object
     raise Math::DomainError, "out of domain" if negative?
     raise ArgumentError, "invalid radix #{base}" if base < 2
     return [0] if zero?
+
     out = [] #: Array[Integer]
     n = self
     while n > 0

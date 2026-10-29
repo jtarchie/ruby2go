@@ -17,6 +17,7 @@ module Fiddle
       if (m = sig.match(/^([\w*\s]+[*\s])(\w+)\((.*?)\);?$/))
         return [m[2].to_s, parse_ctype(m[1].to_s.strip, tymap), __split_arguments(m[3].to_s).map { |arg| parse_ctype(arg, tymap) }]
       end
+
       raise RuntimeError, "can't parse the function prototype: #{signature}"
     end
 
