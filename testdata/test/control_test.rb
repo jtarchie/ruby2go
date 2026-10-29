@@ -3745,9 +3745,9 @@ module ControlTests
       list = [1, 2, 3] #: Array[Integer]
       assert_equal([100, 0, 2], list.map do |v|
 
-              risky_int(v - 2)
-        rescue StandardError
-          100
+        risky_int(v - 2)
+  rescue StandardError
+    100
 
       end)
       assert_equal 1, control_safe_fetch("a")
@@ -4820,7 +4820,7 @@ module ControlTests
       rescue StandardError
         2
       else
-      raise ArgumentError, "from else"
+        raise ArgumentError, "from else"
       end
       assert_equal "from else", e.message
       v = begin

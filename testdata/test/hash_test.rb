@@ -1377,7 +1377,7 @@ module HashTests
       e = {} #: Hash[String, Integer]
       out = []
       e.each_key do |k|
-        out << "never #{k}"
+  out << "never #{k}"
                        out << "never #{k}"
 end
       e.each_value { |v| out << "never #{v}" }
