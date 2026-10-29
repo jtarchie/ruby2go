@@ -1378,7 +1378,8 @@ module HashTests
       out = []
       e.each_key do |k| 
         out << "never #{k}"
-                       out << "never #{k}" end
+                       out << "never #{k}"
+end
       e.each_value { |v| out << "never #{v}" }
       e.each_pair { |k, _v| out << "never #{k}" }
       assert_equal [], out
