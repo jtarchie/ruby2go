@@ -2516,7 +2516,7 @@ module ObjectTests
 
     private
 
-#: () -> String
+    #: () -> String
     def secret = "s3cret"
 
     #: () -> Integer

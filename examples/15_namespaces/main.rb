@@ -48,7 +48,7 @@ module Geometry
   class Circle < Geometry::Point
     attr_reader :r #: Integer
 
-  #: (Integer, Integer, Integer) -> void
+    #: (Integer, Integer, Integer) -> void
     def initialize(x, y, r)
       super(x, y)
       @r = r

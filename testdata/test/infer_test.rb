@@ -109,7 +109,7 @@ module InferTests
   end
 
   class BlockWalker < Walker
-# an unannotated override with a &block takes Walker#walk's signature
+    # an unannotated override with a &block takes Walker#walk's signature
     def walk(&blk)
       blk.call(2)
     end
