@@ -2712,10 +2712,10 @@ module HashTests
       assert_equal [[:x, 3], [:y, 6]], d.to_a
       calls = [] #: Array[Symbol]
       pr = #: Hash[Symbol, Integer]
-Hash.new do |hash, k|
-  calls << k
-  hash[k] = 10
-end
+        Hash.new do |hash, k|
+          calls << k
+          hash[k] = 10
+        end
       pr[:a] += 1
       pr[:a] += 1
       pr[:b] += 2
