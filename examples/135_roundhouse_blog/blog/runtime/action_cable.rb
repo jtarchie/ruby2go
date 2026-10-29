@@ -136,7 +136,7 @@ module ActionCable
                                  target: entry[:target],
                                  html: entry[:html],
                                  attributes: entry[:attributes].to_s
-                                      ))
+                               ))
                end
       end
       out
