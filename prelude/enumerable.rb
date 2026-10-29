@@ -846,9 +846,7 @@ module Enumerable
       n.times { all.each { |x| yield x } }
       return
     end
-    while true
-      all.each { |x| yield x }
-    end
+    all.each { |x| yield x } while true
   end
 
   #: () { (E) -> bool } -> Array[Array[E]]

@@ -140,9 +140,7 @@ class IO < Object
     raise ArgumentError, "mode specified twice" unless opts[:mode].nil?
 
     access, enc = mode.split(":", 2)
-    if enc && (opts.key?(:encoding) || opts.key?(:external_encoding) || opts.key?(:internal_encoding))
-      raise ArgumentError, "encoding specified twice"
-    end
+    raise ArgumentError, "encoding specified twice" if enc && (opts.key?(:encoding) || opts.key?(:external_encoding) || opts.key?(:internal_encoding))
 
     a = access.to_s
     raise ArgumentError, "binmode specified twice" if a.include?("b") && opts.key?(:binmode)
@@ -998,7 +996,7 @@ module Kernel
   #: (?String?) -> void
   def abort(msg = nil)
     STDERR.puts(msg) if msg
-    raise SystemExit.new(1)
+    raise SystemExit, 1
   end
 
   #: () -> String?

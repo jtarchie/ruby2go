@@ -12,9 +12,7 @@ module Observable
   # @rbs fn: Symbol
   # @rbs return: void
   def add_observer(observer, fn = :update)
-    unless observer.respond_to?(fn)
-      raise NoMethodError, "observer does not respond to `#{fn}'"
-    end
+    raise NoMethodError, "observer does not respond to `#{fn}'" unless observer.respond_to?(fn)
 
     if (peers = @observer_peers)
       peers[observer] = fn

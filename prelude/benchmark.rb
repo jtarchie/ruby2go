@@ -49,7 +49,7 @@ module Benchmark
       label = job.label_at(i)
       res = Benchmark.measure { job.run_at(i) }
       print(label.ljust(w) + res.to_s)
-      sum = sum + res
+      sum += res
       i += 1
     end
     ets = sum.format("total: %tsec")
@@ -131,17 +131,17 @@ module Benchmark
           end
           if i < n
             d = str[i].to_s
-            case d
-            when "u" then out += (spec + "f") % utime
-            when "y" then out += (spec + "f") % stime
-            when "U" then out += (spec + "f") % cutime
-            when "Y" then out += (spec + "f") % cstime
-            when "t" then out += (spec + "f") % total
-            when "r" then out += "(" + ((spec + "f") % real) + ")"
-            when "n" then out += (spec + "s") % label
-            else
-              out += spec + d
-            end
+            out += case d
+                   when "u" then (spec + "f") % utime
+                   when "y" then (spec + "f") % stime
+                   when "U" then (spec + "f") % cutime
+                   when "Y" then (spec + "f") % cstime
+                   when "t" then (spec + "f") % total
+                   when "r" then "(" + ((spec + "f") % real) + ")"
+                   when "n" then (spec + "s") % label
+                   else
+                     spec + d
+                   end
             i += 1
           else
             out += spec

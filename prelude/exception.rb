@@ -23,7 +23,7 @@ class Exception < Object
 
   #: (Exception) -> void
   def __set_cause(c)
-    @cause = c unless @cause
+    @cause ||= c
   end
 
   # MRI order: message calls to_s, so overriding to_s changes message too.
@@ -97,7 +97,7 @@ class Exception < Object
   def __report(hl, bottom, shown)
     c = cause
     rest = ""
-    if c && !shown.any? { |x| x.equal?(c) }
+    if c && shown.none? { |x| x.equal?(c) }
       shown << c
       rest = c.__report(hl, bottom, shown)
     end

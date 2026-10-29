@@ -63,7 +63,7 @@ module Process
     def to_s = %x{ return rbStatusString(self) }
 
     #: () -> String
-    def inspect = "#<Process::Status: #{to_s}>"
+    def inspect = "#<Process::Status: #{self}>"
   end
 
   # macOS's values, as MRI reports them there; only these three clocks exist.

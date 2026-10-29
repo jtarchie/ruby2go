@@ -11,9 +11,7 @@ class File < Object
   #: (String, ?(String | Integer | nil), ?Integer?, **untyped) -> File
   def self.new(path, mode = nil, perm = nil, **opts)
     m = mode.nil? ? opts.fetch(:mode, "r") : mode
-    if opts[:newline] && (opts[:binmode] || (m.is_a?(String) && m.split(":").first.to_s.include?("b")))
-      raise ArgumentError, "newline decorator with binary mode"
-    end
+    raise ArgumentError, "newline decorator with binary mode" if opts[:newline] && (opts[:binmode] || (m.is_a?(String) && m.split(":").first.to_s.include?("b")))
 
     extra = __int(opts.fetch(:flags, 0))
     return __new_flags(path, m | extra, perm || 0o666) if m.is_a?(Integer)

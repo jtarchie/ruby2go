@@ -184,7 +184,7 @@ class Rational < Object
   def to_s = %x{ String(self.v.Num().String() + "/" + self.v.Denom().String()) }
 
   #: () -> String
-  def inspect = "(#{to_s})"
+  def inspect = "(#{self})"
 
   #: () -> Rational?
   def nonzero? = zero? ? nil : self

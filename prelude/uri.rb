@@ -86,7 +86,7 @@ module URI
     def +(rel) = merge(rel)
 
     #: () -> String
-    def inspect = "#<#{__class_name} #{to_s}>"
+    def inspect = "#<#{__class_name} #{self}>"
   end
 
   class HTTP < Generic; end

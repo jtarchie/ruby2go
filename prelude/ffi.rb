@@ -30,14 +30,14 @@ module FFI
     size_t: Fiddle::TYPE_SIZE_T, ssize_t: Fiddle::TYPE_SSIZE_T,
     float: Fiddle::TYPE_FLOAT, double: Fiddle::TYPE_DOUBLE,
     string: Fiddle::TYPE_CONST_STRING, pointer: Fiddle::TYPE_VOIDP,
-    buffer_in: Fiddle::TYPE_VOIDP, buffer_out: Fiddle::TYPE_VOIDP, buffer_inout: Fiddle::TYPE_VOIDP,
+    buffer_in: Fiddle::TYPE_VOIDP, buffer_out: Fiddle::TYPE_VOIDP, buffer_inout: Fiddle::TYPE_VOIDP
   } #: Hash[Symbol, Integer]
 
   SIZES = {
     bool: 1, char: 1, uchar: 1, int8: 1, uint8: 1, short: 2, ushort: 2, int16: 2, uint16: 2,
     int: 4, uint: 4, int32: 4, uint32: 4, float: 4,
     long: 8, ulong: 8, int64: 8, uint64: 8, long_long: 8, ulong_long: 8, size_t: 8, ssize_t: 8,
-    double: 8, pointer: 8, string: 8,
+    double: 8, pointer: 8, string: 8
   } #: Hash[Symbol, Integer]
 
   #: (Symbol) -> Integer
@@ -69,7 +69,11 @@ module FFI
     lib = "lib#{lib}" unless lib.start_with?("lib")
     mac = Platform::IS_MAC
     done = mac ? lib.end_with?(".dylib") : lib.match?(/\.so(\z|\.\d+)/)
-    done ? lib : "#{lib}.#{mac ? "dylib" : "so"}"
+    if done
+      lib
+    else
+      "#{lib}.#{mac ? "dylib" : "so"}"
+    end
   end
 
   module Platform
@@ -1231,11 +1235,11 @@ module FFI
       names = [CURRENT_PROCESS] if names.empty?
       libs = [] #: Array[Fiddle::Handle?]
       names.each do |n|
-        if n.equal?(CURRENT_PROCESS) || n.nil?
-          libs << Fiddle.dlopen(nil)
-        else
-          libs << __open(n.to_s)
-        end
+        libs << if n.equal?(CURRENT_PROCESS) || n.nil?
+                  Fiddle.dlopen(nil)
+                else
+                  __open(n.to_s)
+                end
       end
       __libs.replace(libs)
     end
@@ -1333,9 +1337,7 @@ module FFI
     #: (Symbol) -> Symbol
     def __ffi_resolve(type)
       t = type
-      while __tdefs.key?(t)
-        t = __tdefs.fetch(t)
-      end
+      t = __tdefs.fetch(t) while __tdefs.key?(t)
       t
     end
 

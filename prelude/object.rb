@@ -48,9 +48,7 @@ module Kernel
 
   #: () { () -> void } -> void
   def loop
-    while true
-      yield
-    end
+    yield while true
   end
 
   # @rbs [X] () { (self) -> X } -> self
@@ -149,7 +147,7 @@ module Kernel
   private
 
   #: (?Integer) -> void
-  def exit(status = 0) = raise(SystemExit.new(status))
+  def exit(status = 0) = raise(SystemExit, status)
 
   # Kernel#exit! skips at_exit handlers and doesn't flush stdout.
   #: (?Integer) -> void

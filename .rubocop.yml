@@ -1,5 +1,3 @@
-inherit_from: .rubocop_todo.yml
-
 AllCops:
   TargetRubyVersion: 4.0
   Exclude:
@@ -234,3 +232,22 @@ Layout/ElseAlignment:
   Exclude:
     # an `if` expression inside "#{}" interpolation; the generated-looking layout is the example's output shape
     - examples/135_roundhouse_blog/blog/app/views/articles/_form.rb
+Lint/UnifiedInteger:
+  # prelude/bignum.rb defines the Bignum class itself
+  Exclude:
+    - prelude/bignum.rb
+Style/MultipleComparison:
+  # a literal array allocates; the prelude's hot paths compare with ==
+  Exclude:
+    - prelude/**/*
+    - prelude.rb
+Style/InverseMethods:
+  # `!(a == b)` inside != itself, `!(delta >= n)` with NaN, and `!~` are not interchangeable
+  Exclude:
+    - prelude/**/*
+    - prelude.rb
+Style/StderrPuts:
+  # warn is silenced by -W0 and goes through $stderr; the prelude wants STDERR
+  Exclude:
+    - prelude/**/*
+    - prelude.rb

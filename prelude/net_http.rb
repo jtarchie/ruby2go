@@ -230,7 +230,8 @@ module Net
     }
 
     #: () -> Hash[String, Array[String]]
-    def to_hash = @fields.merge({}) # a copy, as MRI's @header.dup; mutating it must not reach get_fields or open-uri's metas
+    # a copy, as MRI's @header.dup; mutating it must not reach get_fields or open-uri's metas
+    def to_hash = @fields.merge({})
 
     #: (String) -> Array[String]?
     def get_fields(name) = @fields[name.downcase]

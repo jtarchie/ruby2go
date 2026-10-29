@@ -42,6 +42,6 @@ module RbConfig
     "bindir" => "",
     "sitedir" => "",
     "rubylibdir" => __libdir,
-    "archdir" => "#{__libdir}/#{__arch}-#{__os}",
+    "archdir" => "#{__libdir}/#{__arch}-#{__os}"
   } #: Hash[String, String]
 end

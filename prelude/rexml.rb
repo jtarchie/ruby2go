@@ -319,7 +319,7 @@ module REXML
     def get_text(path = nil)
       if path
         el = elements[path]
-        return el ? el.get_text : nil
+        return el&.get_text
       end
       @children.each { |c| return c if c.is_a?(Text) }
       nil
@@ -838,11 +838,11 @@ module REXML
         hit = cands.last
         return hit ? [hit] : []
       end
-      if (m = pr.match(/\A@([\w:.\-]+)\z/))
+      if (m = pr.match(/\A@([\w:.-]+)\z/))
         name = m[1] || ""
         return cands.select { |c| c.is_a?(Element) && !__el(c).attributes[name].nil? }
       end
-      if (m = pr.match(/\A@([\w:.\-]+)\s*(!?=)\s*('[^']*'|"[^"]*")\z/))
+      if (m = pr.match(/\A@([\w:.-]+)\s*(!?=)\s*('[^']*'|"[^"]*")\z/))
         name = m[1] || ""
         want = (m[3] || "  ")[1...-1] || ""
         eq = m[2] == "="
@@ -853,13 +853,13 @@ module REXML
         eq = m[1] == "="
         return cands.select { |c| c.is_a?(Element) && (__el(c).text == want) == eq }
       end
-      if (m = pr.match(/\A([\w:.\-]+)\s*(!?=)\s*('[^']*'|"[^"]*")\z/))
+      if (m = pr.match(/\A([\w:.-]+)\s*(!?=)\s*('[^']*'|"[^"]*")\z/))
         name = m[1] || ""
         want = (m[3] || "  ")[1...-1] || ""
         eq = m[2] == "="
         return cands.select { |c| c.is_a?(Element) && __child_text?(c, name, want, eq) }
       end
-      if (m = pr.match(/\A([\w:.\-]+)\z/))
+      if (m = pr.match(/\A([\w:.-]+)\z/))
         name = m[1] || ""
         return cands.select { |c| c.is_a?(Element) && !__el(c).elements.to_a(name).empty? }
       end
@@ -897,7 +897,7 @@ module REXML
           quote = ""
           while k < n && (path[k] != "]" || !quote.empty?)
             ch = path[k] || ""
-            opening = quote.empty? && (ch == "'" || ch == "\"")
+            opening = quote.empty? && ["'", "\""].include?(ch)
             closing = !quote.empty? && ch == quote
             quote = ch if opening
             quote = "" if closing

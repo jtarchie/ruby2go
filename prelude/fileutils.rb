@@ -387,7 +387,11 @@ module FileUtils
   end
 
   #: (String | Integer | nil, String | Integer | nil) -> String
-  def self.__owner_s(user, group) = group ? "#{user}:#{group}" : (user ? user.to_s : ":")
+  def self.__owner_s(user, group) = if group
+                                      "#{user}:#{group}"
+                                    else
+                                      (user ? user.to_s : ":")
+                                    end
 
   #: (String | Integer | nil, String | Integer | nil, String | Pathname | Array[String | Pathname], ?verbose: bool?, ?noop: bool?) -> Array[String]?
   def self.chown(user, group, list, verbose: false, noop: false)

@@ -9,7 +9,7 @@ class Logger < Object
   FATAL = 4
   UNKNOWN = 5
 
-  SEV_LABEL = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL", "ANY"] #: Array[String]
+  SEV_LABEL = %w[DEBUG INFO WARN ERROR FATAL ANY] #: Array[String]
   LEVELS = { "debug" => 0, "info" => 1, "warn" => 2, "error" => 3, "fatal" => 4, "unknown" => 5 } #: Hash[String, Integer]
   DEFAULT_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%6N" #: String
 

@@ -86,7 +86,7 @@ class Date < Object
   def jd = @jd
 
   #: () -> Integer
-  def mjd = jd - 2400001
+  def mjd = jd - 2_400_001
 
   #: () -> Integer
   def year = %x{ Integer(rbJDTime(int(self._Date().jd)).Year()) }
