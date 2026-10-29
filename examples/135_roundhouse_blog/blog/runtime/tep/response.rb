@@ -3,7 +3,7 @@
 # automatically when serializing.
 module Tep
   class Response
-    attr_accessor :status, :headers, :body, :halted, :file_path, :set_cookies, :streamer, :streaming, :upgrading_ws, :ws_accept_key, :ws_driver
+    attr_accessor :status, :headers, :body, :halted, :file_path, :set_cookies
 
     def initialize
       @status      = 200
@@ -34,6 +34,9 @@ module Tep
       @ws_driver     = Tep::WebSocket::Driver.new(0)
     end
 
+    attr_accessor :streamer, :streaming
+    attr_accessor :upgrading_ws, :ws_accept_key, :ws_driver
+
     def start_stream(streamer)
       @streamer  = streamer
       @streaming = true
@@ -52,14 +55,14 @@ module Tep
     # (path, expires, max-age, domain, samesite, httponly, secure).
     # Empty `opts` is fine: just writes "name=value".
     def set_cookie(name, value, opts)
-      line = "#{name}=#{Url.escape(value)}"
-      if opts.length.positive?
+      line = name + "=" + Url.escape(value)
+      if opts.length > 0
         opts.each do |k, v|
-          line << if v.empty?
-                    "; #{k}" # bare flag (HttpOnly, Secure)
-                  else
-                    "; #{k}=#{v}"
-                  end
+          if v.length == 0
+            line << "; " + k # bare flag (HttpOnly, Secure)
+          else
+            line << "; " + k + "=" + v
+          end
         end
       end
       @set_cookies.push(line)
@@ -75,10 +78,12 @@ module Tep
     # value, so we force the assignment through this method (where
     # `self` is unambiguously Response).
     def set_body_if_empty(s)
-      @body = s if @body.empty? && s.length.positive?
+      if @body.length == 0 && s.length > 0
+        @body = s
+      end
     end
 
-    def set_status(n) = @status = n
+    def set_status(n); @status = n; end
 
     def halted_close?
       @halted && @status >= 300

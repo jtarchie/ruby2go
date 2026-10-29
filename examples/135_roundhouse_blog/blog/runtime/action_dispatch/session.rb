@@ -127,9 +127,9 @@ module ActionDispatch
       " " => "%20",
       ";" => "%3B",
       "," => "%2C",
-      "\"" => "%22"
+      "\"" => "%22",
     }.freeze
-    ENCODE_PATTERN = /[%&=+ ;,"]/
+    ENCODE_PATTERN = /[%&=+ ;,"]/.freeze
 
     # `"+" => " "` restores the url-encoding legacy spelling on the
     # inbound side only; our own encoder always writes %20.
@@ -142,9 +142,9 @@ module ActionDispatch
       "%3B" => ";",
       "%2C" => ",",
       "%22" => "\"",
-      "+" => " "
+      "+" => " ",
     }.freeze
-    DECODE_PATTERN = /%25|%26|%3D|%2B|%20|%3B|%2C|%22|\+/
+    DECODE_PATTERN = /%25|%26|%3D|%2B|%20|%3B|%2C|%22|\+/.freeze
 
     # Decode a `_session` cookie value into a Session. Tolerates a
     # missing/garbled cookie by starting empty — a stale cookie shape
@@ -155,7 +155,7 @@ module ActionDispatch
       session = Session.new
       raw.to_s.split("&").each do |pair|
         parts = pair.to_s.split("=")
-        k = parts.length.positive? ? Session.cookie_decode(parts[0].to_s) : ""
+        k = parts.length > 0 ? Session.cookie_decode(parts[0].to_s) : ""
         v = parts.length > 1 ? Session.cookie_decode(parts[1].to_s) : ""
         session[k] = v unless k.empty?
       end

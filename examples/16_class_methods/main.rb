@@ -15,7 +15,7 @@ class Shape
   def self.kind = "shape"
 
   #: (Integer) -> bool
-  def self.fits?(_n) = false
+  def self.fits?(n) = false
 
   # `new` on an implicit self dispatches to the receiving class.
   #: (Integer) -> Shape
@@ -35,7 +35,7 @@ class Circle < Shape
   def self.fits?(n) = n.odd?
 end
 
-SHAPES = [Square, Circle].freeze #: Array[singleton(Shape)]
+SHAPES = [Square, Circle] #: Array[singleton(Shape)]
 
 #: (Integer) -> singleton(Shape)
 def pick(n) = SHAPES.find { |k| k.fits?(n) } || Shape

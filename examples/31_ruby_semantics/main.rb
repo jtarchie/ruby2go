@@ -6,16 +6,8 @@
 # narrowing attribute reads, subclass-only methods, truthiness of untyped.
 
 values = [1, 2]
-missing_value = begin
-  values.fetch(5)
-rescue StandardError
-  -1
-end
-present_value = begin
-  values.fetch(1)
-rescue StandardError
-  -1
-end
+missing_value = values.fetch(5) rescue -1
+present_value = values.fetch(1) rescue -1
 puts missing_value, present_value
 
 #: () -> String
@@ -27,11 +19,13 @@ end
 
 #: (bool) -> String
 def maybe(flag)
-  raise ArgumentError, "kept" if flag
+  begin
+    raise ArgumentError, "kept" if flag
 
-  "body"
-ensure
-  return "early" unless flag
+    "body"
+  ensure
+    return "early" unless flag
+  end
 end
 
 puts swallow, maybe(false)
@@ -52,16 +46,16 @@ log = []
 none = nil #: Integer?
 some = 5 #: Integer?
 puts (none && none + 1).inspect, (some && some + 1).inspect
-skipped = "a" == "b" && log.push("never").size.positive?
+skipped = "a" == "b" && log.push("never").size > 0
 puts skipped, log.size
 missing = nil #: String?
-puts (missing || 42).inspect, "yes".inspect, "fallback".inspect
+puts (missing || 42).inspect, (true && "yes").inspect, (false || "fallback").inspect
 
-amount = if values.size > 1
-           "many"
-         else
-           "few"
-         end
+if values.size > 1
+  amount = "many"
+else
+  amount = "few"
+end
 puts amount
 
 class Shape

@@ -5,7 +5,7 @@ module Tep
   # the server; the binary's file name is the fallback.
   def self.display_name
     n = Tep::APP.name
-    n.length.positive? ? n : File.basename($PROGRAM_NAME)
+    n.length > 0 ? n : File.basename($PROGRAM_NAME)
   end
 
   # What the banner says about OS workers. The runtime reads
@@ -14,17 +14,17 @@ module Tep
   # reports the declaration, never a measurement.
   def self.os_workers_desc
     w = ENV["SPINEL_WORKERS"] || ""
-    if w.empty?
+    if w.length == 0
       "one per core (SPINEL_WORKERS=N to cap)"
     else
-      "#{w} (SPINEL_WORKERS)"
+      w + " (SPINEL_WORKERS)"
     end
   end
 
   # `--workers N` preforks N processes; the banner names the flag only
   # when it is in effect.
   def self.processes_desc(workers)
-    workers > 1 ? "#{workers} (--workers)" : "1"
+    workers > 1 ? workers.to_s + " (--workers)" : "1"
   end
 
   def self.str_hash
@@ -68,7 +68,10 @@ module Tep
     v = ENV["TEP_GC_STAT"] || ""
     if v != "" && v != "0"
       g = GC.stat
-      puts "tep: GC.stat cycle=#{g["cycle"]} full_runs=#{g["full_runs"]} remembered=#{g["remembered"]} remembered_peak=#{g["remembered_peak"]}"
+      puts "tep: GC.stat cycle=" + g["cycle"].to_s +
+           " full_runs=" + g["full_runs"].to_s +
+           " remembered=" + g["remembered"].to_s +
+           " remembered_peak=" + g["remembered_peak"].to_s
       $stdout.flush
     end
     0
@@ -84,7 +87,9 @@ module Tep
     slen = s.length
     pos = start
     while pos <= slen - nlen
-      return pos if s[pos, nlen] == needle
+      if s[pos, nlen] == needle
+        return pos
+      end
 
       pos += 1
     end

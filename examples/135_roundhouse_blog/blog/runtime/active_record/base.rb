@@ -120,7 +120,8 @@ module ActiveRecord
     # the `_preload_<assoc>` caches — see `apply_preload_lowering`);
     # models without one fall back to this no-op, which leaves the lazy
     # association readers doing the work (correct, just N+1).
-    def self.preload_associations(_records, _specs); end
+    def self.preload_associations(_records, _specs)
+    end
 
     # Per-model adapter primitives — public AR API delegates here.
     # Default implementations route through the legacy
@@ -353,7 +354,7 @@ module ActiveRecord
       # (`Item.find_by(title: "B")`) lift to NamedTuple in Crystal,
       # but the adapter's `where` slot is typed `Hash(Symbol, _)`.
       rows = ActiveRecord.adapter.where(table_name, conditions.to_h)
-      return nil if rows.empty?
+      return nil if rows.length == 0
 
       instantiate(rows[0])
     end
@@ -392,11 +393,11 @@ module ActiveRecord
     # The scoped forms (`User.where(…).none?`) go through Relation#none?
     # beside it.
     def self.none?
-      count.zero?
+      count == 0
     end
 
     def self.any?
-      count.positive?
+      count > 0
     end
 
     # Bulk DELETE without instantiating records or running callbacks —
@@ -412,7 +413,7 @@ module ActiveRecord
       # return value is the destroyed records themselves (a lazy
       # Relation would re-query the now-empty table on a later read).
       records = _adapter_all
-      records.each(&:destroy)
+      records.each { |r| r.destroy() }
       records
     end
 
@@ -537,7 +538,8 @@ module ActiveRecord
     # a `nil` tail on a void method emits as a bare `None;` in rust
     # ("cannot infer type of the type parameter T"). An empty body is
     # the shape every target already renders for a no-op.
-    def _note_hydrated; end
+    def _note_hydrated
+    end
 
     # The argument-taking half of the ActiveModel::Dirty read surface,
     # for call sites that name the attribute at runtime rather than in

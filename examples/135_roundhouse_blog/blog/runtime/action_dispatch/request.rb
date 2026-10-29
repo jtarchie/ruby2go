@@ -66,13 +66,19 @@ module ActionDispatch
   end
 
   class Request
-    attr_accessor :remote_ip, :path, :query_string, :request_method, :referer, :host, :env
+    attr_accessor :remote_ip
+    attr_accessor :path
+    attr_accessor :query_string
     # Rack's SCRIPT_NAME — the prefix the app is mounted under, "" at
     # the root. Campfire's cable helper joins it with Action Cable's
     # mount path to build the socket URL, so every page that renders
     # the layout reads it.
     attr_accessor :script_name
+    attr_accessor :request_method
+    attr_accessor :referer
+    attr_accessor :host
     attr_reader :format
+    attr_accessor :env
 
     def initialize
       @remote_ip = "127.0.0.1"
@@ -153,7 +159,7 @@ module ActionDispatch
       if @query_string == ""
         @path
       else
-        "#{@path}?#{@query_string}"
+        @path + "?" + @query_string
       end
     end
 
@@ -163,9 +169,9 @@ module ActionDispatch
     # http, which is what the CRuby tree's overlay Request reports too.
     def base_url
       if @env.fetch("HTTPS", "").to_s == "on"
-        "https://#{@host}"
+        "https://" + @host
       else
-        "http://#{@host}"
+        "http://" + @host
       end
     end
 

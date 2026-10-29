@@ -62,12 +62,12 @@ module Tep
         @subprotocol = name
       end
 
-      def set_on_open(h) = @h_open = h
-      def set_on_message(h) = @h_message = h
-      def set_on_close(h) = @h_close = h
-      def set_on_ping(h) = @h_ping = h
-      def set_on_pong(h) = @h_pong = h
-      def set_on_error(h) = @h_error = h
+      def set_on_open(h); @h_open = h; end
+      def set_on_message(h); @h_message = h; end
+      def set_on_close(h); @h_close = h; end
+      def set_on_ping(h); @h_ping = h; end
+      def set_on_pong(h); @h_pong = h; end
+      def set_on_error(h); @h_error = h; end
 
       # Send a text frame.
       def text(s)
@@ -120,7 +120,9 @@ module Tep
       def write_frame(opcode, payload)
         r = -1
         @wlock.synchronize do
-          r = Driver.send_frame(@fd, opcode, payload) unless @closed
+          if !@closed
+            r = Driver.send_frame(@fd, opcode, payload)
+          end
         end
         r
       end
@@ -150,7 +152,9 @@ module Tep
       # §5.5.1 the payload may be omitted (close with no body); if
       # `code == 0` we emit an empty payload.
       def self.encode_close_payload(code, reason)
-        return "" if code.zero?
+        if code == 0
+          return ""
+        end
 
         out = Tep::WebSocket::Frame.byte_to_chr((code >> 8) & 0xff) +
               Tep::WebSocket::Frame.byte_to_chr(code & 0xff)
@@ -195,7 +199,7 @@ module Tep
         @req = Tep::Request.new
       end
 
-      def handle_event(_event)
+      def handle_event(event)
         0
       end
     end

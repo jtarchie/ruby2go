@@ -3,7 +3,7 @@ require_relative "../../route_helpers"
 
 module Views
   module Articles
-    def self.edit_into(io, article, _notice, _alert)
+    def self.edit_into(io, article, notice, alert)
       ActionView::ViewHelpers.content_for_set(:title, "Editing article")
       io << "\n<div class=\"md:w-2/3 w-full\">\n  <h1 class=\"font-bold text-4xl\">Editing article</h1>\n\n  "
       Views::Articles.form_into(io, article, nil, nil)

@@ -374,7 +374,8 @@ func rxNot(body string) (string, error) {
 		return "", fmt.Errorf("character class: %w", err)
 	}
 	var rs []rune
-	//exhaustive:ignore // a parsed class is one of these, or OpNoMatch (empty)
+	// a parsed class is one of these, or OpNoMatch (empty)
+	//exhaustive:ignore
 	switch re.Op {
 	case syntax.OpCharClass:
 		rs = re.Rune
@@ -914,7 +915,8 @@ func rxNew(re *regexp.Regexp) *rxRegexp {
 
 // rxCanEmpty reports whether t can match the empty string; an assertion counts, since it matches nothing but can still match somewhere.
 func rxCanEmpty(t *syntax.Regexp) bool {
-	//exhaustive:ignore // an empty match, a star or quest, and the assertions fall through to true
+	// an empty match, a star or quest, and the assertions fall through to true
+	//exhaustive:ignore
 	switch t.Op {
 	case syntax.OpNoMatch, syntax.OpLiteral, syntax.OpCharClass, syntax.OpAnyCharNotNL, syntax.OpAnyChar:
 		return t.Op == syntax.OpLiteral && len(t.Rune) == 0

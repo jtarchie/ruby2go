@@ -86,7 +86,7 @@ module ActiveStorage
     f = format.downcase
     if f == "png"
       "image/png"
-    elsif %w[jpg jpeg].include?(f)
+    elsif f == "jpg" || f == "jpeg"
       "image/jpeg"
     elsif f == "gif"
       "image/gif"
@@ -104,14 +104,13 @@ module ActiveStorage
   # webp), and PNG for anything else (tiff, bmp, heic, …) — Rails'
   # `default_variant_format`.
   def self.format_for_content_type(content_type)
-    case content_type
-    when "image/png"
+    if content_type == "image/png"
       "png"
-    when "image/jpeg"
+    elsif content_type == "image/jpeg"
       "jpg"
-    when "image/gif"
+    elsif content_type == "image/gif"
       "gif"
-    when "image/webp"
+    elsif content_type == "image/webp"
       "webp"
     else
       "png"
@@ -122,7 +121,7 @@ module ActiveStorage
   # names a variant "<base>.<format>".
   def self.filename_base(filename)
     dot = filename.rindex(".")
-    dot.nil? || dot.zero? ? filename : filename[0, dot].to_s
+    dot.nil? || dot == 0 ? filename : filename[0, dot].to_s
   end
 
   # Where the blob's file lives, keyed by the blob's `key` column.
@@ -253,13 +252,13 @@ module ActiveStorage
       return nil if b.nil?
 
       png = Previewer.poster(Blob.service.path_for(b.key))
-      poster = Blob.create_and_upload!(png, "#{ActiveStorage.filename_base(b.filename.to_s)}.png", "image/png")
+      poster = Blob.create_and_upload!(png, ActiveStorage.filename_base(b.filename.to_s) + ".png", "image/png")
       ActiveRecord.adapter.insert("active_storage_attachments", {
                                     "name" => "preview_image",
                                     "record_type" => "ActiveStorage::Blob",
                                     "record_id" => b.id,
                                     "blob_id" => poster.id,
-                                    "created_at" => ActiveSupport.db_now
+                                    "created_at" => ActiveSupport.db_now,
                                   })
       nil
     end
@@ -281,7 +280,7 @@ module ActiveStorage
       return "" if b.nil?
 
       v = @variation
-      "#{ActiveStorage.filename_base(b.filename.to_s)}.#{v.nil? ? "png" : v.output_format("image/png")}"
+      ActiveStorage.filename_base(b.filename.to_s) + "." + (v.nil? ? "png" : v.output_format("image/png"))
     end
 
     def url
@@ -289,7 +288,8 @@ module ActiveStorage
       return "" if b.nil?
 
       v = @variation
-      "/rails/active_storage/representations/redirect/#{b.signed_id}/#{v.nil? ? "original" : v.encode}/#{ActiveStorage.url_filename(filename)}"
+      "/rails/active_storage/representations/redirect/" + b.signed_id +
+        "/" + (v.nil? ? "original" : v.encode) + "/" + ActiveStorage.url_filename(filename)
     end
   end
 
@@ -335,7 +335,7 @@ module ActiveStorage
     end
 
     def resize?
-      @width.positive? || @height.positive?
+      @width > 0 || @height > 0
     end
 
     def output_format(source_content_type)
@@ -347,7 +347,7 @@ module ActiveStorage
     end
 
     def encode
-      "limit-#{@width}x#{@height}-#{@format == "" ? "keep" : @format}"
+      "limit-" + @width.to_s + "x" + @height.to_s + "-" + (@format == "" ? "keep" : @format)
     end
 
     def digest
@@ -385,9 +385,11 @@ module ActiveStorage
 
     def [](key)
       if key == :width
-        @width.zero? ? nil : @width
+        @width == 0 ? nil : @width
       elsif key == :height
-        @height.zero? ? nil : @height
+        @height == 0 ? nil : @height
+      else
+        nil
       end
     end
 
@@ -402,10 +404,11 @@ module ActiveStorage
     # The JSON Rails writes, so a database this tree and a Rails process
     # share reads the same numbers either way.
     def to_json
-      if @width.zero? || @height.zero?
+      if @width == 0 || @height == 0
         "{\"identified\":true,\"analyzed\":true}"
       else
-        "{\"identified\":true,\"width\":#{@width},\"height\":#{@height},\"analyzed\":true}"
+        "{\"identified\":true,\"width\":" + @width.to_s +
+          ",\"height\":" + @height.to_s + ",\"analyzed\":true}"
       end
     end
 
@@ -415,7 +418,7 @@ module ActiveStorage
     # are integers, and the shared runtime has no typed JSON reader
     # to hand a Hash back from.
     def self.int_field(json, name)
-      needle = "\"#{name}\":"
+      needle = "\"" + name + "\":"
       at = json.index(needle)
       return 0 if at.nil?
 
@@ -454,7 +457,7 @@ module ActiveStorage
     # `.jpg` — the delimiter and the extension, "" when there is none.
     def extension_with_delimiter
       i = @filename.rindex(".")
-      i.nil? || i.zero? ? "" : @filename[i..]
+      i.nil? || i == 0 ? "" : @filename[i..]
     end
 
     # `jpg` — the extension without its delimiter, "" when there is none.
@@ -523,7 +526,10 @@ module ActiveStorage
     # The columns every blob read selects, so the proxy's own join, the
     # batch preloader and `find` cannot disagree about the row shape.
     def self.columns(alias_prefix)
-      "#{alias_prefix}.id AS blob_id, #{alias_prefix}.key AS blob_key, #{alias_prefix}.filename AS filename, #{alias_prefix}.content_type AS content_type, #{alias_prefix}.byte_size AS byte_size, #{alias_prefix}.metadata AS metadata"
+      alias_prefix + ".id AS blob_id, " + alias_prefix + ".key AS blob_key, " +
+        alias_prefix + ".filename AS filename, " + alias_prefix +
+        ".content_type AS content_type, " + alias_prefix +
+        ".byte_size AS byte_size, " + alias_prefix + ".metadata AS metadata"
     end
 
     def self.from_row(row)
@@ -539,16 +545,18 @@ module ActiveStorage
 
     def self.find(id)
       rows = ActiveRecord.adapter.select_rows(
-        "SELECT #{columns("b")} FROM active_storage_blobs b WHERE b.id = #{ActiveRecord.adapter.escape_value(id)} LIMIT 1"
+        "SELECT " + columns("b") + " FROM active_storage_blobs b WHERE b.id = " +
+        ActiveRecord.adapter.escape_value(id) + " LIMIT 1"
       )
-      rows.empty? ? nil : from_row(rows[0])
+      rows.length == 0 ? nil : from_row(rows[0])
     end
 
     def self.find_by_key(key)
       rows = ActiveRecord.adapter.select_rows(
-        "SELECT #{columns("b")} FROM active_storage_blobs b WHERE b.key = #{ActiveRecord.adapter.escape_value(key)} LIMIT 1"
+        "SELECT " + columns("b") + " FROM active_storage_blobs b WHERE b.key = " +
+        ActiveRecord.adapter.escape_value(key) + " LIMIT 1"
       )
-      rows.empty? ? nil : from_row(rows[0])
+      rows.length == 0 ? nil : from_row(rows[0])
     end
 
     # Rails' `ActiveStorage.verifier` signs the blob id with purpose
@@ -585,8 +593,8 @@ module ActiveStorage
     # size in the same millisecond.
     def self.generate_key(filename, byte_size)
       MessageDigest.hmac_sha256_hex(
-        "active_storage/blob/#{byte_size}",
-        "#{filename}/#{ActiveSupport.db_now}"
+        "active_storage/blob/" + byte_size.to_s,
+        filename + "/" + ActiveSupport.db_now
       )
     end
 
@@ -617,7 +625,7 @@ module ActiveStorage
                                          "service_name" => "local",
                                          "byte_size" => data.length,
                                          "checksum" => "",
-                                         "created_at" => ActiveSupport.db_now
+                                         "created_at" => ActiveSupport.db_now,
                                        })
       Blob.new(id, key, filename, content_type, data.length, metadata)
     end
@@ -683,8 +691,9 @@ module ActiveStorage
     # The blob's own route: `rails_blob_path(blob)`. A `disposition` of
     # "attachment" rides as the query Rails puts it in.
     def url(disposition)
-      base = "/rails/active_storage/blobs/redirect/#{signed_id}/#{ActiveStorage.url_filename(@filename)}"
-      disposition == "" ? base : "#{base}?disposition=#{disposition}"
+      base = "/rails/active_storage/blobs/redirect/" + signed_id + "/" +
+             ActiveStorage.url_filename(@filename)
+      disposition == "" ? base : base + "?disposition=" + disposition
     end
   end
 
@@ -703,7 +712,7 @@ module ActiveStorage
   # analyzer identified — `metadata[:width]` is nil and the view's
   # guard takes its no-dimensions branch.
   class ImageAnalyzer
-    def self.dimensions(_data, _content_type)
+    def self.dimensions(data, content_type)
       [0, 0]
     end
   end
@@ -748,16 +757,16 @@ module ActiveStorage
     # lookup here and the purge cascade cannot disagree about the shape.
     def self.record_select(where)
       "SELECT vr.id AS variant_record_id, a.id AS attachment_id, " + Blob.columns("b") +
-        " FROM active_storage_variant_records vr" \
-        " JOIN active_storage_attachments a ON a.record_type = 'ActiveStorage::VariantRecord'" \
-        " AND a.name = 'image' AND a.record_id = vr.id" \
+        " FROM active_storage_variant_records vr" +
+        " JOIN active_storage_attachments a ON a.record_type = 'ActiveStorage::VariantRecord'" +
+        " AND a.name = 'image' AND a.record_id = vr.id" +
         " JOIN active_storage_blobs b ON b.id = a.blob_id WHERE " + where
     end
 
     # Every variant of a blob, gone with it — see `Blob#purge`.
     def self.purge_records_of(blob_id)
       rows = ActiveRecord.adapter.select_rows(
-        record_select("vr.blob_id = #{ActiveRecord.adapter.escape_value(blob_id)}")
+        record_select("vr.blob_id = " + ActiveRecord.adapter.escape_value(blob_id))
       )
       rows.each do |row|
         ActiveRecord.adapter.delete("active_storage_attachments", row["attachment_id"].to_i)
@@ -777,10 +786,11 @@ module ActiveStorage
       digest = v.digest
       rows = ActiveRecord.adapter.select_rows(
         VariantWithRecord.record_select(
-          "vr.blob_id = #{ActiveRecord.adapter.escape_value(b.id)} AND vr.variation_digest = #{ActiveRecord.adapter.escape_value(digest)} LIMIT 1"
+          "vr.blob_id = " + ActiveRecord.adapter.escape_value(b.id) +
+          " AND vr.variation_digest = " + ActiveRecord.adapter.escape_value(digest) + " LIMIT 1"
         )
       )
-      if rows.length.positive?
+      if rows.length > 0
         @record_id = rows[0]["variant_record_id"].to_i
         @image_blob = Blob.from_row(rows[0])
         return nil
@@ -788,19 +798,19 @@ module ActiveStorage
       data = Processor.transform(Blob.service.download(b.key), b.content_type, v)
       image = Blob.create_and_upload!(
         data,
-        "#{ActiveStorage.filename_base(b.filename.to_s)}.#{v.output_format(b.content_type)}",
+        ActiveStorage.filename_base(b.filename.to_s) + "." + v.output_format(b.content_type),
         v.output_content_type(b.content_type)
       )
       record_id = ActiveRecord.adapter.insert("active_storage_variant_records", {
                                                 "blob_id" => b.id,
-                                                "variation_digest" => digest
+                                                "variation_digest" => digest,
                                               })
       ActiveRecord.adapter.insert("active_storage_attachments", {
                                     "name" => "image",
                                     "record_type" => "ActiveStorage::VariantRecord",
                                     "record_id" => record_id,
                                     "blob_id" => image.id,
-                                    "created_at" => ActiveSupport.db_now
+                                    "created_at" => ActiveSupport.db_now,
                                   })
       @record_id = record_id
       @image_blob = image
@@ -812,7 +822,7 @@ module ActiveStorage
     # (the identity variant, or nothing attached).
     def image
       process
-      @record_id.zero? ? nil : Attached.new("ActiveStorage::VariantRecord", @record_id, "image", [])
+      @record_id == 0 ? nil : Attached.new("ActiveStorage::VariantRecord", @record_id, "image", [])
     end
 
     # The transformed blob, once processed; the original for the
@@ -835,7 +845,7 @@ module ActiveStorage
       return "" if b.nil?
 
       v = @variation
-      v.nil? ? b.filename.to_s : "#{ActiveStorage.filename_base(b.filename.to_s)}.#{v.output_format(b.content_type)}"
+      v.nil? ? b.filename.to_s : ActiveStorage.filename_base(b.filename.to_s) + "." + v.output_format(b.content_type)
     end
 
     # `url_for(variant)` / `polymorphic_url(variant)`: Rails'
@@ -847,7 +857,8 @@ module ActiveStorage
       return "" if b.nil?
 
       v = @variation
-      "/rails/active_storage/representations/redirect/#{b.signed_id}/#{v.nil? ? "original" : v.encode}/#{ActiveStorage.url_filename(filename)}"
+      "/rails/active_storage/representations/redirect/" + b.signed_id +
+        "/" + (v.nil? ? "original" : v.encode) + "/" + ActiveStorage.url_filename(filename)
     end
   end
 
@@ -894,13 +905,13 @@ module ActiveStorage
 
       @row_loaded = true
       sql = "SELECT a.id AS attachment_id, " + Blob.columns("b") +
-            " FROM active_storage_attachments a " \
+            " FROM active_storage_attachments a " +
             "JOIN active_storage_blobs b ON b.id = a.blob_id WHERE a.record_type = " +
             ActiveRecord.adapter.escape_value(@record_type) +
             " AND a.record_id = " + ActiveRecord.adapter.escape_value(@record_id) +
             " AND a.name = " + ActiveRecord.adapter.escape_value(@name) + " LIMIT 1"
       rows = ActiveRecord.adapter.select_rows(sql)
-      if rows.length.positive?
+      if rows.length > 0
         @attachment_id = rows[0]["attachment_id"].to_i
         @blob = Blob.from_row(rows[0])
       end
@@ -932,12 +943,12 @@ module ActiveStorage
 
     def filename
       b = blob
-      b&.filename
+      b.nil? ? nil : b.filename
     end
 
     def content_type
       b = blob
-      b&.content_type
+      b.nil? ? nil : b.content_type
     end
 
     def key
@@ -1043,7 +1054,7 @@ module ActiveStorage
 
         i += 1
       end
-      raise ArgumentError, "Cannot find variant :#{name} for #{@record_type}##{@name}"
+      raise ArgumentError, "Cannot find variant :" + name + " for " + @record_type + "#" + @name
     end
 
     # Rails' `preview(transformations)`: the poster frame of a video,
@@ -1077,7 +1088,7 @@ module ActiveStorage
                                     "record_type" => @record_type,
                                     "record_id" => @record_id,
                                     "blob_id" => blob.id,
-                                    "created_at" => ActiveSupport.db_now
+                                    "created_at" => ActiveSupport.db_now,
                                   })
       @row_loaded = false
       nil
@@ -1096,7 +1107,7 @@ module ActiveStorage
     # bytes — see `attach_blob` on why the blob goes too.
     def purge
       sql = "SELECT a.id AS attachment_id, " + Blob.columns("b") +
-            " FROM active_storage_attachments a " \
+            " FROM active_storage_attachments a " +
             "JOIN active_storage_blobs b ON b.id = a.blob_id WHERE a.record_type = " +
             ActiveRecord.adapter.escape_value(@record_type) +
             " AND a.record_id = " + ActiveRecord.adapter.escape_value(@record_id) +

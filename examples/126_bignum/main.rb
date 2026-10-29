@@ -20,7 +20,7 @@ puts "fib(100) = #{a}"
 big = 2**100
 puts "2**100 = #{big}"
 puts "2**100 - 1 in hex: #{(big - 1).to_s(16)}"
-puts "u128 max: #{340_282_366_920_938_463_463_374_607_431_768_211_455}"
+puts "u128 max: #{340282366920938463463374607431768211455}"
 puts "2**100 / 3 = #{big / 3}, remainder #{big % 3}"
 puts "a Float: #{big.to_f}"
 
@@ -42,6 +42,7 @@ while digits.size < 30
     nr = 10 * (r - n * t)
     n = (10 * (3 * q + r)) / t - 10 * n
     q *= 10
+    r = nr
   else
     nr = (2 * q + r) * l
     nn = (q * (7 * k) + 2 + (r * l)) / (t * l)
@@ -50,7 +51,7 @@ while digits.size < 30
     l += 2
     k += 1
     n = nn
+    r = nr
   end
-  r = nr
 end
 puts "pi: #{digits[0]}.#{digits[1..]}"

@@ -279,9 +279,9 @@ module PatternTests
       end
       assert_equal false, (pt in { z: 1 })
       assert_equal [3, 4], pt.deconstruct
-      assert_equal({ y: 4, x: 3 }, pt.deconstruct_keys(%i[y x]))
-      assert_equal({ x: 3 }, pt.deconstruct_keys(%i[x z]))
-      assert_equal({}, pt.deconstruct_keys(%i[x y z]))
+      assert_equal({ y: 4, x: 3 }, pt.deconstruct_keys([:y, :x]))
+      assert_equal({ x: 3 }, pt.deconstruct_keys([:x, :z]))
+      assert_equal({}, pt.deconstruct_keys([:x, :y, :z]))
       assert_equal({ left: 1, right: "one" }, pair.deconstruct_keys(nil))
       assert_equal [1, "one"], pair.deconstruct
     end
@@ -453,9 +453,9 @@ module PatternTests
 
     def test_alternative_binding_not_narrowed
       v = [1, 2] #: Array[Integer]
-      return unless v in [_one] | [_, _]
-
-      assert_nil _one
+      if v in [_one] | [_, _]
+        assert_nil _one
+      end
     end
 
     def test_member_named_deconstruct_is_what_the_pattern_reads

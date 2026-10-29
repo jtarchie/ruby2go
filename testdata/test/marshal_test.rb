@@ -105,7 +105,7 @@ module MarshalTests
     def test_core_values
       assert_nil round(nil)
       assert_equal [true, false], round([true, false])
-      assert_equal [0, -1, 4_611_686_018_427_387_904, -9_223_372_036_854_775_808], round([0, -1, 4_611_686_018_427_387_904, -9_223_372_036_854_775_808])
+      assert_equal [0, -1, 4611686018427387904, -9223372036854775808], round([0, -1, 4611686018427387904, -9223372036854775808])
       assert_equal [1.5, -0.25, Float::INFINITY], round([1.5, -0.25, Float::INFINITY])
       assert_equal true, round(Float::NAN).nan?
       assert_equal "-0.0", round(-0.0).to_s
@@ -373,13 +373,13 @@ module MarshalTests
     end
 
     def test_deep_nesting_is_rejected_not_a_stack_overflow
-      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("#{"o\x0aArray[any]\x01" * 1_000_000}0"))
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error(("o\x0aArray[any]\x01" * 1_000_000) + "0"))
     end
 
     def test_random_state_index_is_checked
       state = "\x00" * 624
-      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\x01#{state}"))
-      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\xe2\x0a#{state}"))
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\x01" + state))
+      assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x06Random\x06\xe2\x0a" + state))
     end
 
     def test_bigdecimal_state_is_checked
@@ -389,7 +389,7 @@ module MarshalTests
 
     #: (Integer) -> String
     def self.zigzag(n)
-      z = n.negative? ? ((-n) << 1) - 1 : n << 1
+      z = n < 0 ? ((-n) << 1) - 1 : n << 1
       bytes = [] #: Array[Integer]
       while z >= 0x80
         bytes << ((z & 0x7f) | 0x80)
@@ -402,7 +402,7 @@ module MarshalTests
     # A loaded exponent past what BigDecimal arithmetic keeps would reach 10**n on the first comparison (#109).
     def test_bigdecimal_exponent_is_checked
       [2**61 + 1, -(2**61) - 1].each do |exp|
-        assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x011#{HostileInputTest.zigzag(exp)}F\x00"))
+        assert_equal true, [ArgumentError, TypeError].include?(HostileInputTest.load_error("o\x0aBigDecimal\x011" + HostileInputTest.zigzag(exp) + "F\x00"))
       end
     end
   end

@@ -98,10 +98,10 @@ module Concurrent
       @lock.synchronize do
         raise RejectedExecutionError, "pool is shut down" unless @running
 
-        if @idle.zero? && @live < @max_threads
+        if @idle == 0 && @live < @max_threads
           spawn = true
           @live += 1
-        elsif @max_queue.positive? && @queue.size >= @max_queue
+        elsif @max_queue > 0 && @queue.size >= @max_queue
           raise RejectedExecutionError, "queue is full"
         end
         # Value position: the `if` above has no `else`, and with a
@@ -136,7 +136,7 @@ module Concurrent
       end
       @queue.close
       @queue.clear
-      ws.each(&:kill)
+      ws.each { |w| w.kill }
       @lock.synchronize { @live = 0 }
       nil
     end
@@ -146,7 +146,7 @@ module Concurrent
     def wait_for_termination(timeout = nil)
       deadline = timeout.nil? ? -1.0 : Time.now.to_f + timeout.to_f
       loop do
-        return true if length.zero?
+        return true if length == 0
         return false if deadline >= 0.0 && Time.now.to_f >= deadline
 
         sleep 0.005
@@ -208,7 +208,7 @@ module Concurrent
       n
     end
 
-    def wait(_timeout = nil)
+    def wait(timeout = nil)
       @lock.synchronize do
         gen = @generation
         @waiting += 1
@@ -217,7 +217,9 @@ module Concurrent
           @generation += 1
           @cv.broadcast
         else
-          @cv.wait(@lock) while gen == @generation
+          while gen == @generation
+            @cv.wait(@lock)
+          end
         end
       end
       true

@@ -20,10 +20,12 @@ module ActiveStorage
     FILTER = "select=eq(n\\,0)+eq(key\\,1)+gt(scene\\,0.015),loop=loop=-1:size=2,trim=start_frame=1"
 
     def self.poster(path)
-      out = "#{path}.poster.png"
+      out = path + ".poster.png"
       ok = system("ffmpeg", "-y", "-loglevel", "error", "-i", path, "-vf", FILTER, "-frames:v", "1", "-f", "image2", out)
-      raise "ActiveStorage::Previewer: ffmpeg could not draw a poster for #{path} — is ffmpeg installed? (campfire's Dockerfile installs it)" if !ok || !File.exist?(out)
-
+      if !ok || !File.exist?(out)
+        raise "ActiveStorage::Previewer: ffmpeg could not draw a poster for " + path +
+              " — is ffmpeg installed? (campfire's Dockerfile installs it)"
+      end
       png = File.binread(out)
       File.delete(out)
       png

@@ -151,7 +151,7 @@ module Db
   # effectively thread-local (each worker thread's root fiber).
   def self.current_dbh
     h = Fiber[:db_handle]
-    return h unless h.nil?
+    return h if !h.nil?
 
     # Only the UNLEASED path pays the fork check — boot, tests, and
     # single-threaded dev. Under a lease the line above has already
@@ -181,7 +181,9 @@ module Db
     h = nil
     adopt_after_fork
     @mutex.synchronize do
-      @cv.wait(@mutex) while @pool.available_count.zero?
+      while @pool.available_count == 0
+        @cv.wait(@mutex)
+      end
       h = @pool.checkout
     end
     Fiber[:db_handle] = h
@@ -205,7 +207,7 @@ module Db
       # Finalize cached statements before closing the connection (older
       # sqlite3-gem builds refuse to close with unfinalized statements).
       cache = conn.instance_variable_get(:@rh_stmt_cache)
-      cache&.each_value(&:close)
+      cache.each_value { |st| st.close } if cache
       conn.close
       i += 1
     end
@@ -218,7 +220,7 @@ module Db
     # Any exec is (per the Db contract) DDL or a write — Rails
     # invalidates the whole query cache on write; so do we.
     qcache = Fiber[:rh_qcache]
-    qcache&.clear
+    qcache.clear unless qcache.nil?
     begin
       current_dbh.execute(sql)
     rescue StandardError => e
@@ -323,7 +325,9 @@ module Db
           live = k
           break
         end
-        cache.delete(live).close unless live.nil?
+        unless live.nil?
+          cache.delete(live).close
+        end
       end
       cache[sql] = stmt
     else
@@ -337,7 +341,9 @@ module Db
     @next_id += 1
     capture = nil
     qcache = Fiber[:rh_qcache]
-    capture = { rows: [], names: stmt.columns, eof: false, sql: sql } unless qcache.nil? || parameterized
+    unless qcache.nil? || parameterized
+      capture = { rows: [], names: stmt.columns, eof: false, sql: sql }
+    end
     @rows[@next_id] = { stmt: stmt, row: nil, cached: cached, capture: capture }
     @next_id
   end
@@ -404,17 +410,17 @@ module Db
   # NOT NULL columns, which is most of them.
   def self.column_int_opt(stmt_id, i)
     v = @rows[stmt_id][:row][i]
-    v&.to_i
+    v.nil? ? nil : v.to_i
   end
 
   def self.column_float_opt(stmt_id, i)
     v = @rows[stmt_id][:row][i]
-    v&.to_f
+    v.nil? ? nil : v.to_f
   end
 
   def self.column_text_opt(stmt_id, i)
     v = @rows[stmt_id][:row][i]
-    v&.to_s
+    v.nil? ? nil : v.to_s
   end
 
   def self.column_bool_opt(stmt_id, i)
@@ -480,19 +486,19 @@ module Db
   # (prepare skips replay for parameterized SQL).
   def self.bind_int(stmt_id, idx, value)
     st = @rows[stmt_id][:stmt]
-    st&.bind_param(idx, value)
+    st.bind_param(idx, value) unless st.nil?
   end
 
   def self.bind_text(stmt_id, idx, value)
     st = @rows[stmt_id][:stmt]
-    st&.bind_param(idx, value)
+    st.bind_param(idx, value) unless st.nil?
   end
 
   # SQLite has no native bool — bind 0/1, matching escape_bool's inline
   # form and the INTEGER affinity `t.boolean` columns get.
   def self.bind_bool(stmt_id, idx, value)
     st = @rows[stmt_id][:stmt]
-    st&.bind_param(idx, value ? 1 : 0)
+    st.bind_param(idx, value ? 1 : 0) unless st.nil?
   end
 
   def self.last_insert_rowid
@@ -529,7 +535,7 @@ module Db
   # Funnel hook: record one SQL string into the active capture, if any.
   # No-op (single nil check) when no capture is installed.
   def self.record_query(sql)
-    @query_log&.push(sql)
+    @query_log.push(sql) unless @query_log.nil?
   end
 
   # SQL-value escaping primitives — lowerer-emitted code uses these to
@@ -539,7 +545,7 @@ module Db
   # binding. Inlining stays safe regardless since the lowerer controls
   # every string that flows here.
   def self.escape_string(s)
-    "'#{s.to_s.gsub("'", "''")}'"
+    "'" + s.to_s.gsub("'", "''") + "'"
   end
 
   def self.escape_int(n)

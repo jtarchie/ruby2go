@@ -51,12 +51,12 @@ class MochaStub
 
   # The guard's first call: one more invocation seen.
   def record!
-    @seen += 1
+    @seen = @seen + 1
     nil
   end
 
   def verify!
-    return nil if @expected.negative? || @seen == @expected
+    return nil if @expected < 0 || @seen == @expected
 
     raise "mocha: expected #{@name} #{@expected} time(s), got #{@seen}"
   end
@@ -92,7 +92,7 @@ class MochaStub
     i = 0
     while i < PENDING.length
       PENDING[i].verify!
-      i += 1
+      i = i + 1
     end
     PENDING.clear
     nil

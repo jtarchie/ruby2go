@@ -8,7 +8,7 @@ module Demo
   class Gemish
     Pair = Struct.new :key, :value
 
-    Part = Struct.new(:body, :name) do
+    class Part < Struct.new(:body, :name)
       def label = "#{name}=#{body}"
     end
 
@@ -139,7 +139,7 @@ module Demo
     # a splat of a value that is a Symbol or an Array (bindata's BitField.define_class(name, :nbits, *args))
     def splat_args
       made = []
-      { "Bit" => :big, "Sbit" => %i[big signed] }.each_pair { |name, args| made << define_field(name, :nbits, *args) }
+      { "Bit" => :big, "Sbit" => [:big, :signed] }.each_pair { |name, args| made << define_field(name, :nbits, *args) }
       made
     end
 
@@ -171,11 +171,7 @@ module Demo
 
     # A sig narrower than the value (a parent class, nil, another union): Ruby checks none of it (decision 225).
     #: (String) -> Demo::GemTab
-    def tab_for(n) = if n.empty?
-                       nil
-                     else
-                       (n == "x" ? GemTab.empty : GemAbstractTab.empty)
-                     end
+    def tab_for(n) = n.empty? ? nil : (n == "x" ? GemTab.empty : GemAbstractTab.empty)
 
     # A yield inside a block, its value the method's (decision 226).
     def synced = synchronize { @state }
@@ -332,8 +328,7 @@ module Demo
       out.join
     end
 
-    SEV_DEBUG = 0
-    SEV_INFO = 1
+    SEV_DEBUG, SEV_INFO = 0, 1
 
     # A param typed from its default (:SEV_INFO), reassigned const_get's untyped value (decision 241).
     def self.level_of(level = :SEV_INFO)
@@ -513,7 +508,7 @@ class DemoPool < DemoAbstractExec
     @hook = block
   end
 
-  def report = [@name, @size, @hook&.call(3)]
+  def report = [@name, @size, @hook ? @hook.call(3) : nil]
 end
 
 # concurrent-ruby's promises and executors: a block typed from its callers (`{ |x| }`) forwarded with `&task` where
@@ -530,6 +525,9 @@ class DemoBlocked
 end
 
 class DemoThen < DemoBlocked
+  def initialize(args, &task)
+    super(args, &task)
+  end
 end
 
 class DemoExec
@@ -635,10 +633,7 @@ class DemoFallbackExec
     fallback_action(*args, &task)
   end
 
-  def go = ns_execute(5) do |x|
-    @log << x
-    x * 2
-  end
+  def go = ns_execute(5) { |x| @log << x; x * 2 }
 end
 
 # concurrent-ruby's IVar#add_observer(&block) over Concern::Observable's: the override takes the module slot's untyped
@@ -713,7 +708,9 @@ end
 class DemoCachedPool < DemoPoolBase
   def ns_initialize(opts)
     super(opts)
-    @executor = java.util.concurrent.Executors.newCachedThreadPool if opts[:jruby]
+    if opts[:jruby]
+      @executor = java.util.concurrent.Executors.newCachedThreadPool
+    end
   end
 
   def size = @size
@@ -817,7 +814,7 @@ end
 # concurrent-ruby's BlockedPromise.new_blocked_by1 → ChainPromise#initialize(…, &task): the dynamic new of a subclass
 # passes initialize the block, and `super(…, *args, &task)` spreads an untyped args (decision 255).
 class DemoBlocked2
-  def initialize(delayed, _count, *args, &task)
+  def initialize(delayed, count, *args, &task)
     @delayed = delayed
     @args = args
     @task = task
@@ -858,6 +855,9 @@ class DemoTaskBase
 end
 
 class DemoThenTask < DemoTaskBase
+  def initialize(args, &task)
+    super(args, &task)
+  end
 end
 
 # concurrent-ruby's ExecutorService#post(*args, &task): RubyExecutorService's override keeps `&task` as a value, so

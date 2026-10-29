@@ -74,7 +74,7 @@ class Pathname < Object
   #: (*untyped) -> Pathname
   def join(*parts)
     result = self #: Pathname
-    parts.each { |p| result += p }
+    parts.each { |p| result = result + p }
     result
   end
 
@@ -401,11 +401,7 @@ class Pathname < Object
       end
     end
     joined = parts.join("/")
-    Pathname.new(if abs
-                   "/#{joined}"
-                 else
-                   (joined.empty? ? "." : joined)
-                 end)
+    return Pathname.new(abs ? "/#{joined}" : (joined.empty? ? "." : joined))
   end
 
   #: (Pathname | String) -> Pathname

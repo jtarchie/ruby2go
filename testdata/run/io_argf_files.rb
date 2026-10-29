@@ -12,7 +12,7 @@ Dir.mktmpdir do |dir|
   ARGV << b
   p File.basename(ARGF.filename)
   p gets
-  p(ARGV.map { |f| File.basename(f) })
+  p ARGV.map { |f| File.basename(f) }
   p gets, gets
   p File.basename(ARGF.filename)
   p ARGF.eof?
@@ -25,8 +25,8 @@ Dir.mktmpdir do |dir|
   end
 end
 
-p $stdout.sync, $stderr.sync, $stdin.sync
+p $stdout.sync, STDERR.sync, $stdin.sync
 $stdout.sync = true
 p $stdout.sync
-warn "after sync"
+STDERR.puts "after sync"
 puts "ordered"

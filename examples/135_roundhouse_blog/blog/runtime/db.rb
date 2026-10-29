@@ -68,7 +68,7 @@ module SQL
   # `sqlite3_open` uses, so a non-URI path opens identically either way.
   ffi_const :OPEN_URI_RWC, 70
 
-  ffi_func :sqlite3_open,              %i[str ptr], :int
+  ffi_func :sqlite3_open,              [:str, :ptr],                          :int
   # `sqlite3_open` honors a `file:` URI only on a build compiled with
   # SQLITE_USE_URI; Ubuntu's is, but that is a property of the distro's sqlite
   # and not of this program. `open_v2` takes the flag explicitly, so a URI path
@@ -77,19 +77,19 @@ module SQL
   # `file:x?mode=memory&cache=shared` string as a FILENAME and cheerfully
   # creates a file with that name, so the process serves a fresh empty database
   # from disk while every log line says it opened the one that was asked for.
-  ffi_func :sqlite3_open_v2,           %i[str ptr int str], :int
-  ffi_func :sqlite3_close,             [:ptr], :int
+  ffi_func :sqlite3_open_v2,           [:str, :ptr, :int, :str],              :int
+  ffi_func :sqlite3_close,             [:ptr],                                :int
   # Online backup — copies one open database over another at the PAGE level.
   # Used to seed an in-memory database from a file: it replaces the whole
   # destination, so schema DDL already run against the empty destination is
   # simply superseded rather than conflicting. `step(-1)` means "all remaining
   # pages in one call", which is what a boot-time seed wants (the incremental
   # form exists to avoid holding a lock, and at boot nothing else is reading).
-  ffi_func :sqlite3_backup_init,       %i[ptr str ptr str], :ptr
-  ffi_func :sqlite3_backup_step,       %i[ptr int], :int
-  ffi_func :sqlite3_backup_finish,     [:ptr], :int
-  ffi_func :sqlite3_exec,              %i[ptr str ptr ptr ptr],        :int
-  ffi_func :sqlite3_prepare_v2,        %i[ptr str int ptr ptr],        :int
+  ffi_func :sqlite3_backup_init,       [:ptr, :str, :ptr, :str],              :ptr
+  ffi_func :sqlite3_backup_step,       [:ptr, :int],                          :int
+  ffi_func :sqlite3_backup_finish,     [:ptr],                                :int
+  ffi_func :sqlite3_exec,              [:ptr, :str, :ptr, :ptr, :ptr],        :int
+  ffi_func :sqlite3_prepare_v2,        [:ptr, :str, :int, :ptr, :ptr],        :int
   ffi_func :sqlite3_step,              [:ptr],                                :int
   ffi_func :sqlite3_finalize,          [:ptr],                                :int
   # Prepared-statement reuse (roundhouse#12, Path A.1). `reset` rewinds a
@@ -107,18 +107,18 @@ module SQL
   # returning — safe even if the Ruby string is later GC'd. int→:ptr
   # coercion for the -1 destructor is the spinel primitive validated in
   # spinel's test/ffi_ptr_int_literal.rb.
-  ffi_func :sqlite3_bind_int64,        %i[ptr int long], :int
-  ffi_func :sqlite3_bind_text,         %i[ptr int str int ptr], :int
+  ffi_func :sqlite3_bind_int64,        [:ptr, :int, :long],                   :int
+  ffi_func :sqlite3_bind_text,         [:ptr, :int, :str, :int, :ptr],        :int
   # `sqlite3_column_type` reports the storage class of a column in the
   # current row; 5 is SQLITE_NULL. The nullable-column reads below need
   # it because `sqlite3_column_int` cannot distinguish a stored 0 from
   # NULL (both come back as 0).
-  ffi_func :sqlite3_column_type,       %i[ptr int],                          :int
-  ffi_func :sqlite3_column_int,        %i[ptr int],                          :int
-  ffi_func :sqlite3_column_double,     %i[ptr int],                          :double
-  ffi_func :sqlite3_column_text,       %i[ptr int],                          :str
-  ffi_func :sqlite3_column_count,      [:ptr], :int
-  ffi_func :sqlite3_column_name,       %i[ptr int], :str
+  ffi_func :sqlite3_column_type,       [:ptr, :int],                          :int
+  ffi_func :sqlite3_column_int,        [:ptr, :int],                          :int
+  ffi_func :sqlite3_column_double,     [:ptr, :int],                          :double
+  ffi_func :sqlite3_column_text,       [:ptr, :int],                          :str
+  ffi_func :sqlite3_column_count,      [:ptr],                                :int
+  ffi_func :sqlite3_column_name,       [:ptr, :int],                          :str
   ffi_func :sqlite3_errmsg,            [:ptr],                                :str
   ffi_func :sqlite3_last_insert_rowid, [:ptr],                                :long
   ffi_func :sqlite3_changes,           [:ptr],                                :int
@@ -257,18 +257,17 @@ class QcEntry
     i = 0
     while i < @ncols
       t = SQL.sqlite3_column_type(stmt, i)
-      case t
-      when SQL::NULL_TYPE
+      if t == SQL::NULL_TYPE
         @kinds.push(0)
         @ints.push(0)
         @floats.push(0.0)
         @texts.push("")
-      when SQL::INTEGER_TYPE
+      elsif t == SQL::INTEGER_TYPE
         @kinds.push(1)
         @ints.push(SQL.sqlite3_column_int(stmt, i))
         @floats.push(0.0)
         @texts.push("")
-      when SQL::FLOAT_TYPE
+      elsif t == SQL::FLOAT_TYPE
         @kinds.push(2)
         @ints.push(0)
         @floats.push(SQL.sqlite3_column_double(stmt, i))
@@ -395,7 +394,9 @@ class DbConn
       rc = SQL.sqlite3_prepare_v2(@dbh, sql, -1, SQL.stmt_out, nil)
       st = rc == SQL::OK ? SQL.read_ptr(SQL.stmt_out) : 0
     end
-    raise "Db.prepare failed (#{rc}): #{SQL.sqlite3_errmsg(@dbh)} — sql: #{sql}" if rc != SQL::OK
+    if rc != SQL::OK
+      raise "Db.prepare failed (" + rc.to_s + "): " + SQL.sqlite3_errmsg(@dbh) + " — sql: " + sql
+    end
 
     @entries.push(Stmt.new(sql, st))
     st
@@ -497,7 +498,7 @@ class DbConn
   # open hands back the same pointer) is left alone.
   def qc_record(sql, ptr)
     return nil if !@qc_on || sql.include?("?")
-    return nil unless @qc_recording[ptr].nil?
+    return nil if !@qc_recording[ptr].nil?
 
     ncols = SQL.sqlite3_column_count(ptr)
     names = []
@@ -525,7 +526,7 @@ class DbConn
   # Called after every real step. Appends the row (or marks eof) — or,
   # past the bound, drops the capture.
   def qc_record_step(ptr, has_row)
-    return nil unless @qc_on
+    return nil if !@qc_on
 
     e = @qc_recording[ptr]
     return nil if e.nil?
@@ -546,7 +547,7 @@ class DbConn
   # partial one — the next identical SELECT replays the consumed prefix
   # and promotes past it only if it wants more.
   def qc_install(ptr)
-    return nil unless @qc_on
+    return nil if !@qc_on
 
     e = @qc_recording[ptr]
     return nil if e.nil?
@@ -563,7 +564,7 @@ class DbConn
   # The real stmt a replay promoted to, or nil while it is still replaying.
   def qc_ptr(handle)
     c = qc_cursor(handle)
-    return nil unless c.promoted
+    return nil if !c.promoted
 
     c.real_ptr
   end
@@ -722,7 +723,7 @@ class DbPool
     # safe across a process crash and risks only the most recent commits
     # on OS or power failure. That is the guarantee campfire ships with,
     # so it is the one to match.
-    "PRAGMA synchronous=NORMAL"
+    "PRAGMA synchronous=NORMAL",
   ].freeze
 
   def initialize(path, n)
@@ -737,7 +738,7 @@ class DbPool
         # Best-effort error surface — sqlite3_errmsg requires a valid db
         # handle, which we don't have on open failure. The numeric rc +
         # path are the only signals we can raise pre-handle.
-        raise "Db.configure: sqlite3_open(#{path}) failed (#{rc})"
+        raise "Db.configure: sqlite3_open(" + path + ") failed (" + rc.to_s + ")"
       end
 
       dbh = SQL.read_ptr(SQL.db_out)
@@ -767,7 +768,9 @@ class DbPool
   def lease
     idx = 0
     @lock.synchronize do
-      @cv.wait(@lock) while @free.empty?
+      while @free.length == 0
+        @cv.wait(@lock)
+      end
       idx = @free.delete_at(@free.length - 1)
     end
     idx
@@ -839,7 +842,9 @@ module Db
     @sql_trace = ENV.fetch("RH_SQL_TRACE", "") != ""
     n = pool_size
     ev = ENV["DATABASE_POOL_SIZE"]
-    n = ev.to_i if !ev.nil? && ev != ""
+    if !ev.nil? && ev != ""
+      n = ev.to_i
+    end
     # SHARDED, because one pool means one Mutex on every request and that
     # mutex — not the queries under it — was what pinned the server to a
     # couple of OS workers. `with_connection` takes the pool lock twice per
@@ -882,7 +887,7 @@ module Db
   # per request, not a lock ever.
   def self.pool_for_thread
     pi = Thread.current[:db_pool]
-    return @pools[pi] unless pi.nil?
+    return @pools[pi] if pi != nil
 
     n = 0
     @assign_lock.synchronize do
@@ -919,7 +924,9 @@ module Db
   def self.seed_from_file(src_path)
     dest = current_conn.dbh
     rc = SQL.sqlite3_open_v2(src_path, SQL.seed_out, SQL::OPEN_URI_RWC, nil)
-    raise "Db.seed_from_file: cannot open #{src_path} (#{rc})" if rc != SQL::OK
+    if rc != SQL::OK
+      raise "Db.seed_from_file: cannot open " + src_path + " (" + rc.to_s + ")"
+    end
 
     src = SQL.read_ptr(SQL.seed_out)
     bk = SQL.sqlite3_backup_init(dest, "main", src, "main")
@@ -927,14 +934,16 @@ module Db
       # errmsg lives on the DESTINATION handle for a failed backup_init.
       msg = SQL.sqlite3_errmsg(dest)
       SQL.sqlite3_close(src)
-      raise "Db.seed_from_file: backup_init failed: #{msg}"
+      raise "Db.seed_from_file: backup_init failed: " + msg
     end
     step_rc = SQL.sqlite3_backup_step(bk, -1)
     SQL.sqlite3_backup_finish(bk)
     SQL.sqlite3_close(src)
     # DONE, not OK, is success for a completed step(-1); OK means pages remain,
     # which for -1 would mean it did not finish.
-    raise "Db.seed_from_file: backup_step(#{src_path}) -> #{step_rc}" if step_rc != SQL::DONE
+    if step_rc != SQL::DONE
+      raise "Db.seed_from_file: backup_step(" + src_path + ") -> " + step_rc.to_s
+    end
 
     # The fixture ships without sqlite_stat1, and an unplanned database
     # misplans the hottest-stories SELECT into a full-table walk plus a
@@ -960,7 +969,7 @@ module Db
 
   def self.current_conn
     c = Thread.current[:db_conn]
-    return c unless c.nil?
+    return c if !c.nil?
 
     @pools[0].first
   end
@@ -1033,12 +1042,12 @@ module Db
     conn.qc_clear
     h = conn.dbh
     rc = SQL.sqlite3_exec(h, sql, nil, nil, nil)
-    return unless rc != SQL::OK
+    if rc != SQL::OK
+      msg = SQL.sqlite3_errmsg(h)
+      raise ActiveRecord::RecordNotUnique, msg if Db.unique_violation?(msg)
 
-    msg = SQL.sqlite3_errmsg(h)
-    raise ActiveRecord::RecordNotUnique, msg if Db.unique_violation?(msg)
-
-    raise "Db.exec failed (#{rc}): #{msg} — sql: #{sql}"
+      raise "Db.exec failed (" + rc.to_s + "): " + msg + " — sql: " + sql
+    end
   end
 
   # A UNIQUE-index violation is `ActiveRecord::RecordNotUnique`, not
@@ -1070,7 +1079,9 @@ module Db
     if handle != 0
       # A replay is not a round trip: the capture log (Rails' SQLCounter
       # ignores CACHE events too) and the trace both say so.
-      warn "  CACHE #{sql}" if @sql_trace
+      if @sql_trace
+        $stderr.puts "  CACHE " + sql
+      end
       return handle
     end
     record_query(sql)
@@ -1098,8 +1109,10 @@ module Db
   # Funnel hook: record one SQL string into the active capture, if any.
   # No-op (single nil check) when no capture is installed.
   def self.record_query(sql)
-    @query_log&.push(sql)
-    warn "  SQL #{sql}" if @sql_trace
+    @query_log.push(sql) unless @query_log.nil?
+    if @sql_trace
+      $stderr.puts "  SQL " + sql
+    end
   end
 
   def self.sql_trace?
@@ -1107,7 +1120,9 @@ module Db
   end
 
   def self.step?(stmt)
-    return current_conn.qc_step?(stmt) if stmt.is_a?(Integer)
+    if stmt.is_a?(Integer)
+      return current_conn.qc_step?(stmt)
+    end
 
     has_row = SQL.sqlite3_step(stmt) == SQL::ROW
     current_conn.qc_record_step(stmt, has_row)
@@ -1187,7 +1202,7 @@ module Db
       if p.nil?
         conn = current_conn
         k = conn.qc_kind(stmt, i)
-        return nil if k.zero?
+        return nil if k == 0
         return conn.qc_int(stmt, i) if k == 1
         return conn.qc_float(stmt, i) if k == 2
 
@@ -1196,12 +1211,11 @@ module Db
       stmt = p
     end
     t = SQL.sqlite3_column_type(stmt, i)
-    case t
-    when SQL::NULL_TYPE
+    if t == SQL::NULL_TYPE
       nil
-    when SQL::INTEGER_TYPE
+    elsif t == SQL::INTEGER_TYPE
       SQL.sqlite3_column_int(stmt, i)
-    when SQL::FLOAT_TYPE
+    elsif t == SQL::FLOAT_TYPE
       SQL.sqlite3_column_double(stmt, i)
     else
       # The FFI's `:str` return is already a GC string of its own
@@ -1222,7 +1236,7 @@ module Db
       p = Db.replay_ptr(stmt)
       if p.nil?
         conn = current_conn
-        return nil if conn.qc_kind(stmt, i).zero?
+        return nil if conn.qc_kind(stmt, i) == 0
 
         return conn.qc_int(stmt, i)
       end
@@ -1240,7 +1254,7 @@ module Db
       p = Db.replay_ptr(stmt)
       if p.nil?
         conn = current_conn
-        return nil if conn.qc_kind(stmt, i).zero?
+        return nil if conn.qc_kind(stmt, i) == 0
 
         return conn.qc_float(stmt, i)
       end
@@ -1258,7 +1272,7 @@ module Db
       p = Db.replay_ptr(stmt)
       if p.nil?
         conn = current_conn
-        return nil if conn.qc_kind(stmt, i).zero?
+        return nil if conn.qc_kind(stmt, i) == 0
 
         return conn.qc_text(stmt, i)
       end
@@ -1272,7 +1286,7 @@ module Db
       p = Db.replay_ptr(stmt)
       if p.nil?
         conn = current_conn
-        return nil if conn.qc_kind(stmt, i).zero?
+        return nil if conn.qc_kind(stmt, i) == 0
 
         return conn.qc_int(stmt, i) != 0
       end
@@ -1364,7 +1378,7 @@ module Db
   # quote doubling matches sqlite's literal-string syntax; non-string
   # input goes through `to_s` first (Ruby semantics).
   def self.escape_string(s)
-    "'#{s.to_s.gsub("'", "''")}'"
+    "'" + s.to_s.gsub("'", "''") + "'"
   end
 
   def self.escape_int(n)

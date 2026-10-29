@@ -61,7 +61,7 @@ module HttpStub
     host = u.host.to_s.downcase
     port = u.port.to_i
     default = scheme == "https" ? 443 : 80
-    authority = port == default || port.zero? ? host : "#{host}:#{port}"
+    authority = port == default || port == 0 ? host : "#{host}:#{port}"
     "#{scheme}://#{authority}#{u.request_uri}"
   end
 
@@ -130,7 +130,7 @@ module HttpStub
     h = {}
     STUB_HEADER_LINES[i].split("\n").each do |line|
       ci = line.index(":")
-      h[line[0, ci]] = line[(ci + 1)..].to_s unless ci.nil?
+      h[line[0, ci]] = line[(ci + 1)..-1].to_s unless ci.nil?
     end
     h
   end
@@ -184,7 +184,7 @@ module HttpStub
       if !actual.key?(key)
         ok = false
       elsif v.is_a?(Hash)
-        ok = false unless subset?(actual[key], v)
+        ok = false if !subset?(actual[key], v)
       elsif actual[key] != v
         ok = false
       end
@@ -197,7 +197,7 @@ module HttpStub
   # `Net::HTTP` exactly as it would with no double installed. Accepted
   # so the lowering stays uniform; the ruby family's delegate passes it
   # on to WebMock, where it means something.
-  def self.allow_net_connect(_hosts)
+  def self.allow_net_connect(hosts)
     nil
   end
 

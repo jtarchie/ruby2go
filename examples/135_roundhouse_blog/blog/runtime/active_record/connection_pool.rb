@@ -49,7 +49,7 @@ module ActiveRecord
       # Acquire a handle. Raises if the pool is exhausted; replace
       # with `wait_for_handle` in scheduled contexts.
       def checkout
-        if @free.empty?
+        if @free.length == 0
           wait_for_handle
         else
           @free.delete_at(0)
@@ -63,7 +63,7 @@ module ActiveRecord
 
       # Pool-exhausted hook. MVP: raise. Override per-target to park.
       def wait_for_handle
-        raise "ConnectionPool exhausted (size=#{@size})"
+        raise "ConnectionPool exhausted (size=" + @size.to_s + ")"
       end
 
       # Observability — useful for `pool.healthy?`-style assertions

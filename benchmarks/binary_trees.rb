@@ -11,21 +11,27 @@ class Node
 end
 
 def make_tree(depth)
-  return Node.new(nil, nil) if depth.zero?
+  if depth == 0
+    return Node.new(nil, nil)
+  end
 
   d = depth - 1
   Node.new(make_tree(d), make_tree(d))
 end
 
 def check_tree(node)
-  return 1 if node.left.nil?
+  if node.left == nil
+    return 1
+  end
 
   1 + check_tree(node.left) + check_tree(node.right)
 end
 
 max_depth = Integer(ARGV[0] || 10)
 min_depth = 4
-max_depth = min_depth + 2 if min_depth + 2 > max_depth
+if min_depth + 2 > max_depth
+  max_depth = min_depth + 2
+end
 
 stretch_depth = max_depth + 1
 stretch_tree = make_tree(stretch_depth)
@@ -40,11 +46,11 @@ while depth <= max_depth
   i = 1
   while i <= iterations
     t = make_tree(depth)
-    check += check_tree(t)
-    i += 1
+    check = check + check_tree(t)
+    i = i + 1
   end
   puts check
-  depth += 2
+  depth = depth + 2
 end
 
 puts check_tree(long_lived_tree)

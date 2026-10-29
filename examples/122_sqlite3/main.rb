@@ -44,7 +44,7 @@ end
 puts "still #{db.get_first_value("select count(*) from books")} books"
 
 # A SQL function defined in Ruby.
-db.create_function("shout", 1) { |fn, s| fn.result = "#{s.to_s.upcase}!" }
+db.create_function("shout", 1) { |fn, s| fn.result = s.to_s.upcase + "!" }
 p db.execute("select shout(title) from books where id = 1")
 
 # Schema introspection, and a syntax error shows where it is.
@@ -58,10 +58,7 @@ end
 # A database file.
 path = File.join(Dir.tmpdir, "rugaroo-example-122.db")
 File.delete(path) if File.exist?(path)
-SQLite3::Database.open(path) do |d|
-  d.execute("create table kv (k text primary key, v text)")
-  d.execute("insert into kv values ('a', '1')")
-end
+SQLite3::Database.open(path) { |d| d.execute("create table kv (k text primary key, v text)"); d.execute("insert into kv values ('a', '1')") }
 ro = SQLite3::Database.new(path, readonly: true)
 p ro.execute("select * from kv"), ro.readonly?
 begin

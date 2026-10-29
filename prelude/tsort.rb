@@ -20,9 +20,11 @@ module TSort
   #: () { (Node) -> void } -> void
   def tsort_each
     each_strongly_connected_component do |component|
-      raise Cyclic, "topological sort failed: #{component.inspect}" unless component.size == 1
-
-      yield component.fetch(0)
+      if component.size == 1
+        yield component.fetch(0)
+      else
+        raise Cyclic, "topological sort failed: #{component.inspect}"
+      end
     end
   end
 

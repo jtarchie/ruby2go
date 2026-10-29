@@ -113,7 +113,7 @@ module SorbetTests
       a: ->(q) { "a=#{q}" },
       b: lambda { |q|
         "b=#{q}"
-      }
+      },
     }.freeze, T::Hash[Symbol, T.proc.params(query: String).returns(String)])
 
     sig { params(f: Field).returns(String) }
@@ -268,13 +268,11 @@ module SorbetTests
     def sorbet_twice(x) = x * 2
 
     def test_nilable_spaceship
-      a = Tok.new(1)
-      b = Tok.new(2)
+      a, b = Tok.new(1), Tok.new(2)
       assert_operator a, :<, b
       assert_equal 2, [b, a].max.v
       assert a.between?(a, b)
-      x = RevTok.new(1)
-      y = RevTok.new(2)
+      x, y = RevTok.new(1), RevTok.new(2)
       assert_operator y, :<, x
     end
 
@@ -314,23 +312,23 @@ module SorbetTests
     end
 
     def test_frozen_lambda_hash
-      assert_equal ["b=x", %i[a b], true], [Args::URLS.fetch(:b).call("x"), Args::URLS.keys, Args::URLS.frozen?]
+      assert_equal ["b=x", [:a, :b], true], [Args::URLS.fetch(:b).call("x"), Args::URLS.keys, Args::URLS.frozen?]
     end
 
     def test_enum
       assert_equal "desc", Args.field_kind(Field::Desc)
       assert_equal "name", Args.field_kind(Field::Name)
-      assert_equal %w[name description], [Field::Name.serialize, Field::Desc.serialize]
+      assert_equal ["name", "description"], [Field::Name.serialize, Field::Desc.serialize]
       assert_equal "#<SorbetTests::Field::Desc>", Field::Desc.inspect
       assert_equal "NAME", Field::Name.label
     end
 
     def test_nilable_block
-      assert_equal(21, Args.maybe_yield { |x| x + 1 })
+      assert_equal 21, Args.maybe_yield { |x| x + 1 }
       assert_equal(-1, Args.maybe_yield)
-      assert_equal(31, Args.alias_yield { |x| x + 1 })
+      assert_equal 31, Args.alias_yield { |x| x + 1 }
       assert_equal 3, Args.typed_yield(Integer) { 3 }
-      assert_equal %w[none block], [Args.maybe_untyped_block, Args.maybe_untyped_block { 1 }]
+      assert_equal ["none", "block"], [Args.maybe_untyped_block, Args.maybe_untyped_block { 1 }]
       assert_equal(-1, Args.alias_yield)
       assert_equal "block true", Args.loose_block(true) { 1 }
       assert_equal "none false", Args.loose_block(false)

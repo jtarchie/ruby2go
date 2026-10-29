@@ -20,7 +20,7 @@ class Lexer
         out << [:num, t]
       elsif (t = @ss.scan(/[a-z_]\w*/))
         out << [:ident, t]
-      elsif (t = @ss.scan(%r{\*\*|[-+*/()=]}))
+      elsif (t = @ss.scan(/\*\*|[-+*\/()=]/))
         out << [:op, t]
       else
         raise ArgumentError, "unexpected #{@ss.peek(1).inspect} at #{@ss.pos}"
@@ -62,20 +62,20 @@ p ss.inspect
 ss.terminate
 p ss.inspect
 p StringScanner.new("a\nb").tap { |s| s.scan(/a\n/) }.beginning_of_line?
-p StringScanner.new("abc").scan(/^b/), StringScanner.new("abc").tap(&:getch).scan(/^b/)
+p StringScanner.new("abc").scan(/^b/), StringScanner.new("abc").tap { |s| s.getch }.scan(/^b/)
 
 puts "== shellwords"
-p Shellwords.split(%q(cp "my file.txt" 'other dir/' plain\ word x"y z"w))
-p "a  b\tc\n".shellsplit, Shellwords.shellwords(%q("esc \" \$ \\ \a"))
+p Shellwords.split(%q{cp "my file.txt" 'other dir/' plain\ word x"y z"w})
+p "a  b\tc\n".shellsplit, Shellwords.shellwords(%q{"esc \" \$ \\ \a"})
 p Shellwords.escape("it's a $test"), "".shellescape, "multi\nline".shellescape, "héllo".shellescape
 p ["ls", "-la", "a b"].shelljoin, Shellwords.join(["x", "y;z"])
 begin
-  Shellwords.split("echo 'oops")
+  Shellwords.split(%q{echo 'oops})
 rescue ArgumentError => e
   puts e.message
 end
 begin
-  Shellwords.split('a "b')
+  Shellwords.split(%q{a "b})
 rescue ArgumentError => e
   puts e.message
 end

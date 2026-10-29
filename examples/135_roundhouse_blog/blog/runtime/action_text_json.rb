@@ -14,10 +14,8 @@
 # The shared runtime's `as_json` already answers the fragment; this is
 # the encoder asking it. Spinel-only: the overlay carries its own
 # `to_json(*args)` for the stdlib gem's calling convention.
-module ActionText
-  class Content
-    def to_json
-      "\"#{JsonBuilder.encode_string(as_json)}\""
-    end
+class ActionText::Content
+  def to_json
+    "\"" + JsonBuilder.encode_string(as_json) + "\""
   end
 end

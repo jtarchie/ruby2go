@@ -3,17 +3,17 @@
 # (-w workers) using SO_REUSEPORT so the kernel load-balances.
 module Tep
   def self.reason(status)
-    return "OK" if status == 200
-    return "Created" if status == 201
-    return "No Content" if status == 204
-    return "Moved Permanently" if status == 301
-    return "Found" if status == 302
-    return "Not Modified" if status == 304
-    return "Bad Request" if status == 400
-    return "Unauthorized" if status == 401
-    return "Forbidden" if status == 403
-    return "Not Found" if status == 404
-    return "Internal Server Error" if status == 500
+    if status == 200; return "OK"; end
+    if status == 201; return "Created"; end
+    if status == 204; return "No Content"; end
+    if status == 301; return "Moved Permanently"; end
+    if status == 302; return "Found"; end
+    if status == 304; return "Not Modified"; end
+    if status == 400; return "Bad Request"; end
+    if status == 401; return "Unauthorized"; end
+    if status == 403; return "Forbidden"; end
+    if status == 404; return "Not Found"; end
+    if status == 500; return "Internal Server Error"; end
 
     "OK"
   end
@@ -44,13 +44,14 @@ module Tep
   # a no-op stub unless `--debug`), so both are normal and neither is
   # worth a line. The summary keeps Puma's shape whatever happens.
   def self.log_dispatch_error(verb, path, e)
-    tag = "[#{Tep.display_name}]"
-    warn("#{tag} 500 #{verb} #{path} -- #{e.class}: #{e.message}")
+    tag = "[" + Tep.display_name + "]"
+    $stderr.puts(tag + " 500 " + verb + " " + path + " -- " +
+                 e.class.to_s + ": " + e.message)
     frames = e.backtrace
-    return if frames.nil?
-
-    frames.each do |frame|
-      warn("#{tag}        #{frame}")
+    if !frames.nil?
+      frames.each do |frame|
+        $stderr.puts(tag + "        " + frame)
+      end
     end
   end
 
@@ -62,16 +63,19 @@ module Tep
     end
 
     def run(port, workers, quiet)
-      unless quiet
-        puts "#{Tep.display_name} (#{RUBY_ENGINE}) listening on http://0.0.0.0:#{port}, pid #{Sock.sphttp_getpid}"
-        puts "  blocking accept loop, one request at a time per process; " \
+      if !quiet
+        puts Tep.display_name + " (" + RUBY_ENGINE +
+             ") listening on http://0.0.0.0:" + port.to_s +
+             ", pid " + Sock.sphttp_getpid.to_s
+        puts "  blocking accept loop, one request at a time per process; " +
              "processes: " + Tep.processes_desc(workers)
       end
 
       if workers <= 1
         sfd = Sock.sphttp_listen(port, 0)
-        if sfd.negative?
-          warn "#{Tep.display_name}: cannot bind to port #{port} (already in use?)"
+        if sfd < 0
+          $stderr.puts Tep.display_name + ": cannot bind to port " +
+                       port.to_s + " (already in use?)"
           exit(1)
         end
         worker_loop(sfd)
@@ -83,10 +87,11 @@ module Tep
       i = 0
       while i < workers
         pid = Sock.sphttp_fork
-        if pid.zero?
+        if pid == 0
           sfd = Sock.sphttp_listen(port, 1)
-          if sfd.negative?
-            puts "#{Tep.display_name}: worker #{Sock.sphttp_getpid} bind failed"
+          if sfd < 0
+            puts Tep.display_name + ": worker " + Sock.sphttp_getpid.to_s +
+                 " bind failed"
             exit(1)
           end
           worker_loop(sfd)
@@ -97,14 +102,18 @@ module Tep
       # Parent: reap forever.
       loop do
         gone = Sock.sphttp_wait_any
-        break if gone.negative?
+        if gone < 0
+          break
+        end
       end
     end
 
     def worker_loop(sfd)
       loop do
         client = Sock.sphttp_accept(sfd)
-        next if client.negative?
+        if client < 0
+          next
+        end
 
         handle_connection(client)
       end
@@ -118,7 +127,9 @@ module Tep
     # reclaiming the previous request's allocations.
     def handle_connection(client)
       keep_going = true
-      keep_going = handle_one(client) while keep_going
+      while keep_going
+        keep_going = handle_one(client)
+      end
       Sock.sphttp_close(client)
     end
 
@@ -132,22 +143,26 @@ module Tep
     # request_buf (sphttp.c retired — matz/spinel#1466). `+` is binary-safe.
     def read_request_blocking(client)
       buf = +""
-      while buf.length < 65_535
+      while buf.length < 65535
         chunk = Sock.sp_net_recv_some(client, 4096)
-        return "" if chunk.empty?
+        if chunk.length == 0
+          return ""
+        end
 
-        buf += chunk
-        return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
+        buf = buf + chunk
+        if buf.length >= 4 && buf.include?("\r\n\r\n")
+          return buf
+        end
       end
       ""
     end
 
     def handle_one(client)
       blob = read_request_blocking(client)
-      return false if blob.empty?
+      return false if blob.length == 0
 
       req = Parser.parse(blob)
-      if req.nil?
+      if req == nil
         send_simple(client, 400, "bad request")
         return false
       end
@@ -185,7 +200,9 @@ module Tep
         # technically legal but we keep things simple).
         res.headers["Transfer-Encoding"] = "chunked"
         res.headers["Connection"] = "close"
-        res.headers["Content-Type"] = "text/event-stream" unless res.headers.key?("Content-Type")
+        if !res.headers.key?("Content-Type")
+          res.headers["Content-Type"] = "text/event-stream"
+        end
         head = build_head(req, res)
         Sock.sphttp_write_str(client, head)
         out = Stream.new(client)
@@ -194,63 +211,69 @@ module Tep
         return
       end
 
-      if res.file_path.length.positive?
+      if res.file_path.length > 0
         # send_file path -- compute size, emit headers, then stream.
         sz = Sock.sphttp_filesize(res.file_path)
-        if sz.negative?
+        if sz < 0
           send_simple(client, 404, "file not found")
           return
         end
         res.headers["Content-Length"] = sz.to_s
-        res.headers["Content-Type"] = "application/octet-stream" unless res.headers.key?("Content-Type")
-        res.headers["Connection"] = if keep_alive
-                                      "keep-alive"
-                                    else
-                                      "close"
-                                    end
+        if !res.headers.key?("Content-Type")
+          res.headers["Content-Type"] = "application/octet-stream"
+        end
+        if keep_alive
+          res.headers["Connection"] = "keep-alive"
+        else
+          res.headers["Connection"] = "close"
+        end
         head = build_head(req, res)
         Sock.sphttp_write_str(client, head)
         Sock.sphttp_sendfile(client, res.file_path)
         return
       end
 
-      res.headers["Content-Type"] = "text/html; charset=utf-8" if res.body.length.positive? && !res.headers.key?("Content-Type")
+      if res.body.length > 0 && !res.headers.key?("Content-Type")
+        res.headers["Content-Type"] = "text/html; charset=utf-8"
+      end
       # BYTES, both times — `length` counts characters and `write_str`
       # stops at the first NUL. See the twin comment in
       # server_scheduled.rb#write_response for the failure this caused.
       res.headers["Content-Length"] = res.body.bytesize.to_s
-      res.headers["Connection"] = if keep_alive
-                                    "keep-alive"
-                                  else
-                                    "close"
-                                  end
+      if keep_alive
+        res.headers["Connection"] = "keep-alive"
+      else
+        res.headers["Connection"] = "close"
+      end
 
       head = build_head(req, res)
       Sock.sphttp_write_str(client, head)
-      Sock.sphttp_write_bytes(client, res.body, res.body.bytesize) if res.body.bytesize.positive?
+      if res.body.bytesize > 0
+        Sock.sphttp_write_bytes(client, res.body, res.body.bytesize)
+      end
     end
 
     def build_head(req, res)
       reason = Tep.reason(res.status)
-      head = "#{req.http_version} #{res.status} #{reason}\r\n"
+      head = req.http_version + " " + res.status.to_s + " " + reason + "\r\n"
       res.headers.each do |k, v|
-        head << "#{k}: #{v}\r\n"
+        head << k + ": " + v + "\r\n"
       end
       # Set-Cookie can repeat; emit each on its own line.
       ci = 0
       while ci < res.set_cookies.length
-        head << "Set-Cookie: #{res.set_cookies[ci]}\r\n"
+        head << "Set-Cookie: " + res.set_cookies[ci] + "\r\n"
         ci += 1
       end
-      "#{head}\r\n"
+      head + "\r\n"
     end
 
     def send_simple(client, status, msg)
       reason = Tep.reason(status)
-      body = "<h1>#{status} #{reason}</h1><p>#{msg}</p>\n"
-      head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" \
-             "Content-Type: text/html; charset=utf-8\r\n" \
-             "Content-Length: " + body.length.to_s + "\r\n" \
+      body = "<h1>" + status.to_s + " " + reason + "</h1><p>" + msg + "</p>\n"
+      head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" +
+             "Content-Type: text/html; charset=utf-8\r\n" +
+             "Content-Length: " + body.length.to_s + "\r\n" +
              "Connection: close\r\n\r\n"
       Sock.sphttp_write_str(client, head + body)
     end

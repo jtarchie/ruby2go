@@ -45,7 +45,7 @@ module CGI
           d = CGI.decode_entity(s[(i + 1), semi - i - 1])
           rep = d unless d.nil?
         end
-        if rep.empty?
+        if rep.length == 0
           out << c
           i += 1
         else
@@ -69,7 +69,7 @@ module CGI
 
     if ent.length > 1 && ent[0, 1] == "#"
       num = ent[1, ent.length - 1].to_i
-      return num.chr if num.positive? && num < 128
+      return num.chr if num > 0 && num < 128
     end
     nil
   end

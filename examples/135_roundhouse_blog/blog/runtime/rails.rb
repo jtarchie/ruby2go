@@ -41,7 +41,7 @@ module Rails
   # RAILS_ENV=production; lobsters gates dev-only filters on
   # `Rails.env.development?`).
   def self.env
-    name = env_name
+    name = self.env_name
     Env.new(name.nil? || name.empty? ? "development" : name)
   end
 
@@ -72,13 +72,13 @@ module Rails
     end
 
     def join(part)
-      AppPath.new("#{@base}/#{part}")
+      AppPath.new(@base + "/" + part)
     end
 
     # `Rails.root + "storage/x"` — Pathname#+ is a path join, not string
     # concatenation, so it is `join` under another name.
-    def +(other)
-      AppPath.new("#{@base}/#{other}")
+    def +(part)
+      AppPath.new(@base + "/" + part)
     end
 
     def to_s
@@ -100,7 +100,7 @@ module Rails
   # One store per process. A fresh `Cache.new` per call would make every
   # `fetch_str` a miss, which is the no-op this used to be.
   def self.cache
-    @cache ||= Cache.new
+    @cache_store ||= Cache.new
   end
 
   def self.logger
@@ -180,7 +180,7 @@ module Rails
       @expires_at = {}
     end
 
-    def fetch(_key, _opts = {})
+    def fetch(key, opts = {})
       yield
     end
 
@@ -211,7 +211,7 @@ module Rails
       return nil unless @entries.key?(k)
 
       due = @expires_at[k]
-      return @entries[k] if due.zero? || due > Time.now.to_i
+      return @entries[k] if due == 0 || due > Time.now.to_i
 
       forget(k)
       nil
@@ -220,7 +220,7 @@ module Rails
     def write_str(key, value, ttl)
       k = key.to_s
       @entries[k] = value
-      @expires_at[k] = ttl.positive? ? Time.now.to_i + ttl : 0
+      @expires_at[k] = ttl > 0 ? Time.now.to_i + ttl : 0
       # FLUSH THE WHOLE STORE at the cap, rather than evicting the
       # oldest entry. MemoryStore prunes by least-recently-USED, which
       # needs a touch on every READ — and the read path is the one a
@@ -284,11 +284,11 @@ module Rails
       nil
     end
 
-    def read(_key)
+    def read(key)
       nil
     end
 
-    def write(_key, value)
+    def write(key, value)
       value
     end
 
@@ -300,7 +300,7 @@ module Rails
       forget(key.to_s)
     end
 
-    def exist?(_key)
+    def exist?(key)
       false
     end
   end
@@ -332,21 +332,21 @@ module Rails
   # optional block is its own hazard on the strict targets.
   class Logger
     def info(message)
-      Rails.log_line("[rails] INFO #{message}")
+      Rails.log_line("[rails] INFO " + message.to_s)
     end
 
     def error(message)
-      Rails.log_line("[rails] ERROR #{message}")
+      Rails.log_line("[rails] ERROR " + message.to_s)
     end
 
     def warn(message)
-      Rails.log_line("[rails] WARN #{message}")
+      Rails.log_line("[rails] WARN " + message.to_s)
     end
 
     def debug(message); end
 
     def fatal(message)
-      Rails.log_line("[rails] FATAL #{message}")
+      Rails.log_line("[rails] FATAL " + message.to_s)
     end
   end
 
@@ -500,6 +500,6 @@ module GlobalID
   # a wrong app name or a wrong model name is obvious here and opaque
   # once base64 has been applied.
   def self.uri(model_name, id)
-    "gid://#{Rails.application.global_id_app}/#{model_name}/#{id}"
+    "gid://" + Rails.application.global_id_app + "/" + model_name + "/" + id.to_s
   end
 end

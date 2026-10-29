@@ -9,7 +9,7 @@
 # whole battery (which pulls presence_entry + PG).
 module Tep
   module Presence
-    def self.untrack_by_fd(_fd)
+    def self.untrack_by_fd(fd)
       0
     end
   end

@@ -35,7 +35,7 @@ def multiplier(n) = ->(x) { x * n }
 
 triple = multiplier(3)
 succ = ->(x) { x + 1 } #: ^(Integer) -> Integer
-puts triple.call(5), triple.call(6), triple[7], (triple >> succ).call(2), (triple << succ).call(2)
+puts triple.call(5), triple.(6), triple[7], (triple >> succ).call(2), (triple << succ).call(2)
 puts [1, 2, 3].map(&triple).inspect
 
 count = 0
@@ -44,14 +44,14 @@ tick = -> { count += 1 }
 puts count
 
 clamp = lambda do |x|
-  return 0 if x.negative?
+  return 0 if x < 0
   next 100 if x > 100
 
   x
 end #: ^(Integer) -> Integer
 puts [-5, 50, 500].map(&clamp).inspect
 
-shout = proc { |s| puts "#{s.upcase}!" } #: ^(String) -> void
+shout = proc { |s| puts s.upcase + "!" } #: ^(String) -> void
 %w[hey you].each(&shout)
 
 pipeline = [succ, triple, succ] #: Array[^(Integer) -> Integer]

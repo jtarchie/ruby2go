@@ -42,7 +42,7 @@ module Zlib
       bytes = Zlib.utf8_bytes(str[i].ord)
       b = 0
       while b < bytes.length
-        crc ^= bytes[b]
+        crc = crc ^ bytes[b]
         j = 0
         while j < 8
           crc = if (crc & 1) == 1

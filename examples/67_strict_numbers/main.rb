@@ -3,7 +3,7 @@
 # Kernel#Integer and Kernel#Float: strict conversions that reject what
 # String#to_i and #to_f would quietly read as 0.
 
-CONFIG = <<~TEXT.freeze
+CONFIG = <<~TEXT
   port = 8080
   workers = 0x10
   mode = 0o755
@@ -15,7 +15,7 @@ TEXT
 
 #: (String, String) -> String
 def parse_value(key, raw)
-  %w[ratio scale].include?(key) ? Float(raw).inspect : Integer(raw).inspect
+  key == "ratio" || key == "scale" ? Float(raw).inspect : Integer(raw).inspect
 end
 
 CONFIG.each_line do |line|

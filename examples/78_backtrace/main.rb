@@ -23,14 +23,14 @@ end
 def parse_all(fields) = Parser.run(fields)
 
 begin
-  parse_all(%w[1 x])
+  parse_all(["1", "x"])
 rescue ArgumentError => e
   puts e.message
   puts e.backtrace
 end
 
 puts "-- a lambda"
-check = ->(n) { raise "negative" if n.negative? } #: ^(Integer) -> void
+check = ->(n) { raise "negative" if n < 0 } #: ^(Integer) -> void
 begin
   check.call(-1)
 rescue RuntimeError => e

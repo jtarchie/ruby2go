@@ -118,7 +118,7 @@ module GlobalID
         c = text[i]
         return text if c < "0" || c > "9"
 
-        i += 1
+        i = i + 1
       end
       text.to_i
     end
@@ -142,7 +142,7 @@ end
 module ActionText
   module Attachable
     # >>> generated: attachable-locate
-    def self.locate(_model_name, _id)
+    def self.locate(model_name, id)
       nil
     end
     # <<< generated: attachable-locate

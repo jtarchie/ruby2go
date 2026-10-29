@@ -4,11 +4,11 @@ require_relative "../../route_helpers"
 
 module Views
   module Articles
-    def self.form_into(io, article, _notice, _alert)
+    def self.form_into(io, article, notice, alert)
       form_method = if article.persisted?
                       :patch
-                    else
-                      :post
+      else
+        :post
                     end
       io << "<form action=\"#{ActionView::ViewHelpers.html_escape(if article.persisted?
                                                                     RouteHelpers.article_path(article.id)
@@ -18,7 +18,7 @@ module Views
       io << ActionView::ViewHelpers.method_override_input(form_method)
       io << ActionView::ViewHelpers.csrf_token_hidden_input
       io << "\n"
-      unless (article.errors || "").empty?
+      if !(article.errors || "").empty?
         io << "    <div id=\"error_explanation\" class=\"bg-red-50 text-red-500 px-3 py-2 font-medium rounded-md mt-3\">\n      <h2>"
         io << Inflector.pluralize(article.errors.count, "error")
         io << " prohibited this article from being saved:</h2>\n\n      <ul class=\"list-disc ml-6\">\n"

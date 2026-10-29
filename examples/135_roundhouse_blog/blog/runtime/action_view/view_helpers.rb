@@ -114,10 +114,10 @@ module ActionView
       "<" => "&lt;",
       ">" => "&gt;",
       '"' => "&quot;",
-      "'" => "&#39;"
+      "'" => "&#39;",
     }.freeze
 
-    HTML_ESCAPE_PATTERN = /[&<>"']/
+    HTML_ESCAPE_PATTERN = /[&<>"']/.freeze
 
     # Monomorphic: param typed String. Callers handle nil/non-String
     # coercion explicitly. Contracts the dispatch surface so every
@@ -171,10 +171,10 @@ module ActionView
       "<" => "%3C", "=" => "%3D", ">" => "%3E", "?" => "%3F",
       "@" => "%40", "[" => "%5B", "\\" => "%5C", "]" => "%5D",
       "^" => "%5E", "`" => "%60", "{" => "%7B", "|" => "%7C",
-      "}" => "%7D"
+      "}" => "%7D",
     }.freeze
 
-    URL_ESCAPE_PATTERN = %r{[ !"\#$%&'()*+,/:;<=>?@\[\\\]^`{|}]}
+    URL_ESCAPE_PATTERN = /[ !"\#$%&'()*+,\/:;<=>?@\[\\\]^`{|}]/.freeze
 
     # Monomorphic: param typed String, like `html_escape`.
     def self.url_encode(s)
@@ -219,8 +219,8 @@ module ActionView
     def self.to_query_pairs(params, namespace)
       pairs = []
       params.each do |key, value|
-        name = namespace.empty? ? key.to_s : "#{namespace}[#{key}]"
-        pairs << (value.nil? ? url_encode(name).to_s : "#{url_encode(name)}=#{url_encode(value.to_s)}")
+        name = namespace.empty? ? key.to_s : "#{namespace}[#{key.to_s}]"
+        pairs << (value.nil? ? "#{url_encode(name)}" : "#{url_encode(name)}=#{url_encode(value.to_s)}")
       end
       pairs.join("&")
     end
@@ -241,7 +241,7 @@ module ActionView
       "<" => "%3C", "=" => "%3D", ">" => "%3E", "?" => "%3F",
       "@" => "%40", "[" => "%5B", "\\" => "%5C", "]" => "%5D",
       "^" => "%5E", "`" => "%60", "{" => "%7B", "|" => "%7C",
-      "}" => "%7D"
+      "}" => "%7D",
     }.freeze
 
     # `URL_ESCAPE_PATTERN` minus the `@`, for `mail_to`'s address.
@@ -250,7 +250,7 @@ module ActionView
     # and a two-string `gsub` is not a shape the strict emitters lower
     # (C# reads `x.gsub(a, b)` as the regex+table form and emits
     # `"+".Replace(x, …)`, which compiles nowhere).
-    MAILTO_ESCAPE_PATTERN = %r{[ !"\#$%&'()*+,/:;<=>?\[\\\]^`{|}]}
+    MAILTO_ESCAPE_PATTERN = /[ !"\#$%&'()*+,\/:;<=>?\[\\\]^`{|}]/.freeze
 
     # Monomorphic, like `url_encode`.
     def self.url_encode_component(s)
@@ -265,7 +265,7 @@ module ActionView
       return s if s.length <= length
 
       cutoff = length - omission.length
-      cutoff = 0 if cutoff.negative?
+      cutoff = 0 if cutoff < 0
       "#{s[0, cutoff]}#{omission}"
     end
 
@@ -302,9 +302,9 @@ module ActionView
       # METHOD, uncalled. `!<function reference>` is always false, so
       # this branch never ran under TypeScript and every record looked
       # persisted. A silent wrong answer, not a crash.
-      if !record.persisted?
+      if !record.persisted?()
         if suffix.nil?
-          "new_#{record.dom_prefix}"
+          "new_#{record.dom_prefix()}"
         else
           # MEASURED against Rails 8.1, not assumed: the suffix REPLACES
           # `new` rather than stacking with it. Rails' `dom_id` falls
@@ -312,7 +312,7 @@ module ActionView
           # no id, so `dom_id(Article.new, :comments_count)` is
           # `comments_count_article` — not `comments_count_new_article`,
           # which is what this branch said before the oracle run.
-          "#{suffix}_#{record.dom_prefix}"
+          "#{suffix}_#{record.dom_prefix()}"
         end
       elsif suffix.nil?
         # `dom_id(article)` -> "article_3". `dom_record_key()`, not
@@ -325,11 +325,11 @@ module ActionView
         # per model (`push_dom_record_key_method`): `@id.to_s` by
         # default, the model's own `to_key.join("_")` when it defines
         # one. Parens for the same TS-emit reason as `dom_prefix()`.
-        "#{record.dom_prefix}_#{record.dom_record_key}"
+        "#{record.dom_prefix()}_#{record.dom_record_key()}"
       else
         # `dom_id(article, :comments_count)` -> "comments_count_article_3"
         # (Rails order: suffix BEFORE model name in the resulting id.)
-        "#{suffix}_#{record.dom_prefix}_#{record.dom_record_key}"
+        "#{suffix}_#{record.dom_prefix()}_#{record.dom_record_key()}"
       end
     end
 
@@ -631,7 +631,7 @@ module ActionView
         end
       end
       attrs[:src] = image_path(source)
-      unless size.nil?
+      if !size.nil?
         parts = size.to_s.split("x")
         attrs[:width] = parts[0]
         attrs[:height] = parts.length > 1 ? parts[1] : parts[0]
@@ -679,12 +679,16 @@ module ActionView
       # with `\n` escapes and matches Rails exactly.
       if pins.nil? || pins.empty?
         json = "{\n  \"imports\": {\n    \"@hotwired/turbo\": \"/assets/turbo.min.js\"\n  }\n}"
-        return "<script type=\"importmap\" data-turbo-track=\"reload\">#{json}</script>\n<link rel=\"modulepreload\" href=\"/assets/turbo.min.js\">\n<script type=\"module\">import \"@hotwired/turbo\"</script>"
+        return %(<script type="importmap" data-turbo-track="reload">) + json + %(</script>) +
+               "\n" +
+               %(<link rel="modulepreload" href="/assets/turbo.min.js">) +
+               "\n" +
+               %(<script type="module">import "@hotwired/turbo"</script>)
       end
       import_lines = pins.map { |p| "    \"#{p[:name]}\": \"#{p[:path]}\"" }.join(",\n")
-      json = "{\n  \"imports\": {\n#{import_lines}\n  }\n}"
+      json = "{\n  \"imports\": {\n" + import_lines + "\n  }\n}"
       parts = []
-      parts << "<script type=\"importmap\" data-turbo-track=\"reload\">#{json}</script>"
+      parts << %(<script type="importmap" data-turbo-track="reload">) + json + %(</script>)
       pins.each do |p|
         parts << %(<link rel="modulepreload" href="#{p[:path]}">)
       end
@@ -770,7 +774,7 @@ module ActionView
     # no-op concat.
     def self.method_override_input(method)
       method_str = method.to_s
-      if %w[get post].include?(method_str)
+      if method_str == "get" || method_str == "post"
         ""
       else
         %(<input type="hidden" name="_method" value="#{method_str}">)
@@ -822,7 +826,10 @@ module ActionView
       attrs.delete(:builder)
       url = opts.fetch(:url, nil)
       action = url.nil? ? "" : %( action="#{html_escape(url.to_s)}")
-      "<form#{render_attrs(attrs)}#{action} accept-charset=\"UTF-8\" method=\"post\">#{method_override_input(opts.fetch(:method, :post))}#{csrf_token_hidden_input}</form>"
+      %(<form#{render_attrs(attrs)}#{action} accept-charset="UTF-8" method="post">) +
+        method_override_input(opts.fetch(:method, :post)) +
+        csrf_token_hidden_input +
+        "</form>"
     end
 
     # Rails' `text_field` (and field helpers) omits the `value`
@@ -893,14 +900,14 @@ module ActionView
           if v.is_a?(Hash)
             v.each do |inner_k, inner_v|
               inner_name = inner_k.to_s.tr("_", "-")
-              next if inner_v.nil?
-
-              # Coerce untyped Hash values to String before
-              # html_escape; html_escape's contract is
-              # `(String) -> String` and the untyped values flowing
-              # through Hash[String, untyped] need explicit
-              # stringification.
-              pairs << " #{name}-#{inner_name}=\"#{html_escape(inner_v.to_s)}\""
+              unless inner_v.nil?
+                # Coerce untyped Hash values to String before
+                # html_escape; html_escape's contract is
+                # `(String) -> String` and the untyped values flowing
+                # through Hash[String, untyped] need explicit
+                # stringification.
+                pairs << " #{name}-#{inner_name}=\"#{html_escape(inner_v.to_s)}\""
+              end
             end
           elsif boolean_attr?(name)
             # A boolean attribute's mere presence is its value — Rails
@@ -945,7 +952,22 @@ module ActionView
     # equality against a literal is the one comparison every lane
     # already spells.
     def self.boolean_attr?(name)
-      %w[allowfullscreen allowpaymentrequest async autofocus autoplay checked compact controls declare default defaultchecked defaultmuted defaultselected defer disabled enabled formnovalidate hidden indeterminate inert ismap itemscope loop multiple muted nohref nomodule noresize noshade novalidate nowrap open pauseonexit playsinline pubdate readonly required reversed scoped seamless selected sortable truespeed typemustmatch visible].include?(name)
+      name == "allowfullscreen" || name == "allowpaymentrequest" ||
+        name == "async" || name == "autofocus" || name == "autoplay" ||
+        name == "checked" || name == "compact" || name == "controls" ||
+        name == "declare" || name == "default" || name == "defaultchecked" ||
+        name == "defaultmuted" || name == "defaultselected" || name == "defer" ||
+        name == "disabled" || name == "enabled" || name == "formnovalidate" ||
+        name == "hidden" || name == "indeterminate" || name == "inert" ||
+        name == "ismap" || name == "itemscope" || name == "loop" ||
+        name == "multiple" || name == "muted" || name == "nohref" ||
+        name == "nomodule" || name == "noresize" || name == "noshade" ||
+        name == "novalidate" || name == "nowrap" || name == "open" ||
+        name == "pauseonexit" || name == "playsinline" || name == "pubdate" ||
+        name == "readonly" || name == "required" || name == "reversed" ||
+        name == "scoped" || name == "seamless" || name == "selected" ||
+        name == "sortable" || name == "truespeed" || name == "typemustmatch" ||
+        name == "visible"
     end
   end
 end

@@ -22,5 +22,5 @@ at_exit do
   lines.concat($__rugaroo_trace_evals.keys.map { |e| "E\t#{e}" })
   require "rbconfig" # after the list: a program that never loaded it still has not
   lines.concat([RbConfig::CONFIG["rubylibdir"], RbConfig::CONFIG["archdir"]].map { |d| "S\t#{d}" })
-  File.write(out, "#{lines.join("\n")}\n")
+  File.write(out, lines.join("\n") + "\n")
 end

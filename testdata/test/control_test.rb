@@ -11,7 +11,7 @@ def big?(n) = !n.nil? && n > 10
 
 #: (Integer?, Integer) -> Integer
 def control_pick(a, b)
-  a || b
+  return a || b
 end
 
 #: (Integer) -> String
@@ -62,7 +62,7 @@ def nested(out, n)
       when 6
         begin
           break
-        rescue StandardError
+        rescue
           out << "no"
         end
       end
@@ -71,7 +71,7 @@ def nested(out, n)
       ensure
         out << "ens #{i}"
       end
-    rescue StandardError => e
+    rescue => e
       out << e.message
     end
   end
@@ -92,23 +92,27 @@ end
 def ens_ret2
   x = 0
   [1, 2, 3].each do |v|
-    x += v
-  ensure
-    return x if v == 2
+    begin
+      x += v
+    ensure
+      return x if v == 2
+    end
   end
   x
 end
 
 #: (Array[String], Integer) -> Integer
 def tail_ret(out, n)
-  return 5 if n == 1
-  raise "x" if n == 2
+  begin
+    return 5 if n == 1
+    raise "x" if n == 2
 
-  n * 10
-rescue StandardError
-  -1
-ensure
-  out << "ens #{n}"
+    n * 10
+  rescue
+    return -1
+  ensure
+    out << "ens #{n}"
+  end
 end
 
 #: (Array[String], Integer) -> void
@@ -136,7 +140,7 @@ end
 def count_until_neg(xs)
   count = 0
   xs.each do |x|
-    break if x.negative?
+    break if x < 0
 
     count += 1
   end
@@ -157,7 +161,7 @@ end
 
 #: (Integer) -> Integer
 def bugs_risky(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
 
   n
 end
@@ -165,9 +169,9 @@ end
 # Helpers for the checks that were control_conditionals.rb.
 #: (Integer) -> String
 def sign(n)
-  if n.positive?
+  if n > 0
     "positive"
-  elsif n.negative?
+  elsif n < 0
     "negative"
   else
     "zero"
@@ -176,26 +180,30 @@ end
 
 #: (Integer) -> String?
 def only_positive(n)
-  "yes #{n}" if n.positive?
+  if n > 0
+    "yes #{n}"
+  end
 end
 
 #: (Integer) -> String?
 def unless_zero(n)
-  "nonzero" unless n.zero?
+  unless n.zero?
+    "nonzero"
+  end
 end
 
 #: (Integer) -> String
 def unless_else(n)
-  if n.even?
-    "even"
-  else
+  unless n.even?
     "odd"
+  else
+    "even"
   end
 end
 
 #: (Integer) -> String
 def bucket(n)
-  if n.negative? then "neg"
+  if n < 0 then "neg"
   elsif n < 10 then "digit"
   elsif n < 100 then "tens"
   elsif n < 100 then "never"
@@ -374,20 +382,22 @@ end
 
 #: (Integer) -> String
 def early(n)
-  return "neg" if n.negative?
+  return "neg" if n < 0
   return "zero" if n.zero?
-  return "small" unless n > 10
+  unless n > 10
+    return "small"
+  end
 
   "big"
 end
 
 #: (Integer) -> Integer
-def abs_val(n) = n.negative? ? -n : n
+def abs_val(n) = n < 0 ? -n : n
 
 # Helpers for the checks that were control_bug_empty_body.rb.
 #: (Integer) -> Integer
 def empty_risky(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
 
   n
 end
@@ -438,7 +448,7 @@ end
 
 #: (Integer) -> Integer
 def collide_risky(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
 
   n
 end
@@ -446,17 +456,19 @@ end
 #: (Integer) -> String
 def doubled(n)
   ret_ = n * 2
-  raise "x" if n.negative?
+  raise "x" if n < 0
 
   "v#{ret_}"
-rescue StandardError
+rescue
   "rescued"
 end
 
 # Helpers for the checks that were control_bug_unassigned_branch_local.rb.
 #: (bool) -> Integer?
 def branch_local(flag)
-  a = 1 if flag
+  if flag
+    a = 1
+  end
   a
 end
 
@@ -497,38 +509,40 @@ end
 
 #: (bool) -> Integer
 def both_branches(flag)
-  a = if flag
-        1
-      else
-        2
-      end
+  if flag
+    a = 1
+  else
+    a = 2
+  end
   twice(a)
 end
 
 #: (Integer) -> String
 def case_else(n)
-  s = case n
-      when 1 then "one"
-      else "many"
-      end
+  case n
+  when 1 then s = "one"
+  else s = "many"
+  end
   shout(s)
 end
 
 #: (Array[Integer], Integer) -> void
 def definite_guarded(out, n)
-  return unless n.positive?
-
-  v = n
-
+  if n > 0
+    v = n
+  else
+    return
+  end
   out << twice(v)
 end
 
 #: (Integer) -> Integer
 def raised(n)
-  raise ArgumentError, "neg" unless n.positive?
-
-  v = n
-
+  if n > 0
+    v = n
+  else
+    raise ArgumentError, "neg"
+  end
   twice(v)
 end
 
@@ -538,19 +552,21 @@ def definite_countdown
   while true
     last = i
     i -= 1
-    break if i.zero?
+    break if i == 0
   end
   twice(last)
 end
 
 #: (Array[Integer], Integer) -> void
 def rescued(out, n)
-  got = n
-  raise ArgumentError, "big" if n > 1
+  begin
+    got = n
+    raise ArgumentError, "big" if n > 1
 
-  out << twice(got)
-rescue ArgumentError
-  out << twice(got)
+    out << twice(got)
+  rescue ArgumentError
+    out << twice(got)
+  end
 end
 
 #: (Array[String]) -> void
@@ -577,7 +593,7 @@ end
 # Helpers for the checks that were control_edges.rb.
 #: (Integer) -> Integer
 def edges_risky(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
 
   n
 end
@@ -595,18 +611,20 @@ end
 def rescue_return(n)
   edges_risky(n)
 rescue ArgumentError
-  -1
+  return -1
 end
 
 #: (Integer) -> String
 def cased(n)
-  case n
-  when 1 then return "one"
-  when 2 then raise ArgumentError, "two"
+  begin
+    case n
+    when 1 then return "one"
+    when 2 then raise ArgumentError, "two"
+    end
+    "other"
+  rescue ArgumentError => e
+    "err #{e.message}"
   end
-  "other"
-rescue ArgumentError => e
-  "err #{e.message}"
 end
 
 # while as the last statement of a value method, a void method and a block
@@ -614,7 +632,9 @@ end
 #: (Integer) -> String
 def tail_while(n)
   i = 0
-  i += 1 while i < n
+  while i < n
+    i += 1
+  end
   "done #{i}"
 end
 
@@ -653,7 +673,7 @@ def control_label(out, n)
 end
 
 #: () -> Array[String]
-def parts = %w[x y z]
+def parts = ["x", "y", "z"]
 
 #: (Array[Integer?]) -> Integer
 def total_until_nil(xs)
@@ -719,7 +739,7 @@ end
 
 #: (Integer) -> String
 def two_bindings(k)
-  raise ArgumentError, "arg" if k.zero?
+  raise ArgumentError, "arg" if k == 0
   raise KeyError, "key" if k == 1
 
   "none"
@@ -735,7 +755,7 @@ end
 def sum_positive(xs)
   total = 0
   xs.each do |x|
-    raise ArgumentError, "negative #{x}" if x.negative?
+    raise ArgumentError, "negative #{x}" if x < 0
 
     total += x
   end
@@ -746,7 +766,7 @@ end
 
 #: (Integer) -> Integer
 def depth(n)
-  return depth(n - 1) + 1 if n.positive?
+  return depth(n - 1) + 1 if n > 0
 
   raise ArgumentError, "bottom"
 rescue ArgumentError
@@ -764,7 +784,7 @@ end
 
 #: (Array[String], Integer) -> String
 def rescue_then_ensure_return(out, n)
-  raise ArgumentError, "a" if n.positive?
+  raise ArgumentError, "a" if n > 0
 
   "body"
 rescue ArgumentError
@@ -779,7 +799,7 @@ end
 def progress(xs)
   done = 0
   xs.each do |x|
-    raise ArgumentError, "stop at #{x}" if x.negative?
+    raise ArgumentError, "stop at #{x}" if x < 0
 
     done += 1
   end
@@ -791,18 +811,20 @@ end
 #: (Array[String], Array[Integer]) -> Integer
 def first_ok(out, xs)
   xs.each do |x|
-    raise "bad #{x}" if x.negative?
+    begin
+      raise "bad #{x}" if x < 0
 
-    return x * 10
-  rescue StandardError => e
-    out << "skip #{e.message}"
+      return x * 10
+    rescue => e
+      out << "skip #{e.message}"
+    end
   end
   -1
 end
 
 #: (Integer) -> String
 def case_tail(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
 
   case n
   when 0 then "zero"
@@ -814,7 +836,7 @@ end
 
 #: (Integer) -> Integer
 def flow_risky(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
 
   n
 end
@@ -822,7 +844,7 @@ end
 #: (Array[Integer]) -> Array[String]
 def labels(xs)
   xs.map do |x|
-    x.positive? ? "p#{x}" : raise(ArgumentError, "bad #{x}")
+    x > 0 ? "p#{x}" : raise(ArgumentError, "bad #{x}")
   end
 end
 
@@ -842,9 +864,8 @@ def divs(xs) = xs.map { |d| 10 / d }
 #: () -> Integer
 def multi_in_begin
   begin
-    a = 3
-    b = 4
-  rescue StandardError
+    a, b = 3, 4
+  rescue
     a = 0
     b = 0
   end
@@ -857,9 +878,9 @@ def boom(out, kind)
   when 0 then raise ArgumentError, "bad arg"
   when 1 then raise "plain"
   when 2 then raise ControlTests::NotFound
-  when 3 then raise ControlTests::NotFound, "built"
+  when 3 then raise ControlTests::NotFound.new("built")
   when 4 then raise KeyError, "k"
-  when 5 then raise ControlTests::AppError
+  when 5 then raise ControlTests::AppError.new
   when 6 then raise ControlTests::ValidationError.new("name", "too short")
   when 7 then raise ControlTests::DefaultMsg
   when 8 then raise IndexError, ""
@@ -885,12 +906,14 @@ end
 #: () -> String
 def outer
   begin
-    raise ControlTests::Fatal, "deep"
-  rescue StandardError => e
-    "inner caught #{e.class}"
+    begin
+      raise ControlTests::Fatal, "deep"
+    rescue => e
+      "inner caught #{e.class}"
+    end
+  rescue Exception => e
+    "outer caught #{e.class} #{e.message}"
   end
-rescue Exception => e
-  "outer caught #{e.class} #{e.message}"
 end
 
 #: (Array[String], bool) -> Integer
@@ -899,7 +922,7 @@ def ordered(out, fail)
   raise "f" if fail
 
   1
-rescue StandardError
+rescue
   out << "rescue"
   2
 ensure
@@ -909,18 +932,20 @@ end
 #: () -> String
 def ensure_value
   "body value"
+ensure
+  "ensure value"
 end
 
 #: (Integer) -> String
 def value_if(n)
-  n.positive? ? "pos" : (raise ArgumentError, "nonpositive")
+  if n > 0 then "pos" else raise ArgumentError, "nonpositive" end
 rescue ArgumentError => e
   "rescued #{e.message}"
 end
 
 #: () -> Integer
 def ensure_overrides
-  1
+  return 1
 ensure
   return 2
 end
@@ -934,7 +959,7 @@ end
 
 #: (Integer) -> String
 def ensure_after_rescue(n)
-  raise ArgumentError, "a" if n.positive?
+  raise ArgumentError, "a" if n > 0
 
   "body"
 rescue ArgumentError
@@ -949,7 +974,7 @@ def scan(out, list)
   while i < list.size
     begin
       begin
-        raise ArgumentError, "neg #{list[i]}" if (list[i] || 0).negative?
+        raise ArgumentError, "neg #{list[i]}" if (list[i] || 0) < 0
         return "found #{list[i]}" if list[i] == 7
       ensure
         out << "inner #{i}"
@@ -977,9 +1002,11 @@ end
 #: (Array[String], Array[Integer]) -> Integer
 def first_big(out, list)
   list.each do |x|
-    return x if x > 10
-  ensure
-    out << "checked #{x}"
+    begin
+      return x if x > 10
+    ensure
+      out << "checked #{x}"
+    end
   end
   -1
 end
@@ -1012,7 +1039,7 @@ end
 
 #: (Integer) -> Integer
 def risky_int(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
   raise NotImplementedError, "nie" if n == 99
 
   n * 2
@@ -1020,34 +1047,32 @@ end
 
 #: (String) -> Integer
 def control_safe_fetch(k)
-  { "a" => 1 }.fetch(k)
-rescue StandardError
-  -1
+  { "a" => 1 }.fetch(k) rescue -1
 end
 
 # Helpers for the checks that were control_locals.rb.
 #: (Integer) -> String
 def size_word(n)
-  word = if n > 100
-           "large"
-         elsif n > 10
-           "medium"
-         else
-           "small"
-         end
-  "#{word}!"
+  if n > 100
+    word = "large"
+  elsif n > 10
+    word = "medium"
+  else
+    word = "small"
+  end
+  word + "!"
 end
 
 #: (Symbol) -> Integer
 def control_weight(s)
-  w = case s
-      when :a
-        1
-      when :b
-        2
-      else
-        0
-      end
+  case s
+  when :a
+    w = 1
+  when :b
+    w = 2
+  else
+    w = 0
+  end
   w * 10
 end
 
@@ -1068,11 +1093,11 @@ end
 
 #: (Integer) -> String
 def nil_first(n)
-  label = if n.positive?
-            nil
-          else
-            "non-positive"
-          end
+  if n > 0
+    label = nil
+  else
+    label = "non-positive"
+  end
   label.inspect
 end
 
@@ -1127,7 +1152,9 @@ end
 #: (bool) -> Integer
 def writes_only(flag)
   unused = 1
-  unused2 = "x" if flag
+  if flag
+    unused2 = "x"
+  end
   3.times { |t| inner_unused = t }
   7
 end
@@ -1212,7 +1239,7 @@ end
 
 #: (Integer) { (Integer) -> void } -> void
 def loops_countdown(from)
-  while from.positive?
+  while from > 0
     yield from
     from -= 1
   end
@@ -1221,7 +1248,7 @@ end
 #: (Array[String]) { (Integer) -> void } -> void
 def loops_guarded(out)
   [1, 2, 3].each { |g| yield g }
-rescue StandardError => e
+rescue => e
   out << "guarded caught #{e.message}"
 end
 
@@ -1266,7 +1293,7 @@ def control_greet(a) = "hi #{a.name}"
 #: (Array[String]) { (Integer) -> void } -> void
 def mid_guarded(out)
   [1, 2, 3].each { |g| yield g }
-rescue StandardError => e
+rescue => e
   out << "guarded caught #{e.message}"
 end
 
@@ -1276,13 +1303,17 @@ def joined(out, n)
   y = "a"
   y = nil if n > 5
   out << y.inspect
-  label = ("pos" if n.positive?)
+  if n > 0
+    label = "pos"
+  else
+    label = nil
+  end
   out << label.inspect
 end
 
 #: (Integer) -> Integer
 def mid_risky(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
 
   n
 end
@@ -1308,17 +1339,17 @@ end
 # Helpers for catch/throw (issue #4): throw from a typed method, in each tail form.
 #: (Integer) -> Integer
 def control_pos(x)
-  return x if x.positive?
+  return x if x > 0
 
   throw :neg, x
 end
 
 #: (Integer) -> Integer
-def control_pos_ternary(x) = x.positive? ? x : throw(:neg, x)
+def control_pos_ternary(x) = x > 0 ? x : throw(:neg, x)
 
 #: (Integer) -> Integer
 def control_pos_if(x)
-  if x.positive?
+  if x > 0
     x
   else
     throw :neg, x
@@ -1358,10 +1389,7 @@ end
 # A block's `item` before the method's own is block-local, so it does not stop narrowing the later one.
 #: () -> Integer
 def control_block_local_first
-  [1].each do |i|
-    item = ControlTests::Counter.new
-    item.n += i
-  end
+  [1].each { |i| item = ControlTests::Counter.new; item.n += i }
   item = nil #: ControlTests::Counter?
   item = ControlTests::Counter.new
   item.n += 2 if item.n.positive?
@@ -1390,7 +1418,7 @@ module ControlTests
 
     #: () -> bool
     def ready
-      @ready ||= @hits.positive?
+      @ready ||= @hits > 0
     end
 
     private
@@ -1408,8 +1436,7 @@ module ControlTests
 
     #: (Integer, Integer) -> void
     def initialize(x, y)
-      @x = x
-      @y = y
+      @x, @y = x, y
     end
 
     #: () -> void
@@ -1501,7 +1528,7 @@ module ControlTests
   module Util
     #: (Integer) -> String
     def self.check(n)
-      return "neg" if n.negative?
+      return "neg" if n < 0
       raise KeyError, "zero" if n.zero?
 
       "pos"
@@ -1564,6 +1591,9 @@ module ControlTests
 
   class Blank < StandardError
     #: () -> void
+    def initialize
+      super()
+    end
   end
 
   class WithCode < StandardError
@@ -1600,7 +1630,7 @@ module ControlTests
 
     #: (Integer) -> void
     def initialize(n)
-      raise ArgumentError, "n must be positive, got #{n}" unless n.positive?
+      raise ArgumentError, "n must be positive, got #{n}" unless n > 0
 
       @n = n
     end
@@ -1678,8 +1708,7 @@ module ControlTests
 
     #: () -> [Integer, Integer]
     def swapped
-      lo = @r
-      hi = @l
+      lo, hi = @r, @l
       [lo, hi]
     end
   end
@@ -1703,6 +1732,9 @@ module ControlTests
   # zsuper in an exception initialize forwards the (defaulted) message
   class MidPlain < StandardError
     #: (String) -> void
+    def initialize(msg)
+      super
+    end
   end
 
   class MidDefaultMsg < StandardError
@@ -1732,8 +1764,8 @@ module ControlTests
       assert_equal false, big?(nil)
       assert_equal false, big?(5)
       assert_equal true, big?(50)
-      assert_equal 2, control_pick(nil, 2)
-      assert_equal 1, control_pick(1, 2)
+      assert_equal 2, (control_pick(nil, 2))
+      assert_equal 1, (control_pick(1, 2))
       flag = true
       opt = nil #: Integer?
       mixed = flag && opt
@@ -1742,12 +1774,12 @@ module ControlTests
       assert_nil mixed2
       values = [opt || 1, (flag && 2) || 3] #: Array[Integer]
       assert_equal [1, 2], values
-      assert_equal "n=5", control_show(opt || 5)
+      assert_equal "n=5", (control_show(opt || 5))
       u = nil #: untyped
       w = 3 #: untyped
       assert_equal "dflt", (u || "dflt")
       assert_equal 3, (w || "dflt")
-      assert_nil(u && "x")
+      assert_nil (u && "x")
       assert_equal "x", (w && "x")
       name = nil #: String?
       greeting = name && "hi #{name}"
@@ -1765,7 +1797,7 @@ module ControlTests
       assert_equal "got 5", seen
 
       # not / ! on optional and untyped values
-      assert_equal true, (!opt)
+      assert_equal true, (not opt)
       assert_equal true, (!u)
       assert_equal false, (!w)
     end
@@ -1822,8 +1854,7 @@ module ControlTests
       assert_equal ["x:1", "y:2", "x1", "y2"], got
       ix = 0
       while ix < 3
-        dummy = ix
-        ix += 1
+        ix, dummy = ix + 1, ix
       end
       assert_equal 3, ix
     end
@@ -1833,18 +1864,11 @@ module ControlTests
       lo = 0
       hi = 0
       pairs = [[1, 9], [2, 8]] #: Array[[Integer, Integer]]
-      pairs.each do |pair|
-        lo = pair[1]
-        hi = pair[0]
-      end
+      pairs.each { |pair| lo, hi = pair[1], pair[0] }
       assert_equal 8, lo
       assert_equal 2, hi
       ww = 0
-      res = [5].map do |x|
-        ww = x
-        z = x * 2
-        z
-      end
+      res = [5].map { |x| ww, z = x, x * 2; z }
       assert_equal 5, ww
       assert_equal [10], res
     end
@@ -1861,14 +1885,14 @@ module ControlTests
       e, f = one
       assert_equal [1, "a", 1, ["a"], 7, nil], [a, b, c, d, e, f]
       rows = [] #: Array[untyped]
-      rows << %w[k v] << 3 << nil
+      rows << ["k", "v"] << 3 << nil
       seen = rows.map { |k, v| [k, v] }
-      assert_equal [%w[k v], [3, nil], [nil, nil]], seen
-      assert_equal([["k", ["v"]], [3, []]], rows.first(2).map { |k, *v| [k, v] })
+      assert_equal [["k", "v"], [3, nil], [nil, nil]], seen
+      assert_equal [["k", ["v"]], [3, []]], rows.first(2).map { |k, *v| [k, v] }
       nested = [] #: Array[untyped]
       nested << [[1, 2], 3]
-      assert_equal([[1, 2, 3]], nested.map { |(x, y), z| [x, y, z] })
-      assert_equal(["k", 3, nil], rows.map { |k,| k })
+      assert_equal [[1, 2, 3]], nested.map { |(x, y), z| [x, y, z] }
+      assert_equal ["k", 3, nil], rows.map { |k,| k }
     end
 
     # `x ||= v` after `x = ...` on some paths only: x is nil on the others, so ||= tests it (decision 248)
@@ -1885,10 +1909,7 @@ module ControlTests
 
     #: (bool) -> [Array[String], Integer]
     def control_maybe_pair(c)
-      if c
-        libs = ["l"]
-        n = 1
-      end
+      libs, n = [["l"], 1] if c
       libs ||= []
       n ||= 0
       [libs, n]
@@ -1914,9 +1935,9 @@ module ControlTests
       pairs = [["a", true], ["b", false]] #: Array[[String, bool]]
       pairs.reject! { |name,| name == "a" }
       assert_equal [["b", false]], pairs
-      assert_equal([1, 3], [[1, 2], [3, 4]].map { |x,| x })
-      assert_equal(%w[k j], { "k" => 1, "j" => 2 }.map { |k,| k })
-      assert_equal([10, 20], [1, 2].map { |x,| x * 10 })
+      assert_equal [1, 3], [[1, 2], [3, 4]].map { |x,| x }
+      assert_equal ["k", "j"], { "k" => 1, "j" => 2 }.map { |k,| k }
+      assert_equal [10, 20], [1, 2].map { |x,| x * 10 }
     end
 
     def test_or_assign_multiple_assign_and_short_circuit
@@ -1975,18 +1996,14 @@ module ControlTests
       assert_equal "t", s
       assert_equal 3, i
       assert_equal true, b
-      a1 = 1
-      b1 = 2
+      a1, b1 = 1, 2
       a1, b1 = b1, a1
       assert_equal 2, a1
       assert_equal 1, b1
-      x = "x"
-      y = "y"
-      z = "z"
+      x, y, z = "x", "y", "z"
       x, y, z = y, z, x
-      assert_equal %w[y z x], [x, y, z]
-      f0 = 0
-      f1 = 1
+      assert_equal ["y", "z", "x"], ([x, y, z])
+      f0, f1 = 0, 1
       10.times { f0, f1 = f1, f0 + f1 }
       assert_equal 55, f0
       assert_equal 89, f1
@@ -2006,8 +2023,7 @@ module ControlTests
       assert_equal 2, h2
       mm = 0
       nn = 0
-      mm = 3
-      nn = 4
+      mm, nn = 3, 4
       assert_equal 7, (mm + nn)
       pt = Point.new(1, 2)
       pt.flip
@@ -2015,15 +2031,13 @@ module ControlTests
       pairs = [[1, "one"], [2, "two"]] #: Array[[Integer, String]]
       ranges = [] #: Array[String]
       pairs.each do |num, word|
-        lo = num
-        hi = num * 100
+        lo, hi = num, num * 100
         ranges << "#{word}: #{lo}..#{hi}"
       end
       assert_equal ["one: 1..100", "two: 2..200"], ranges
       maybe = "set" #: String?
       other = 1
-      maybe = nil
-      other = 2
+      maybe, other = nil, 2
       assert_nil maybe
       assert_equal 2, other
       log = [] #: Array[String]
@@ -2031,27 +2045,27 @@ module ControlTests
       r2 = tb(log, "c", true) || tb(log, "d", true)
       r3 = tb(log, "e", true) && tb(log, "f", false)
       r4 = tb(log, "g", false) || tb(log, "h", false)
-      assert_equal [false, true, false, false], [r1, r2, r3, r4]
-      assert_equal %w[a c e f g h], log
+      assert_equal [false, true, false, false], ([r1, r2, r3, r4])
+      assert_equal ["a", "c", "e", "f", "g", "h"], log
       log.clear
       r5 = (tb(log, "i", true) and tb(log, "j", true))
       r6 = (tb(log, "k", false) or tb(log, "l", true))
-      r7 = !tb(log, "m", true)
-      assert_equal [true, true, false], [r5, r6, r7]
-      assert_equal %w[i j k l m], log
+      r7 = (not tb(log, "m", true))
+      assert_equal [true, true, false], ([r5, r6, r7])
+      assert_equal ["i", "j", "k", "l", "m"], log
       none = nil #: Integer?
       some = 3 #: Integer?
       assert_equal 10, (none || 10)
       assert_equal 3, (some || 10)
-      assert_nil(none && none + 1)
+      assert_nil (none && none + 1)
       assert_equal 4, (some && some + 1)
       str = nil #: String?
       assert_equal "", (str || "")
-      assert_nil(str && str.size)
+      assert_nil (str && str.size)
       str = "abc"
       assert_equal 3, (str && str.size)
       other_nil = nil #: Integer?
-      assert_nil(none || other_nil)
+      assert_nil (none || other_nil)
       yes = true
       no = false
       assert_equal "fallback", (no || "fallback")
@@ -2060,10 +2074,10 @@ module ControlTests
       assert_equal true, (yes || "never")
       assert_equal false, (none || false)
       assert_equal "three", (some && "three")
-      assert_nil(none && "none")
-      zero_and = "zero is truthy"
+      assert_nil (none && "none")
+      zero_and = 0 && "zero is truthy"
       assert_equal "zero is truthy", zero_and
-      empty_and = :empty_is_truthy
+      empty_and = "" && :empty_is_truthy
       assert_equal :empty_is_truthy, empty_and
       xn = nil #: Integer?
       yn = nil #: Integer?
@@ -2085,7 +2099,7 @@ module ControlTests
       vals = [nil, false, 0, "s"] #: Array[untyped]
       rows = [] #: Array[String]
       vals.each do |v|
-        rows << "#{(v || "right").inspect} #{(v && "right").inspect}"
+        rows << (v || "right").inspect + " " + (v && "right").inspect
       end
       assert_equal ["\"right\" nil", "\"right\" false", "0 \"right\"", "\"s\" \"right\""], rows
       assert_equal true, (!none)
@@ -2128,16 +2142,20 @@ module ControlTests
     def test_next_and_break_in_nested_blocks_with_ensure
       out = [] #: Array[String]
       [1, 2, 3].each do |v|
-        [10, 20].each do |w|
-          next if w == 10
-          break if v == 2
+        begin
+          [10, 20].each do |w|
+            begin
+              next if w == 10
+              break if v == 2
 
-          out << "#{v} #{w}"
+              out << "#{v} #{w}"
+            ensure
+              out << "e #{v} #{w}"
+            end
+          end
         ensure
-          out << "e #{v} #{w}"
+          out << "outer e #{v}"
         end
-      ensure
-        out << "outer e #{v}"
       end
       assert_equal ["e 1 10", "1 20", "e 1 20", "outer e 1", "e 2 10", "e 2 20", "outer e 2", "e 3 10", "3 20", "e 3 20", "outer e 3"], out
     end
@@ -2187,12 +2205,16 @@ module ControlTests
     def test_while_and_until_conditions
       arr = [3, 8, 0, 5] #: Array[Integer]
       i = 0
-      i += 1 while i < arr.size && arr[i] != 0
+      while i < arr.size && arr[i] != 0
+        i += 1
+      end
       assert_equal 2, i
 
       opt = [1, 2] #: Array[Integer]
       j = 0
-      j += 1 until opt[j].nil?
+      until opt[j].nil?
+        j += 1
+      end
       assert_equal 2, j
     end
 
@@ -2201,12 +2223,14 @@ module ControlTests
       found = [] #: Array[String]
       [1, 2, 3].each do |a|
         [10, 20, 30].each do |b|
-          break if b > 10 * a
-
-          found << "#{a}-#{b}"
+          if b > 10 * a
+            break
+          else
+            found << "#{a}-#{b}"
+          end
         end
       end
-      assert_equal %w[1-10 2-10 2-20 3-10 3-20 3-30], found
+      assert_equal ["1-10", "2-10", "2-20", "3-10", "3-20", "3-30"], found
     end
 
     def test_next_and_break_in_while
@@ -2215,7 +2239,9 @@ module ControlTests
       while k < 6
         k += 1
         if k.even?
-          next if k == 4
+          if k == 4
+            next
+          end
 
           odds << -k
           next
@@ -2225,13 +2251,14 @@ module ControlTests
       assert_equal [1, -2, 3, 5, -6], odds
 
       w = 0
-      break while true
+      while true
+        break
+      end
       assert_equal 0, w
 
       n = 0
       total = 0
-      (total += n
-       n += 1) while n < 4
+      (total += n; n += 1) while n < 4
       assert_equal 6, total
     end
 
@@ -2244,7 +2271,7 @@ module ControlTests
           res << "#{s}#{t}"
         end
       end
-      assert_equal %w[a1 b0 c0 c1], res
+      assert_equal ["a1", "b0", "c0", "c1"], res
 
       hh = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
       assert_equal "b", key_for(hh, 2)
@@ -2314,15 +2341,15 @@ module ControlTests
     def test_literal_left_of_and_or
       assert_equal false, (false && "never")
       assert_equal true, (true || "never")
-      assert_equal "yes", "yes"
-      assert_equal "fallback", "fallback"
+      assert_equal "yes", (true && "yes")
+      assert_equal "fallback", (false || "fallback")
       x_nil = nil && 5
       assert_nil x_nil
       s_nil = "a"
       y_nil = nil && s_nil
       assert_nil y_nil
-      assert_equal false, false
-      assert_equal "right", "right"
+      assert_equal false, (nil || false)
+      assert_equal "right", (nil || "right")
     end
 
     # case on a literal subject, with and without an else
@@ -2343,10 +2370,16 @@ module ControlTests
     def test_lifted_condition_keeps_short_circuit
       out = [] #: Array[String]
       h_cond = { "a" => 1, "b" => 5 } #: Hash[String, Integer]
-      out << "lifted and" if h_cond["c"].nil? && (h_cond["b"] || 0) > 1
-      out << "lifted or" if h_cond["a"].nil? || (h_cond["b"] || 0) > 1
+      if h_cond["c"].nil? && (h_cond["b"] || 0) > 1
+        out << "lifted and"
+      end
+      if h_cond["a"].nil? || (h_cond["b"] || 0) > 1
+        out << "lifted or"
+      end
       ok_cond = true
-      out << "unless lifted and" unless ok_cond && (h_cond["zz"] || 0) > 1
+      unless ok_cond && (h_cond["zz"] || 0) > 1
+        out << "unless lifted and"
+      end
       assert_equal ["lifted and", "lifted or", "unless lifted and"], out
     end
 
@@ -2439,7 +2472,7 @@ module ControlTests
         "n: falsy", "  nil? true", "  && nil",
         "z: truthy", "  if", "  local if", "  nil? false", "  && \"rhs\"",
         "missing: falsy", "  nil? true", "  && nil",
-        "arr[2] truthy"
+        "arr[2] truthy",
       ], out
     end
 
@@ -2458,18 +2491,10 @@ module ControlTests
     # next with a value gives the block's value
     def test_next_with_value
       nv_h = { "a" => 1, "b" => 2 } #: Hash[String, Integer]
-      assert_equal "{\"a\" => 1}", nv_h.select { |k, v|
-        next false if k == "b"
-
-        v.positive?
-      }.inspect
+      assert_equal "{\"a\" => 1}", nv_h.select { |k, v| next false if k == "b"; v > 0 }.inspect
       nv_xs = [1, 2] #: Array[Integer]
-      assert_equal([2, 4], nv_xs.map { |x| next x * 2 })
-      assert_equal([1], nv_xs.select do |n|
-        next false if n > 1
-
-        true
-      end)
+      assert_equal [2, 4], nv_xs.map { |x| next x * 2 }
+      assert_equal [1], nv_xs.select { |n| next false if n > 1; true }
     end
   end
 
@@ -2486,38 +2511,34 @@ module ControlTests
       assert_equal "odd", unless_else(3)
       assert_equal "even", unless_else(0)
       assert_equal "even", unless_else(-4)
-      assert_equal(%w[neg digit digit tens tens big big], [-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) })
+      assert_equal ["neg", "digit", "digit", "tens", "tens", "big", "big"], ([-1, 0, 9, 10, 99, 100, 1_000_000].map { |n| bucket(n) })
       x = 3
       assert_equal "big", (x > 2 ? "big" : "small")
       assert_equal 2, (x.even? ? 1 : 2)
-      z = x == 3 ? 30 : 0
+      z = if x == 3 then 30 else 0 end
       assert_equal 30, z
-      w = x == 3 ? 2 : 1
+      w = unless x == 3 then 1 else 2 end
       assert_equal 2, w
       v = x > 100 ? nil : x * 2
       assert_equal 6, v
       v2 = x < 100 ? nil : x * 2
       assert_nil v2
-      nested = if x > 1
-                 x > 2 ? "gt2" : "eq2"
-               else
-                 "le1"
-               end
+      nested = x > 1 ? (x > 2 ? "gt2" : "eq2") : "le1"
       assert_equal "gt2", nested
-      assert_equal "arg if", (x > 1 ? "arg if" : "arg else")
-      s = "a#{x.odd? ? "odd" : "even"}z"
+      assert_equal "arg if", (if x > 1 then "arg if" else "arg else" end)
+      s = "a" + (x.odd? ? "odd" : "even") + "z"
       assert_equal "aoddz", s
       mods = [] #: Array[String]
       mods << "mod-if" if x == 3
       mods << "mod-if never" if x == 4
       mods << "mod-unless" unless x == 4
       mods << "mod-unless never" unless x == 3
-      assert_equal %w[mod-if mod-unless], mods
+      assert_equal ["mod-if", "mod-unless"], mods
       # Ruby 4: a line starting with && / || continues the condition
       teen = x >= 13
         || x == 3
       assert_equal true, teen
-      assert_equal(["A", "A", "B", "negative one", "F", "F"], [90, 100, 80, -1, 0, 85].map { |n| grade(n) })
+      assert_equal ["A", "A", "B", "negative one", "F", "F"], ([90, 100, 80, -1, 0, 85].map { |n| grade(n) })
       assert_equal :warm, control_color("red")
       assert_equal :cool, control_color("green")
       assert_equal :empty, control_color("")
@@ -2550,8 +2571,8 @@ module ControlTests
       assert_equal "str HI", control_what("hi")
       assert_equal "dog", control_what(Dog.new)
       assert_equal "animal", control_what(Cat.new)
-      assert_equal "array of 2", control_what([1, 2])
-      assert_equal "hash of 1", control_what({ "a" => 1 })
+      assert_equal "array of 2", (control_what([1, 2]))
+      assert_equal "hash of 1", (control_what({ "a" => 1 }))
       assert_equal "other", control_what(2.5)
       assert_equal "other", control_what(:sym)
       assert_equal "other", control_what(false)
@@ -2569,7 +2590,7 @@ module ControlTests
              end
       assert_nil none
       assert_equal "three", (case three when 3 then "three" else "other" end)
-      assert_equal "n=III", "n=#{case three when 3 then "III" else "?" end}"
+      assert_equal "n=III", ("n=#{case three when 3 then "III" else "?" end}")
       vals = [nil, false, 0, "", [], true, 0.0] #: Array[untyped]
       rows = vals.map do |val|
         word = val ? "T" : "F"
@@ -2593,7 +2614,9 @@ module ControlTests
       assert_equal 10, (maybe ? maybe * 2 : 0)
       assert_equal 0, (nothing ? nothing * 2 : 0)
       msg = "" #: String
-      msg = "maybe #{maybe} > 4" if maybe && maybe > 4
+      if maybe && maybe > 4
+        msg = "maybe #{maybe} > 4"
+      end
       assert_equal "maybe 5 > 4", msg
       assert_equal "none", guarded(nil)
       assert_equal "got OK", guarded("ok")
@@ -2611,27 +2634,19 @@ module ControlTests
       if (m = h["a"])
         got << "found #{m + 1}"
       end
-      got << if (m2 = h["zz"])
-               "never #{m2}"
-             else
-               "missing #{m2.inspect}"
-             end
+      if (m2 = h["zz"])
+        got << "never #{m2}"
+      else
+        got << "missing #{m2.inspect}"
+      end
       assert_equal ["found 2", "missing nil"], got
     end
 
     # nested ternaries without parentheses associate to the right
     def test_nested_ternaries_associate_right
       x = 4
-      assert_equal "b", (if x > 5
-                           "a"
-                         else
-                           x > 3 ? "b" : "c"
-                         end)
-      assert_equal "c", (if x > 5
-                           "a"
-                         else
-                           x > 4 ? "b" : "c"
-                         end)
+      assert_equal "b", (x > 5 ? "a" : x > 3 ? "b" : "c")
+      assert_equal "c", (x > 5 ? "a" : x > 4 ? "b" : "c")
       assert_equal "even big", (x.even? && x > 2 ? "even big" : "other")
     end
 
@@ -2642,7 +2657,7 @@ module ControlTests
       assert_equal "no", vs_const(1)
       assert_equal ["text s", "text y", "num 2", "num 2.5", "nil", "?"], [multi("s"), multi(:y), multi(2), multi(2.5), multi(nil), multi([1])]
       assert_equal ["empty", "empty", "val 3"], [nil_or_zero(nil), nil_or_zero(0), nil_or_zero(3)]
-      assert_equal %w[zero other nil], [zero_first(0), zero_first(5), zero_first(nil)]
+      assert_equal ["zero", "other", "nil"], [zero_first(0), zero_first(5), zero_first(nil)]
       assert_equal "A", str_first("a")
       assert_equal "other nil", str_first(nil)
     end
@@ -2656,8 +2671,8 @@ module ControlTests
         else "many"
         end
       end
-      assert_equal %w[one five many], words
-      labels = [1, 5].map { |n| "big" if n > 2 }
+      assert_equal ["one", "five", "many"], words
+      labels = [1, 5].map { |n| if n > 2 then "big" end }
       assert_equal [nil, "big"], labels
     end
 
@@ -2666,10 +2681,10 @@ module ControlTests
       a = true
       b = false
       got = [] #: Array[String]
-      got << "and-not" if a && !b
+      got << "and-not" if a and not b
       got << "unless-or" unless a || b
-      got << "not-or" unless a || b
-      got << "neither" unless a || b
+      got << "not-or" if !(a || b)
+      got << "neither" unless a or b
       assert_equal ["and-not"], got
       assert_equal true, (a || b && b)
       r = (b or a and b)
@@ -2679,13 +2694,13 @@ module ControlTests
     end
 
     def test_early_returns_and_modifiers
-      assert_equal %w[neg zero small big], [early(-1), early(0), early(5), early(50)]
+      assert_equal ["neg", "zero", "small", "big"], [early(-1), early(0), early(5), early(50)]
       assert_equal 4, abs_val(-4)
       assert_equal 4, abs_val(4)
       c = 0
-      c += 1
-      c += 10
-
+      c += 1 if true
+      c += 10 unless false
+      c += 100 if false
       assert_equal 11, c
     end
   end
@@ -2710,6 +2725,7 @@ module ControlTests
       if i > 5
         seen << "big"
       elsif i > 3
+      else
       end
       while i > 5
       end
@@ -2717,11 +2733,13 @@ module ControlTests
       case i
       when 1, 2
       when 3 then seen << "three"
+      else
       end
-
-      seen << "body"
-
-      assert_equal %w[three body], seen
+      begin
+        seen << "body"
+      ensure
+      end
+      assert_equal ["three", "body"], seen
       x = if i > 5 then end #: Integer?
       assert_nil x
       assert_equal 3, i
@@ -2753,18 +2771,14 @@ module ControlTests
       seen = 0
       begin
         raise "boom"
-      rescue StandardError
+      rescue
         seen = r
       end
       assert_equal 10, seen
       assert_equal 200, collide_pick(nil)
       assert_equal 101, collide_pick(1)
       p = 7
-      v = begin
-        collide_risky(-1)
-      rescue StandardError
-        p
-      end
+      v = collide_risky(-1) rescue p
       assert_equal 7, v
       assert_equal "v2", doubled(1)
       assert_equal "rescued", doubled(-1)
@@ -2777,7 +2791,7 @@ module ControlTests
       assert_nil branch_local(false)
       assert_equal "v1", loop_local(2)
       assert_nil loop_local(0)
-      b = 5 if [].size.positive?
+      b = 5 if [].size > 0
       assert_nil b
       out = [] #: Array[String]
       control_half(out, 4)
@@ -2804,24 +2818,28 @@ module ControlTests
       assert_equal [2, 4], out2
       out3 = [] #: Array[String]
       ensured(out3)
-      assert_equal %w[body 10], out3
+      assert_equal ["body", "10"], out3
       out4 = [] #: Array[String]
       narrowed(out4, true)
       narrowed(out4, false)
-      assert_equal %w[6 8 4 nil], out4
+      assert_equal ["6", "8", "4", "nil"], out4
     end
 
     def test_branch_locals_in_blocks_and_loops
       got = [] #: Array[String?]
       [1, 2].each do |k|
-        m = "set" if k == 1
+        if k == 1
+          m = "set"
+        end
         got << m
       end
       assert_equal ["set", nil], got
       zs = [] #: Array[Integer?]
       i = 0
       while i < 2
-        z = 1 if i.zero?
+        if i == 0
+          z = 1
+        end
         zs << z
         i += 1
       end
@@ -2866,25 +2884,9 @@ module ControlTests
 
     # nested rescue modifiers: the outer one catches the inner fallback's raise
     def test_nested_rescue_modifiers
-      v = begin
-        begin
-          edges_risky(-1)
-        rescue StandardError
-          edges_risky(-2)
-        end
-      rescue StandardError
-        3
-      end
+      v = (edges_risky(-1) rescue edges_risky(-2)) rescue 3
       assert_equal 3, v
-      v2 = begin
-        begin
-          edges_risky(-1)
-        rescue StandardError
-          edges_risky(4)
-        end
-      rescue StandardError
-        3
-      end
+      v2 = (edges_risky(-1) rescue edges_risky(4)) rescue 3
       assert_equal 4, v2
     end
 
@@ -2904,14 +2906,16 @@ module ControlTests
     def test_rescued_exception_in_type_case
       kinds = [] #: Array[String]
       [KeyError.new("k"), ArgumentError.new("a"), IOError.new("io")].each do |ex|
-        raise ex
-      rescue StandardError => e
-        kind = case e
-               when KeyError then "key"
-               when ArgumentError then "arg"
-               else "other #{e.class}"
-               end
-        kinds << kind
+        begin
+          raise ex
+        rescue => e
+          kind = case e
+                 when KeyError then "key"
+                 when ArgumentError then "arg"
+                 else "other #{e.class}"
+                 end
+          kinds << kind
+        end
       end
       assert_equal ["key", "arg", "other IOError"], kinds
     end
@@ -2926,10 +2930,10 @@ module ControlTests
       assert_equal "k", err.to_s
       assert_equal "u: k", "u: #{err}"
       assert_equal "ArgumentError", ArgumentError.new.to_s
-      assert_equal "RuntimeError", RuntimeError.new.to_s
+      assert_equal "RuntimeError", "#{RuntimeError.new}"
       list = [ArgumentError.new("a1"), TypeError.new("t1")] #: Array[StandardError]
-      assert_equal %w[a1 t1], list.map(&:message)
-      assert_equal(%w[ArgumentError TypeError], list.map { |l| l.class.name })
+      assert_equal ["a1", "t1"], list.map(&:message)
+      assert_equal ["ArgumentError", "TypeError"], list.map { |l| l.class.name }
       assert_equal "[#<ArgumentError: a1>, #<TypeError: t1>]", list.inspect
       assert_equal "#<ControlTests::EdgesApp::Missing: x>", EdgesApp::Missing.new("x").inspect
       assert_equal "ControlTests::EdgesApp::Missing", EdgesApp::Missing.new.message
@@ -2966,7 +2970,7 @@ module ControlTests
       assert_equal "done 3", tail_while(3)
       out = [] #: Array[String]
       void_while(out)
-      assert_equal %w[k0 k1], out
+      assert_equal ["k0", "k1"], out
       ws = [] #: Array[Integer]
       [1].each do |z|
         w = 0
@@ -2975,10 +2979,12 @@ module ControlTests
       end
       assert_equal [1], ws
       a = 0
-      a += 1 while a < 2
+      while a < 2 do a += 1 end
       assert_equal 2, a
       b = 10
-      b -= 1 until b < 5 || b.even? && b < 8
+      until b < 5 || b.even? && b < 8
+        b -= 1
+      end
       assert_equal 6, b
     end
 
@@ -2992,7 +2998,7 @@ module ControlTests
           break if n == 3
         end
         out << n.to_s
-      rescue StandardError => e
+      rescue => e
         out << e.message
       end
       begin
@@ -3009,7 +3015,7 @@ module ControlTests
       # break inside an iterator in a rescue clause
       begin
         raise "x"
-      rescue StandardError => e
+      rescue => e
         [1, 2, 3].each do |q|
           break if q == 2
 
@@ -3030,7 +3036,7 @@ module ControlTests
           raise "flaky" if attempts < 3
 
           done = true
-        rescue StandardError
+        rescue
           out << "retrying #{attempts}"
         end
       end
@@ -3043,15 +3049,19 @@ module ControlTests
       x = 3
       h = { "a" => 1, "b" => 5 } #: Hash[String, Integer]
       assert_equal ["x", "found 1", "missing"], [control_probe(h, "x"), control_probe(h, "a"), control_probe(h, "zz")]
-      assert_equal "zero", ((h["q"] || 0).positive? ? "pos" : "zero")
+      assert_equal "zero", ((h["q"] || 0) > 0 ? "pos" : "zero")
       out = [] #: Array[String]
-      out << "unless lifted" unless (h["b"] || 0) > 100
-      out << "lifted left" if (h["b"] || 0) > 1 && x > 2
+      unless (h["b"] || 0) > 100
+        out << "unless lifted"
+      end
+      if (h["b"] || 0) > 1 && x > 2
+        out << "lifted left"
+      end
       assert_equal ["unless lifted", "lifted left"], out
       # ! and not on values that are never nil
       s = "s"
       assert_equal false, (!x)
-      assert_equal false, (!x)
+      assert_equal false, (not x)
       assert_equal false, (!s)
       assert_equal true, (!!s)
     end
@@ -3104,7 +3114,7 @@ module ControlTests
       assert_nil big2
       flag = false
       assert_equal 3, (flag || some)
-      assert_nil(flag || none)
+      assert_nil (flag || none)
     end
 
     # multiple assignment from an Array-returning method and from a pair
@@ -3118,8 +3128,7 @@ module ControlTests
       assert_equal "a", kk
       assert_equal 1, vv
       arr = [1, 2] #: Array[Integer]
-      f0 = arr[1]
-      f1 = arr[0]
+      f0, f1 = arr[1], arr[0]
       assert_equal [2, 1], [f0, f1]
     end
 
@@ -3169,36 +3178,12 @@ module ControlTests
     # rescue modifiers as conditions and as the left of ||
     def test_rescue_modifiers_as_conditions
       out = [] #: Array[String]
-      out << "cond ok" if begin
-        edges_risky(1)
-      rescue StandardError
-        nil
-      end
-      out << "cond never" if begin
-        edges_risky(-1)
-      rescue StandardError
-        nil
-      end
-      out << (if begin
-        edges_risky(-1)
-      rescue StandardError
-        false
-      end
-                "t"
-              else
-                "f"
-              end)
+      out << "cond ok" if (edges_risky(1) rescue nil)
+      out << "cond never" if (edges_risky(-1) rescue nil)
+      out << ((edges_risky(-1) rescue false) ? "t" : "f")
       assert_equal ["cond ok", "f"], out
-      rx = begin
-        edges_risky(2)
-      rescue StandardError
-        nil
-      end || 9
-      ry = begin
-        edges_risky(-2)
-      rescue StandardError
-        nil
-      end || 9
+      rx = (edges_risky(2) rescue nil) || 9
+      ry = (edges_risky(-2) rescue nil) || 9
       assert_equal 2, rx
       assert_equal 9, ry
     end
@@ -3214,7 +3199,7 @@ module ControlTests
     def test_value_whens_on_untyped_and_optional
       assert_equal ["one", "a or b", "a or b", "nil", "float", "other", "other"],
                    [control_classify(1), control_classify("a"), control_classify(:b), control_classify(nil), control_classify(2.5), control_classify([1]), control_classify(false)]
-      assert_equal %w[nil xy other], [opt_str(nil), opt_str("y"), opt_str("z")]
+      assert_equal ["nil", "xy", "other"], [opt_str(nil), opt_str("y"), opt_str("z")]
     end
 
     # rescue/ensure in inherited, overriding (super inside rescue) and mixed-in methods
@@ -3237,7 +3222,7 @@ module ControlTests
       e2 = assert_raises(Blank) { raise Blank }
       assert_equal "ControlTests::Blank", e2.message
       assert_equal "#<ControlTests::Blank: ControlTests::Blank>", e2.inspect
-      e3 = assert_raises(WithCode) { raise WithCode, 42 }
+      e3 = assert_raises(WithCode) { raise WithCode.new(42) }
       assert_equal 42, e3.code
       assert_equal "code 42", e3.message
     end
@@ -3246,10 +3231,12 @@ module ControlTests
     def test_raise_in_ensure_replaces_pending
       out = [] #: Array[String]
       e = assert_raises(KeyError) do
-        raise ArgumentError, "first"
-      ensure
-        out << "ensure raising"
-        raise KeyError, "from ensure"
+        begin
+          raise ArgumentError, "first"
+        ensure
+          out << "ensure raising"
+          raise KeyError, "from ensure"
+        end
       end
       assert_equal ["ensure raising"], out
       assert_equal "KeyError: from ensure", "#{e.class}: #{e.message}"
@@ -3267,7 +3254,7 @@ module ControlTests
       got = "" #: String
       begin
         raise "x"
-      rescue StandardError => e
+      rescue => e
         begin
           raise ArgumentError, "inner #{e.message}"
         rescue ArgumentError => e2
@@ -3282,7 +3269,7 @@ module ControlTests
     def test_exceptions_in_collections_and_untyped
       errors = [] #: Array[StandardError]
       [ArgumentError.new("a"), KeyError.new("k")].each { |x| errors << x }
-      assert_equal(["ArgumentError: a", "KeyError: k"], errors.map { |x| "#{x.class}: #{x.message}" })
+      assert_equal ["ArgumentError: a", "KeyError: k"], errors.map { |x| "#{x.class}: #{x.message}" }
       anything = RuntimeError.new("untyped") #: untyped
       assert_equal "untyped", anything.message
       e = assert_raises(KeyError) { raise errors[1] || StandardError.new("fallback") }
@@ -3321,9 +3308,11 @@ module ControlTests
     def test_ensure_every_iteration
       out = [] #: Array[String]
       3.times do |t|
-        out << "try #{t}"
-      ensure
-        out << "done #{t}"
+        begin
+          out << "try #{t}"
+        ensure
+          out << "done #{t}"
+        end
       end
       assert_equal ["try 0", "done 0", "try 1", "done 1", "try 2", "done 2"], out
     end
@@ -3334,7 +3323,7 @@ module ControlTests
       e2 = assert_raises(RuntimeError) { raise "Mixed Case" }
       assert_equal "MIXED CASE", e2.message.upcase
       assert_equal 10, e2.message.size
-      assert_equal true, ArgumentError.new("x").instance_of?(ArgumentError)
+      assert_equal true, ArgumentError.new("x").class == ArgumentError
       assert_equal "KeyError", KeyError.name
     end
 
@@ -3347,10 +3336,12 @@ module ControlTests
     def test_reraise_same_object
       out = [] #: Array[String]
       outer = assert_raises(KeyError) do
-        raise KeyError, "orig"
-      rescue KeyError => e
-        out << "logging #{e.message}"
-        raise e
+        begin
+          raise KeyError, "orig"
+        rescue KeyError => e
+          out << "logging #{e.message}"
+          raise e
+        end
       end
       assert_equal ["logging orig"], out
       assert_equal "outer KeyError orig", "outer #{outer.class} #{outer.message}"
@@ -3368,7 +3359,7 @@ module ControlTests
       out = [] #: Array[String]
       void_ensure_return(out, false)
       void_ensure_return(out, true)
-      assert_equal %w[body ensure body ensure], out
+      assert_equal ["body", "ensure", "body", "ensure"], out
       out = [] #: Array[String]
       assert_equal "body", rescue_then_ensure_return(out, 0)
       assert_equal "rescue", rescue_then_ensure_return(out, 1)
@@ -3379,7 +3370,7 @@ module ControlTests
       assert_equal 30, first_ok(out, [-1, -2, 3, 4])
       assert_equal(-1, first_ok(out, [-5]))
       assert_equal ["skip bad -1", "skip bad -2", "skip bad -5"], out
-      assert_equal %w[zero pos rescued], [case_tail(0), case_tail(3), case_tail(-3)]
+      assert_equal ["zero", "pos", "rescued"], [case_tail(0), case_tail(3), case_tail(-3)]
     end
 
     def test_rescue_values_in_ivars_and_blocks
@@ -3393,10 +3384,10 @@ module ControlTests
         err.message.size
       end
       assert_equal 3, got
-      assert_equal %w[p1 p2], labels([1, 2])
+      assert_equal ["p1", "p2"], labels([1, 2])
       e = assert_raises(ArgumentError) { labels([1, -2]) }
       assert_equal "bad -2", e.message
-      assert_equal %w[one one], names([1, 1])
+      assert_equal ["one", "one"], names([1, 1])
       e = assert_raises(ArgumentError) { names([1, 2]) }
       assert_equal "unknown 2", e.message
       e2 = assert_raises(ZeroDivisionError) { divs([1, 0]) }
@@ -3407,11 +3398,7 @@ module ControlTests
     # rescue modifier on the right of ||=
     def test_rescue_modifier_right_of_or_assign
       opt = nil #: Integer?
-      opt ||= begin
-        flow_risky(-1)
-      rescue StandardError
-        5
-      end
+      opt ||= (flow_risky(-1) rescue 5)
       assert_equal 5, opt
     end
 
@@ -3419,11 +3406,13 @@ module ControlTests
     def test_ensure_sees_iterator_variable
       out = [] #: Array[String]
       [1, 2].each do |i|
-        raise "odd" if i.odd?
-      rescue StandardError
-        out << "rescued #{i}"
-      ensure
-        out << "ensure #{i}"
+        begin
+          raise "odd" if i.odd?
+        rescue
+          out << "rescued #{i}"
+        ensure
+          out << "ensure #{i}"
+        end
       end
       assert_equal ["rescued 1", "ensure 1", "ensure 2"], out
     end
@@ -3440,9 +3429,11 @@ module ControlTests
     # Exception#cause: a raise inside a rescue clause records the exception being handled (decision 103).
     def test_cause
       outer = assert_raises(TypeError) do
-        raise "inner"
-      rescue RuntimeError
-        raise TypeError, "outer"
+        begin
+          raise "inner"
+        rescue RuntimeError
+          raise TypeError, "outer"
+        end
       end
       cause = outer.cause
       refute_nil cause
@@ -3452,19 +3443,23 @@ module ControlTests
       assert_nil plain.cause
       # re-raising the handled exception itself does not make it its own cause
       same = assert_raises(ArgumentError) do
-        raise ArgumentError, "once"
-      rescue ArgumentError => e
-        raise e
+        begin
+          raise ArgumentError, "once"
+        rescue ArgumentError => e
+          raise e
+        end
       end
       assert_nil same.cause
       # an exception that already has a cause keeps it
       kept = assert_raises(ArgumentError) do
-        raise "first"
-      rescue RuntimeError
         begin
-          raise ArgumentError, "second"
-        rescue ArgumentError => e
-          raise e
+          raise "first"
+        rescue RuntimeError
+          begin
+            raise ArgumentError, "second"
+          rescue ArgumentError => e
+            raise e
+          end
         end
       end
       kept_cause = kept.cause
@@ -3476,9 +3471,11 @@ module ControlTests
       out = [] #: Array[String]
       rows = [] #: Array[String]
       11.times do |k|
-        boom(out, k)
-      rescue StandardError => e
-        rows << "#{e.class}: #{e.message.inspect} #{e.to_s.inspect}"
+        begin
+          boom(out, k)
+        rescue => e
+          rows << "#{e.class}: #{e.message.inspect} #{e.to_s.inspect}"
+        end
       end
       assert_equal [
         "ArgumentError: \"bad arg\" \"bad arg\"",
@@ -3490,7 +3487,7 @@ module ControlTests
         "ControlTests::ValidationError: \"too short\" \"too short\"",
         "ControlTests::DefaultMsg: \"default message\" \"default message\"",
         "IndexError: \"\" \"\"",
-        "TypeError: \"ünïcode ✓\" \"ünïcode ✓\""
+        "TypeError: \"ünïcode ✓\" \"ünïcode ✓\"",
       ], rows
       assert_equal ["no raise 10"], out
     end
@@ -3499,7 +3496,7 @@ module ControlTests
       out = [] #: Array[String]
       assert_equal [
         "NotFound ControlTests::NotFound", "AppError|KeyError ControlTests::AppError ControlTests::AppError", "AppError|KeyError KeyError k",
-        "name: too short", "StandardError ArgumentError", "StandardError RuntimeError", "none"
+        "name: too short", "StandardError ArgumentError", "StandardError RuntimeError", "none",
       ], [which(out, 2), which(out, 5), which(out, 4), which(out, 6), which(out, 0), which(out, 1), which(out, 10)]
       assert_equal ["no raise 10"], out
       got = [] #: Array[String]
@@ -3518,9 +3515,11 @@ module ControlTests
       assert_equal ["superclass clause first: ControlTests::NotFound", "index family: StopIteration stop"], got
       assert_equal "outer caught ControlTests::Fatal deep", outer
       se = assert_raises(ScriptError) do
-        raise NotImplementedError, "nie"
-      rescue StandardError
-        got << "never"
+        begin
+          raise NotImplementedError, "nie"
+        rescue StandardError
+          got << "never"
+        end
       end
       assert_equal "script: NotImplementedError nie false", "script: #{se.class} #{se.message} #{se.is_a?(StandardError)}"
     end
@@ -3572,7 +3571,7 @@ module ControlTests
     def test_rescue_ensure_ordering_and_values
       out = [] #: Array[String]
       assert_equal [1, 2], [ordered(out, false), ordered(out, true)]
-      assert_equal %w[body ensure body rescue ensure], out
+      assert_equal ["body", "ensure", "body", "rescue", "ensure"], out
       assert_equal "body value", ensure_value
       assert_equal "pos", value_if(1)
       assert_equal "rescued nonpositive", value_if(0)
@@ -3596,11 +3595,13 @@ module ControlTests
         out << "e3"
       end
       ae = assert_raises(AppError) do
-        raise "first"
-      rescue StandardError => e1
-        raise AppError, "second from #{e1.message}"
-      ensure
-        out << "inner ensure"
+        begin
+          raise "first"
+        rescue => e1
+          raise AppError, "second from #{e1.message}"
+        ensure
+          out << "inner ensure"
+        end
       end
       assert_equal "second from first", ae.message
       assert_equal ["e1", "e2", "caught x", "e3", "inner ensure"], out
@@ -3648,9 +3649,11 @@ module ControlTests
     def test_runtime_errors_from_go
       out = [] #: Array[String]
       [0, 3, -3].each do |d|
-        out << (10 / d).to_s << (10 % d).to_s << (-7 / d).to_s
-      rescue ZeroDivisionError => e
-        out << "zde #{e.message} #{e.class}"
+        begin
+          out << (10 / d).to_s << (10 % d).to_s << (-7 / d).to_s
+        rescue ZeroDivisionError => e
+          out << "zde #{e.message} #{e.class}"
+        end
       end
       assert_equal ["zde divided by 0 ZeroDivisionError", "3", "1", "-3", "-4", "-2", "2"], out
       arr = [1, 2] #: Array[Integer]
@@ -3659,7 +3662,7 @@ module ControlTests
       caught = "" #: String
       begin
         arr[-10] = 5
-      rescue StandardError => e2
+      rescue => e2
         caught = "catch-all sees #{e2.class} #{e2.is_a?(StandardError)}"
       end
       assert_equal "catch-all sees IndexError true", caught
@@ -3684,70 +3687,30 @@ module ControlTests
     end
 
     def test_rescue_modifiers
-      a = begin
-        risky_int(2)
-      rescue StandardError
-        0
-      end
-      b = begin
-        risky_int(-1)
-      rescue StandardError
-        0
-      end
+      a = risky_int(2) rescue 0
+      b = risky_int(-1) rescue 0
       assert_equal 4, a
       assert_equal 0, b
-      c = begin
-        risky_int(-5)
-      rescue StandardError
-        nil
-      end
+      c = (risky_int(-5) rescue nil)
       assert_nil c
-      d = begin
-        risky_int(-1)
-      rescue StandardError
-        "failed"
-      end
+      d = risky_int(-1) rescue "failed"
       assert_equal "failed", d
-      e2 = begin
-        risky_int(3)
-      rescue StandardError
-        "failed"
-      end
+      e2 = risky_int(3) rescue "failed"
       assert_equal 6, e2
-      assert_equal(-10, begin
-        tern(false)
-      rescue StandardError
-        -10
-      end)
+      assert_equal(-10, (tern(false) rescue -10))
       hits = [] #: Array[String]
-      f = begin
-        risky_int(1)
-      rescue StandardError
-        hits.push("f").size
-      end
-      f2 = begin
-        risky_int(-1)
-      rescue StandardError
-        hits.push("f2").size
-      end
+      f = risky_int(1) rescue hits.push("f").size
+      f2 = risky_int(-1) rescue hits.push("f2").size
       assert_equal 2, f
       assert_equal 1, f2
       assert_equal ["f2"], hits
       ex = assert_raises(NotImplementedError) do
-        g = begin
-          risky_int(99)
-        rescue StandardError
-          -1
-        end
+        g = risky_int(99) rescue -1
         flunk "got #{g}"
       end
       assert_equal "nie", ex.message
       list = [1, 2, 3] #: Array[Integer]
-      assert_equal([100, 0, 2], list.map do |v|
-        risky_int(v - 2)
-      rescue StandardError
-        100
-      end)
+      assert_equal [100, 0, 2], list.map { |v| risky_int(v - 2) rescue 100 }
       assert_equal 1, control_safe_fetch("a")
       assert_equal(-1, control_safe_fetch("b"))
     end
@@ -3763,7 +3726,7 @@ module ControlTests
       end
       assert_equal ["y ensure"], out
       assert_equal(-5, y)
-      z = 5
+      z = begin 5 end
       assert_equal 5, z
       e = assert_raises(IOError) { raise IOError, "closed stream" }
       assert_equal "IOError: closed stream true", "#{e.class}: #{e.message} #{e.is_a?(StandardError)}"
@@ -3793,11 +3756,11 @@ module ControlTests
         i += 1
       end
       assert_equal 20, last
-      msg = if i.zero?
-              "zero"
-            else
-              "i=#{i}"
-            end
+      unless i.zero?
+        msg = "i=#{i}"
+      else
+        msg = "zero"
+      end
       assert_equal "i=3", msg
       maybe = nil
       maybe = "now" if i == 3
@@ -3814,10 +3777,7 @@ module ControlTests
       count = -1
       assert_equal(-1, count)
       sum = 0
-      doubled = [1, 2, 3].map do |x|
-        sum += x
-        x * 2
-      end
+      doubled = [1, 2, 3].map { |x| sum += x; x * 2 }
       assert_equal 6, sum
       assert_equal [2, 4, 6], doubled
       seen = 0
@@ -3830,8 +3790,8 @@ module ControlTests
           grid << cell
         end
       end
-      assert_equal %w[1x3 1x4 2x3 2x4], grid
-      assert_equal [1, 3, 6, 0], running([1, 2, 3, -6])
+      assert_equal ["1x3", "1x4", "2x3", "2x4"], grid
+      assert_equal [1, 3, 6, 0], (running([1, 2, 3, -6]))
       assert_equal [], running([])
       assert_equal 7, control_bump(4)
       assert_equal(-9, control_bump(-4))
@@ -3843,7 +3803,7 @@ module ControlTests
       f = 1.5
       f /= 2
       f -= 0.25
-      assert_equal "0.5", f.inspect
+      assert_equal "0.5", (f).inspect
       b = 7
       b %= 4
       b **= 3
@@ -3859,7 +3819,7 @@ module ControlTests
       list += [2, 3]
       assert_equal [1, 2, 3], list
       x1 = 1
-      x1 += 1 while x1 < 100
+      x1 = x1 + 1 while x1 < 100
       assert_equal 100, x1
       assert_equal "1!,2!,outer", shadow(1)
       nums = [1, 2, 3] #: Array[Integer]
@@ -3936,7 +3896,7 @@ module ControlTests
       assert_equal 1, or_value(1)
       n = 13
       bits = [] #: Array[Integer]
-      while n.positive?
+      while n > 0
         n, bit = step(n)
         bits << bit
       end
@@ -3948,9 +3908,7 @@ module ControlTests
 
     # multiple assignment of a mixed-type literal
     def test_multiple_assignment_of_a_mixed
-      name = "ann"
-      age = 30
-      admin = false
+      name, age, admin = "ann", 30, false
       assert_equal "ann", name
       assert_equal 30, age
       assert_equal false, admin
@@ -3962,13 +3920,13 @@ module ControlTests
       got = 0
       got = first + 1 if first
       assert_equal 8, got
-      assert_equal(-1, second || -1)
+      assert_equal(-1, (second || -1))
     end
 
     # `it` and numbered params
     def test_it_and_numbered_params
-      assert_equal([2, 4], [1, 2].map { it * 2 })
-      assert_equal([4, 5], [3, 4].map { _1 + 1 })
+      assert_equal [2, 4], ([1, 2].map { it * 2 })
+      assert_equal [4, 5], ([3, 4].map { _1 + 1 })
     end
 
     # Ruby locals, params and rescue bindings may use Go keywords and predeclared names
@@ -4012,14 +3970,14 @@ module ControlTests
       byte = "b"
       rune = "r"
       float64 = 2.5
-      assert_equal "[\"t\", 1, :d, 2, \"s\", \"e\", 5, 6, 9, 2, true, \"go\", 1, 1, \"nil\", 3, \"st\", \"pkg\", \"imp\", 1, 2, 3, 4, \"main\", \"init\", \"out\", false, false, 7, \"[1, 2]\", \"p\", \"r\", 1.5, 0, \"b\", \"r\", 2.5]", [type, range, default, len, string, error.message, new, copy, max, min, func, go, var,
-                                                                                                                                                                                                                                            map.size, interface.inspect, chan, struct, package, import, fallthrough, defer, goto, const,
-                                                                                                                                                                                                                                            main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64].inspect
-      assert_equal "a1", kw("a", 1)
+      assert_equal "[\"t\", 1, :d, 2, \"s\", \"e\", 5, 6, 9, 2, true, \"go\", 1, 1, \"nil\", 3, \"st\", \"pkg\", \"imp\", 1, 2, 3, 4, \"main\", \"init\", \"out\", false, false, 7, \"[1, 2]\", \"p\", \"r\", 1.5, 0, \"b\", \"r\", 2.5]", (([type, range, default, len, string, error.message, new, copy, max, min, func, go, var,
+                                                                                                                                                                                                                                              map.size, interface.inspect, chan, struct, package, import, fallthrough, defer, goto, const,
+                                                                                                                                                                                                                                              main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64])).inspect
+      assert_equal "a1", (kw("a", 1))
       msg = "" #: String
       begin
         raise "x"
-      rescue StandardError => error
+      rescue => error
         msg = error.message
       end
       assert_equal "x", msg
@@ -4032,13 +3990,22 @@ module ControlTests
   class ControlLoopsTest < Minitest::Test
     def test_while_and_until
       i = 0
-      i += 1 while i < 3
+      while i < 3
+        i += 1
+      end
       assert_equal 3, i
       j = 10
-      j -= 1 until j <= 7
+      until j <= 7
+        j -= 1
+      end
       assert_equal 7, j
       never = 0
-
+      while false
+        never += 1
+      end
+      until true
+        never += 1
+      end
       assert_equal 0, never
       k = 0
       k += 2 while k < 9
@@ -4077,7 +4044,7 @@ module ControlTests
         end
         a += 1
       end
-      assert_equal %w[11 21], out
+      assert_equal ["11", "21"], out
       xs = [3, 1, 2] #: Array[Integer]
       popped = [] #: Array[Integer]
       until xs.empty?
@@ -4098,6 +4065,7 @@ module ControlTests
       end
       assert_equal 16, total
       never = 0
+      0.times { never += 1 }
       neg = 0
       neg.pred.pred.times { never += 1 }
       assert_equal 0, never
@@ -4110,7 +4078,7 @@ module ControlTests
       1.upto(0) { |u| steps << 100 + u }
       -1.upto(1) { |u| steps << u }
       assert_equal [5, 4, 2, 1, -1, 0, 1], steps
-      words = %w[a b c d] #: Array[String]
+      words = ["a", "b", "c", "d"] #: Array[String]
       got = [] #: Array[String]
       words.each_with_index do |s, idx|
         next if idx.zero?
@@ -4132,13 +4100,13 @@ module ControlTests
         break if key == "y"
       end
       assert_equal ["1:b", "2:c", "d", "b", "y=2"], got
-      assert_equal 1, index_of_empty(["a", "", "b"])
+      assert_equal 1, (index_of_empty(["a", "", "b"]))
       assert_nil index_of_empty(["a"])
       assert_nil index_of_empty([])
       grid = [[1, 2], [3, 4]] #: Array[Array[Integer]]
-      assert_equal "1,1", find_pair(grid, 4)
-      assert_equal "0,0", find_pair(grid, 1)
-      assert_equal "missing", find_pair(grid, 9)
+      assert_equal "1,1", (find_pair(grid, 4))
+      assert_equal "0,0", (find_pair(grid, 1))
+      assert_equal "missing", (find_pair(grid, 9))
       assert_equal 64, control_first_square_over(50)
       assert_equal 1, control_first_square_over(0)
       assert_nil control_first_square_over(100_000)
@@ -4166,7 +4134,7 @@ module ControlTests
       out = [] #: Array[String]
       assert_equal 200, find_neg(out, [-2])
       assert_nil find_neg(out, [])
-      assert_equal %w[cleanup cleanup], out
+      assert_equal ["cleanup", "cleanup"], out
       out = [] #: Array[String]
       loops_countdown(5) do |c|
         next if c == 4
@@ -4194,8 +4162,8 @@ module ControlTests
         else kinds << "v#{v}"
         end
       end
-      assert_equal %w[v1 v3 last], kinds
-      assert_equal "string s", first_string([1, nil, "s", "t"])
+      assert_equal ["v1", "v3", "last"], kinds
+      assert_equal "string s", (first_string([1, nil, "s", "t"]))
       assert_equal "no string", first_string([nil])
       assert_equal "no string", first_string([])
     end
@@ -4219,8 +4187,8 @@ module ControlTests
         seen = v * 10 if v.odd?
         seen.inspect
       end
-      assert_equal %w[10 nil 30], out
-      assert_equal ["ruby: \"long\"", "go: nil", "rust: \"long\"", "c: nil"], control_tags(%w[ruby go rust c])
+      assert_equal ["10", "nil", "30"], out
+      assert_equal ["ruby: \"long\"", "go: nil", "rust: \"long\"", "c: nil"], control_tags(["ruby", "go", "rust", "c"])
     end
 
     # a block param shadows an outer local of the same name without assigning it
@@ -4234,7 +4202,7 @@ module ControlTests
       assert_equal [3, 6], ys
       assert_equal 10, x
       out = [] #: Array[String]
-      assert_equal "none", last_seen(out, %w[a b])
+      assert_equal "none", last_seen(out, ["a", "b"])
       assert_equal ["item a", "item b"], out
     end
 
@@ -4282,7 +4250,9 @@ module ControlTests
     def test_is_a_narrows_optional
       got = [] #: Array[Integer]
       x_narrow = 5 #: Integer?
-      got << dbl(x_narrow) if x_narrow.is_a?(Integer)
+      if x_narrow.is_a?(Integer)
+        got << dbl(x_narrow)
+      end
       y_narrow = nil #: Integer?
       got << (y_narrow.is_a?(Integer) ? dbl(y_narrow) : -1)
       assert_equal [10, -1], got
@@ -4308,7 +4278,7 @@ module ControlTests
           raise "odd" if i_jump.odd?
 
           seen_jump << i_jump
-        rescue StandardError
+        rescue
           seen_jump << -i_jump
         end
       end
@@ -4320,7 +4290,7 @@ module ControlTests
           raise "two" if x == 2
 
           out_jump << x
-        rescue StandardError
+        rescue
           next
         ensure
           out_jump << 0
@@ -4346,7 +4316,7 @@ module ControlTests
       mid_guarded(out) do |g|
         begin
           raise "odd" if g.odd?
-        rescue StandardError
+        rescue
           next
         end
         out << "even #{g}"
@@ -4386,19 +4356,11 @@ module ControlTests
     # a rescue modifier whose fallback itself raises
     def test_rescue_modifier_fallback_raises
       e = assert_raises(KeyError) do
-        v_wrap = begin
-          mid_risky(-1)
-        rescue StandardError
-          raise(KeyError, "wrapped")
-        end
+        v_wrap = mid_risky(-1) rescue raise(KeyError, "wrapped")
         flunk "got #{v_wrap}"
       end
       assert_equal "wrapped", e.message
-      w_risky = begin
-        mid_risky(2)
-      rescue StandardError
-        raise("no")
-      end
+      w_risky = mid_risky(2) rescue raise("no")
       assert_equal 2, w_risky
     end
 
@@ -4413,16 +4375,10 @@ module ControlTests
         w = "s#{z}"
         got << w
       end
-      names = %w[ann bo] #: Array[String]
-      names.each do |n|
-        s = n.upcase
-        got << s
-      end
-      [4, 5].each do |c|
-        s = c * 2
-        got << s.to_s
-      end
-      assert_equal %w[2 4 s3 ANN BO 8 10], got
+      names = ["ann", "bo"] #: Array[String]
+      names.each { |n| s = n.upcase; got << s }
+      [4, 5].each { |c| s = c * 2; got << s.to_s }
+      assert_equal ["2", "4", "s3", "ANN", "BO", "8", "10"], got
       out = [] #: Array[String]
       later_outer(out)
       assert_equal ["[\"1\", \"2\"]", "6"], out
@@ -4455,7 +4411,7 @@ module ControlTests
 
         got << item.to_s
       end
-      assert_equal %w[1 2 3], got
+      assert_equal ["1", "2", "3"], got
       assert_equal [], queue
       assert_equal 3, guard
 
@@ -4468,7 +4424,7 @@ module ControlTests
 
         shifted << q_while.shift.inspect
       end
-      assert_equal %w[1 2], shifted
+      assert_equal ["1", "2"], shifted
       assert_equal 2, guard
 
       stack = [4, 0] #: Array[Integer]
@@ -4480,7 +4436,7 @@ module ControlTests
 
         popped << top.to_s
       end
-      assert_equal %w[0 4], popped
+      assert_equal ["0", "4"], popped
       assert_equal 2, guard
     end
 
@@ -4542,7 +4498,7 @@ module ControlTests
         :never
       end
       assert_equal 30, r
-      assert_equal(7, catch { |tag| throw tag, 7 })
+      assert_equal 7, catch { |tag| throw tag, 7 }
     end
 
     def test_typed_methods_throw
@@ -4572,11 +4528,13 @@ module ControlTests
       log = [] #: Array[String]
       v = catch(:outer) do
         catch(:inner) do
-          throw :outer, "deep"
-        rescue Exception
-          log << "rescued"
-        ensure
-          log << "ensure"
+          begin
+            throw :outer, "deep"
+          rescue Exception
+            log << "rescued"
+          ensure
+            log << "ensure"
+          end
         end
         "not reached"
       end
@@ -4620,7 +4578,7 @@ module ControlTests
     def test_args_and_array_elements
       log = [] #: Array[Integer]
       h = { a: 1 } #: Hash[Symbol, Integer]
-      assert_equal([2, 3], [log.push(2).size, log.last&.succ].then { |a| [a[0] + 1, a[1] || 0] })
+      assert_equal [2, 3], [log.push(2).size, log.last&.succ].then { |a| [a[0] + 1, a[1] || 0] }
       log.clear
       assert_equal [1, 2], [log.push(1).size, log.last&.succ]
       assert_equal [1, 2, 2], [log.size, h[:a]&.succ, log.push(9).size]
@@ -4647,13 +4605,13 @@ module ControlTests
     def test_itself_and_yield_self
       assert_equal 1, 1.itself
       assert_equal({ 1 => [1, 1], 2 => [2] }, [1, 1, 2].group_by(&:itself))
-      assert_equal(3, 2.yield_self { |x| x + 1 })
+      assert_equal 3, 2.yield_self { |x| x + 1 }
     end
 
     def test_fail
-      e = assert_raises(RuntimeError) { raise "boom" }
+      e = assert_raises(RuntimeError) { fail "boom" }
       assert_equal "boom", e.message
-      e2 = assert_raises(ArgumentError) { raise ArgumentError, "bad" }
+      e2 = assert_raises(ArgumentError) { fail ArgumentError, "bad" }
       assert_equal "bad", e2.message
     end
 
@@ -4674,19 +4632,19 @@ module ControlTests
   class ControlRubySpecLanguageTest < Minitest::Test
     #: (Integer) -> String
     def control_size_of(x)
-      if x > 100 || x < -100
-        "huge"
-      elsif x > 10
-        "big"
-      else
-        "small"
+      case
+      when x > 100, x < -100 then "huge"
+      when x > 10 then "big"
+      else "small"
       end
     end
 
     def test_case_without_subject
       assert_equal %w[huge huge big small], [control_size_of(500), control_size_of(-500), control_size_of(50), control_size_of(1)]
       y = nil #: Integer?
-      r = ("none" if y.nil?)
+      r = case
+          when y.nil? then "none"
+          end
       assert_equal "none", r
     end
 
@@ -4694,7 +4652,7 @@ module ControlTests
       i = 0
       begin
         i += 1
-      end while i.negative?
+      end while i < 0
       j = 10
       begin
         j -= 1
@@ -4732,7 +4690,7 @@ module ControlTests
         end
         log << "x#{x}"
       end while x && x < 3
-      assert_equal [[1, 3, 5], 5, 3, %w[x1 x3]], [odd, i, j, log]
+      assert_equal [[1, 3, 5], 5, 3, ["x1", "x3"]], [odd, i, j, log]
     end
 
     # #52: redo in a block compiled as a closure reruns it with the same arguments
@@ -4773,14 +4731,14 @@ module ControlTests
           tries += 1
           raise "again" if k == 3 && tries < 5
           next if k == 1
-        rescue StandardError
+        rescue
           retry
         end
         break if k == 4
 
         out << "#{k}end"
       end until k > 9
-      assert_equal %w[1w1 1w3 1e2 3w1 3w3 3e2 3end 4w1 4w3 4e2], out
+      assert_equal ["1w1", "1w3", "1e2", "3w1", "3w3", "3e2", "3end", "4w1", "4w3", "4e2"], out
       assert_equal [4, 6, true], [k, tries, redone]
     end
 
@@ -4800,7 +4758,7 @@ module ControlTests
         log << "body"
         raise "boom" if n == 1
         return "early" if n == 2
-      rescue StandardError
+      rescue
         log << "rescue"
       else
         log << "else"
@@ -4814,16 +4772,18 @@ module ControlTests
       assert_equal [42, nil], [control_parse("21"), control_parse("zz")]
       assert_equal ["body,else,ensure", "body,rescue,ensure", "early"], [control_flow(0), control_flow(1), control_flow(2)]
       e = assert_raises(ArgumentError) do
-        1
-      rescue StandardError
-        2
-      else
-        raise ArgumentError, "from else"
+        begin
+          1
+        rescue
+          2
+        else
+          raise ArgumentError, "from else"
+        end
       end
       assert_equal "from else", e.message
       v = begin
         10
-      rescue StandardError
+      rescue
         0
           else
             20
@@ -4835,13 +4795,13 @@ module ControlTests
       line = __LINE__
       assert_equal line + 1, __LINE__
       assert_equal :test_source_position, __method__
-      assert_equal([:test_source_position], [1].map { |_| __method__ })
+      assert_equal [:test_source_position], [1].map { |_| __method__ }
       assert_equal File.dirname(File.expand_path(__FILE__)), __dir__
     end
 
     def test_interpolated_symbol
       x = "dyn"
-      assert_equal %i[dyn_sym plain2], [:"#{x}_sym", :"plain#{1 + 1}"]
+      assert_equal [:dyn_sym, :plain2], [:"#{x}_sym", :"plain#{1 + 1}"]
     end
   end
 
@@ -4855,7 +4815,7 @@ module ControlTests
         raise "x" if tries < 4
 
         tries * 10
-      rescue StandardError
+      rescue
         retry if tries < 5
         -1
       end
@@ -4964,9 +4924,9 @@ module ControlTests
   end
 
   # ruby/spec language gaps (#49): when *LIST and rescue *ERRORS
-  CONTROL_VOWELS = %w[a e i o u].freeze
-  CONTROL_RANGES = [1..3, 10..12].freeze
-  CONTROL_NET_ERRORS = [IOError, ArgumentError].freeze
+  CONTROL_VOWELS = %w[a e i o u]
+  CONTROL_RANGES = [1..3, 10..12]
+  CONTROL_NET_ERRORS = [IOError, ArgumentError]
 
   class ControlRubySpecSplatTest < Minitest::Test
     #: (String) -> Symbol
@@ -4994,14 +4954,16 @@ module ControlTests
     def test_rescue_splat
       seen = [] #: Array[untyped]
       [1, 2, 3].each do |i|
-        raise IOError, "io" if i == 1
-        raise ArgumentError, "arg" if i == 2
+        begin
+          raise IOError, "io" if i == 1
+          raise ArgumentError, "arg" if i == 2
 
-        raise TypeError, "type"
-      rescue *CONTROL_NET_ERRORS => e
-        seen << [:net, e.message]
-      rescue TypeError, *[KeyError] => e
-        seen << [:other, e.message]
+          raise TypeError, "type"
+        rescue *CONTROL_NET_ERRORS => e
+          seen << [:net, e.message]
+        rescue TypeError, *[KeyError] => e
+          seen << [:other, e.message]
+        end
       end
       assert_equal [[:net, "io"], [:net, "arg"], [:other, "type"]], seen
     end
@@ -5017,8 +4979,8 @@ module ControlTests
     def test_detailed_message
       assert_equal ["boom (RuntimeError)", "unhandled exception", "a (RuntimeError)\nb", "boom (RuntimeError)"],
                    [RuntimeError.new("boom").detailed_message, RuntimeError.new("").detailed_message, RuntimeError.new("a\nb").detailed_message, RuntimeError.new("boom").detailed_message(highlight: false)]
-      assert_equal(["abc (StandardError)", "a (StandardError)\n\nb", " (StandardError)\nfoo", "a (StandardError)\nb\n", " (StandardError)", "StandardError", "abc\r (StandardError)"],
-                   ["abc\n", "a\n\nb", "\nfoo", "a\nb\n", "\n", "", "abc\r\n"].map { |m| StandardError.new(m).detailed_message })
+      assert_equal ["abc (StandardError)", "a (StandardError)\n\nb", " (StandardError)\nfoo", "a (StandardError)\nb\n", " (StandardError)", "StandardError", "abc\r (StandardError)"],
+                   ["abc\n", "a\n\nb", "\nfoo", "a\nb\n", "\n", "", "abc\r\n"].map { |m| StandardError.new(m).detailed_message }
       assert_equal ["\e[1ma (\e[1;4mStandardError\e[m\e[1m)\e[m\n\e[1mb\e[m\n\e[1mc\e[m\n", "\e[1;4mStandardError\e[m", "\e[1;4munhandled exception\e[m"],
                    [StandardError.new("a\nb\nc\n").detailed_message(highlight: true), StandardError.new("").detailed_message(highlight: true), RuntimeError.new("").detailed_message(highlight: true)]
     end
@@ -5046,10 +5008,12 @@ module ControlTests
 
     def test_full_message_cause
       e = assert_raises(IOError) do
-        raise "inner"
-      rescue StandardError => inner
-        inner.set_backtrace(["i.rb:1:in 'x'"])
-        raise IOError, "outer"
+        begin
+          raise "inner"
+        rescue => inner
+          inner.set_backtrace(["i.rb:1:in 'x'"])
+          raise IOError, "outer"
+        end
       end
       e.set_backtrace(["o.rb:1:in 'y'", "o.rb:2:in 'z'"])
       assert_equal "o.rb:1:in 'y': outer (IOError)\n\tfrom o.rb:2:in 'z'\ni.rb:1:in 'x': inner (RuntimeError)\n", e.full_message(highlight: false)
@@ -5191,7 +5155,7 @@ module ControlTests
     end
 
     #: (bool) ?{ (Integer) -> Integer } -> Integer
-    def control_unchecked_and(c) = c && yield(1).positive? ? 2 : 3
+    def control_unchecked_and(c) = c && yield(1) > 0 ? 2 : 3
 
     # MRI evaluates yield's arguments, then raises LocalJumpError (decision 132)
     def test_yield_without_block
@@ -5211,7 +5175,7 @@ module ControlTests
     def test_optional_block
       assert_equal [nil, 20], [control_safe(1), control_safe(2) { |v| v * 10 }]
       assert_equal [3, 4], [control_guarded(3), control_guarded(3) { |v| v + 1 }]
-      assert_equal %w[none some], [control_either, control_either { "some" }]
+      assert_equal ["none", "some"], [control_either, control_either { "some" }]
       assert_equal [false, true], [control_given, control_given { "x" }]
     end
   end
@@ -5221,10 +5185,12 @@ module ControlTests
     def test_lone_local_read
       n = 0
       [1, 2].each { |x| x }
-      (1..2).each do |_y|
+      (1..2).each do |y|
+        y
         n += 1
       end
       z = 5
+      z
       assert_equal 2, n
     end
   end
@@ -5266,26 +5232,22 @@ module ControlTests
   class ControlMultiSetterTest < Minitest::Test
     def test_index_targets
       arr = [1, 2, 3]
-      arr[0] = 9
-      arr[2] = 8
+      arr[0], arr[2] = 9, 8
       assert_equal [9, 2, 8], arr
       h = { "a" => 1 }
-      h["a"] = h.fetch("a") + 1
-      h["b"] = 5
+      h["a"], h["b"] = h.fetch("a") + 1, 5
       assert_equal({ "a" => 2, "b" => 5 }, h)
     end
 
     def test_attribute_targets
       pt = ControlSetterPoint.new
-      pt.x = 4
-      pt.y = "four"
+      pt.x, pt.y = 4, "four"
       assert_equal [4, "four"], [pt.x, pt.y]
     end
 
     def test_mixed_with_locals
       h = {} #: Hash[String, Integer]
-      k = 7
-      h["z"] = 3
+      k, h["z"] = [7, 3]
       assert_equal [7, { "z" => 3 }], [k, h]
     end
   end
@@ -5310,8 +5272,8 @@ module ControlTests
   class ControlRestBlockTest < Minitest::Test
     def test_named_params_bind_from_rest
       got = [] #: Array[untyped]
-      ControlRestRouter.new(%w[7 x]).each_capture { |id, rest| got << [id, rest] }
-      assert_equal [%w[7 x], [1, "7"]], got
+      ControlRestRouter.new(["7", "x"]).each_capture { |id, rest| got << [id, rest] }
+      assert_equal [["7", "x"], [1, "7"]], got
     end
 
     def test_rest_param_collects
@@ -5329,9 +5291,9 @@ module ControlTests
     #: (String) -> Array[String?]
     def split_url(location)
       if location =~ %r{\Ahttps?://(.*?)(/.*)}
-        [::Regexp.last_match(1), ::Regexp.last_match(2), ::Regexp.last_match(0)]
+        [$1, $2, $&]
       else
-        [nil, location, ::Regexp.last_match(0)]
+        [nil, location, $&]
       end
     end
 
@@ -5341,7 +5303,7 @@ module ControlTests
     end
 
     def test_last_match_in_block
-      assert_equal(["1", nil], %w[x1 y].map { |w| w =~ /(\d)/ ? ::Regexp.last_match(1) : nil })
+      assert_equal ["1", nil], %w[x1 y].map { |w| w =~ /(\d)/ ? $1 : nil }
     end
 
     def test_regexp_on_the_left
@@ -5354,7 +5316,7 @@ module ControlTests
       return nil, nil if s.nil?
 
       a, b = s.split(":")
-      [a, b&.to_i]
+      return a, b&.to_i
     end
 
     def test_return_many
@@ -5376,7 +5338,7 @@ module ControlTests
     #: (String) -> String?
     def control_quoted(s)
       i = s.index(/(["\\])/)
-      i ? ::Regexp.last_match(1) : nil
+      i ? $1 : nil
     end
 
     def test_index_sets_last_match
@@ -5385,15 +5347,14 @@ module ControlTests
 
     def test_match_sets_last_match
       m = "k=v".match(/(\w)=(\w)/)
-      assert_equal %w[k v k], [::Regexp.last_match(1), ::Regexp.last_match(2), m&.[](1)]
+      assert_equal ["k", "v", "k"], [$1, $2, m&.[](1)]
     end
   end
 
   class ControlVerboseTest < Minitest::Test
     def test_verbose_global
       was = $VERBOSE
-      verbose = $VERBOSE
-      $VERBOSE = nil
+      verbose, $VERBOSE = $VERBOSE, nil
       silenced = $VERBOSE
       $VERBOSE = verbose
       assert_equal [false, nil, false], [was, silenced, $VERBOSE]
@@ -5408,12 +5369,12 @@ module ControlTests
     #: (?String?) -> String
     def control_refill(buffer = nil)
       buffer ||= ""
-      buffer += "x"
+      buffer = buffer + "x"
       buffer
     end
 
     def test_narrowed_parameter_reassigned
-      assert_equal %w[x ax], [control_refill, control_refill("a")]
+      assert_equal ["x", "ax"], [control_refill, control_refill("a")]
     end
 
     def test_include_untyped_nil
@@ -5476,7 +5437,7 @@ module ControlTests
         out = control_die
         control_show(out)
       end
-      assert_equal %w[died k died], [a.message, b.message, c.message]
+      assert_equal ["died", "k", "died"], [a.message, b.message, c.message]
     end
   end
 
@@ -5505,6 +5466,7 @@ module ControlTests
     #: () -> Integer
     def counted
       @calls += 1
+      self
       @calls
     end
 
@@ -5590,19 +5552,19 @@ module ControlTests
     def control_splats(s, sym, pair) = [[*s, "z"], [:x, *sym], [0, *pair]]
 
     def test_splat_non_array
-      assert_equal [%w[u z], [:x], [0, 1, 2]], control_splats("u", nil, [1, 2])
-      assert_equal %i[x y], control_splats("u", :y, [1, 2])[1]
+      assert_equal [["u", "z"], [:x], [0, 1, 2]], control_splats("u", nil, [1, 2])
+      assert_equal [:x, :y], control_splats("u", :y, [1, 2])[1]
       m = "ab".match(/(a)(c)?/)
       assert_equal [["a", "a", nil], [], [["k", 1]], [1, 2]], [[*m], [*"zz".match(/q/)], [*{ "k" => 1 }], [*1..2]]
     end
 
     def test_local_and_write
       ok = true
-      [1, -2, 3].each { |x| ok &&= x.positive? }
+      [1, -2, 3].each { |x| ok &&= x > 0 }
       s = "a" #: String?
-      s &&= "#{s}b"
+      s &&= s + "b"
       t = nil #: String?
-      t &&= "#{t}b"
+      t &&= t + "b"
       assert_equal [false, "ab", nil], [ok, s, t]
     end
   end
@@ -5661,7 +5623,7 @@ module ControlTests
     #: () { (Integer) -> void } -> void
     def control_guarded
       [1, 2].each { |i| yield i }
-    rescue StandardError => e
+    rescue => e
       raise e
     end
 
@@ -5719,7 +5681,7 @@ module ControlTests
     def control_pick(n)
       case n
       when 0 then "s"
-      when 1 then %w[a b]
+      when 1 then ["a", "b"]
       when 2 then ["c", nil]
       end
     end
@@ -5744,7 +5706,7 @@ module ControlTests
         path, base = control_pick(i)
         [path, base]
       end
-      assert_equal [["s", nil], %w[a b], ["c", nil], [nil, nil]], got
+      assert_equal [["s", nil], ["a", "b"], ["c", nil], [nil, nil]], got
       tok, num, = control_trip(1)
       first, = control_trip(0)
       assert_equal ["t", 1, nil], [tok, num, first]
@@ -5753,7 +5715,7 @@ module ControlTests
     # `|_, (token, _)|` over a Hash of pairs (Homebrew's Keg#link): the blank params bind nothing
     def test_blank_params_in_nested_tuple
       h = { "a" => ["x", 1], "b" => ["y", 2], "c" => ["x", 3] } #: Hash[String, [String, Integer]]
-      assert_equal([["x", 2], ["y", 1]], h.group_by { |_, (tok, _)| tok }.map { |tok, pairs| [tok, pairs.size] })
+      assert_equal [["x", 2], ["y", 1]], h.group_by { |_, (tok, _)| tok }.map { |tok, pairs| [tok, pairs.size] }
     end
 
     # `(a, = pair_or_nil)` as a condition (cleanup.rb's autoremove): its value is the right-hand side
@@ -5789,8 +5751,8 @@ module ControlTests
     #: (String | Integer) -> String
     def control_opt(o)
       case o
-      when /\A--\[no-\]([^=]*)/ then "neg #{::Regexp.last_match(1)}"
-      when /\A--([^=]*)(=)?/ then "long #{::Regexp.last_match(1)} #{::Regexp.last_match(2).inspect}"
+      when /\A--\[no-\]([^=]*)/ then "neg #{$1}"
+      when /\A--([^=]*)(=)?/ then "long #{$1} #{$2.inspect}"
       when Integer then "int"
       else "other"
       end
@@ -5798,7 +5760,7 @@ module ControlTests
 
     #: (untyped) -> Integer
     def control_size(o)
-      return o.size if o.is_a?(Array)
+      return o.size if Array === o
 
       -1
     end
@@ -5808,7 +5770,7 @@ module ControlTests
       assert_equal [[:NONE, nil], :NONE], [ControlOpt::NoArgument, ControlOpt::NO_ARGUMENT]
       msg = begin
         raise ArgumentError, "boom"
-      rescue StandardError
+      rescue
         $!.message
       end
       assert_equal "boom", msg
@@ -5859,7 +5821,7 @@ module ControlTests
     end
 
     def test_yield_value_in_ternary
-      assert_equal true, control_yield_found(true) { 1.positive? }
+      assert_equal true, control_yield_found(true) { 1 > 0 }
       assert_equal true, control_yield_found(true)
       assert_nil control_yield_found(false) { false }
       assert_equal false, control_yield_found(true) { 1 > 2 }
@@ -5877,9 +5839,9 @@ module ControlTests
     def control_parse(markup)
       case markup
       when CONTROL_SQ, CONTROL_DQ
-        ::Regexp.last_match(1)
+        $1
       when CONTROL_INT
-        ::Regexp.last_match(1).to_i
+        $1.to_i
       else
         :var
       end
@@ -5918,11 +5880,11 @@ module ControlTests
     end
 
     def test_and_or_jumps
-      assert_equal %i[pos zero neg], [control_sign(3), control_sign(0), control_sign(-2)]
-      assert_equal([1, 20, 3, 40], [1, 2, 3, 4].map do |i|
+      assert_equal [:pos, :zero, :neg], [control_sign(3), control_sign(0), control_sign(-2)]
+      assert_equal [1, 20, 3, 40], [1, 2, 3, 4].map { |i|
         i.even? and next i * 10
         i
-      end)
+      }
       seen = [] #: Array[Integer]
       [1, 2, 3].each do |v|
         v.odd? and next
@@ -5959,7 +5921,7 @@ module ControlTests
       y.each_pair_rest { |a, b, c| got << [a, b, c] }
       y.each_pair_rest { |a, b, *r| got << [a, b, r] }
       y.each_pair_rest { |a, *r| got << [a, r] }
-      assert_equal [[1, "a"], [1, "a", "b"], [1, "a", ["b"]], [1, %w[a b]]], got
+      assert_equal [[1, "a"], [1, "a", "b"], [1, "a", ["b"]], [1, ["a", "b"]]], got
     end
   end
 end
@@ -5972,8 +5934,8 @@ module ControlTests
       case x
       when 1 then :one
       when (x > 5 ? control_note(log, 3) : control_note(log, 4)) then :ternary
-      when (control_note(log, 6) if x.positive?) then :modifier
-      when (x > 7 || control_note(log, 7).positive? ? 8 : 9) then :logic
+      when (control_note(log, 6) if x > 0) then :modifier
+      when (x > 7 || control_note(log, 7) > 0 ? 8 : 9) then :logic
       else :other
       end
     end
@@ -6042,7 +6004,7 @@ module ControlTests
   class ExceptionArityTest < Minitest::Test
     def test_two_argument_constructors
       e = NameError.new("msg", "name")
-      assert_equal %w[name msg], [e.name, e.message]
+      assert_equal ["name", "msg"], [e.name, e.message]
     end
   end
 end
@@ -6130,15 +6092,18 @@ module ControlTests
     def test_times_and_ranges
       seen = [] #: Array[Integer]
       3.times { |i| seen << i }
+      0.times { seen << 99 }
+      -2.times { seen << 98 }
       (5..7).each { |i| seen << i }
       (5...7).each { |i| seen << i * 10 }
+      (3..1).each { seen << 97 }
       2.upto(4) { |i| seen << i }
       4.downto(2) { |i| seen << -i }
       3.upto(1) { seen << 96 }
       assert_equal [0, 1, 2, 5, 6, 7, 50, 60, 2, 3, 4, -4, -3, -2], seen
       n = 0
       5.times { n += 1 }
-      3.times { n += 10 }
+      (1..3).each { n += 10 }
       assert_equal 35, n
     end
 
@@ -6190,10 +6155,7 @@ module ControlTests
       ((big - 1)..big).each { |i| got << i - big }
       assert_equal [-1, 0, -1, -1, 0], got
       calls = 0
-      lim = lambda {
-        calls += 1
-        3
-      }
+      lim = -> { calls += 1; 3 }
       1.upto(lim.call) { |i| calls += i * 0 }
       lim.call.times { calls += 0 }
       assert_equal 2, calls

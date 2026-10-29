@@ -30,7 +30,7 @@ module Base64
       out << ALPHABET[((b0 << 4) | (b1 >> 4)) & 0x3F].to_s
       out << ALPHABET[((b1 << 2) | (b2 >> 6)) & 0x3F].to_s
       out << ALPHABET[b2 & 0x3F].to_s
-      i += 3
+      i = i + 3
     end
     rem = n - i
     if rem == 1
@@ -62,8 +62,8 @@ module Base64
     n = s.length
     while i < n
       val = char_value(s[i])
-      i += 1
-      if val.negative?
+      i = i + 1
+      if val < 0
         next # padding "=" or stray byte
       end
 
@@ -72,12 +72,12 @@ module Base64
       # Bignum in Ruby, and on a fixed-width Integer a silent wrap that
       # spinel now raises on (`integer overflow in <<`, e3883499).
       acc = ((acc << 6) | val) & 0xFFFF
-      nbits += 6
-      next unless nbits >= 8
-
-      nbits -= 8
-      byte = (acc >> nbits) & 0xFF
-      out << byte.chr
+      nbits = nbits + 6
+      if nbits >= 8
+        nbits = nbits - 8
+        byte = (acc >> nbits) & 0xFF
+        out << byte.chr
+      end
     end
     out
   end
@@ -87,9 +87,11 @@ module Base64
   def self.char_value(c)
     idx = 0
     while idx < 64
-      return idx if ALPHABET[idx] == c
+      if ALPHABET[idx] == c
+        return idx
+      end
 
-      idx += 1
+      idx = idx + 1
     end
     -1
   end
@@ -111,14 +113,14 @@ module Base64
     n = std.length
     while i < n
       c = std[i]
-      out << if c == "+"
-               "-"
-             elsif c == "/"
-               "_"
-             else
-               c.to_s
-             end
-      i += 1
+      if c == "+"
+        out << "-"
+      elsif c == "/"
+        out << "_"
+      else
+        out << c.to_s
+      end
+      i = i + 1
     end
     out
   end
@@ -136,7 +138,9 @@ module Base64
   def self.urlsafe_encode64_nopad(s)
     out = urlsafe_encode64(s)
     n = out.length
-    n -= 1 while n.positive? && out[n - 1] == "="
+    while n > 0 && out[n - 1] == "="
+      n = n - 1
+    end
     out[0, n].to_s
   end
 
@@ -148,14 +152,14 @@ module Base64
     n = s.length
     while i < n
       c = s[i]
-      std << if c == "-"
-               "+"
-             elsif c == "_"
-               "/"
-             else
-               c.to_s
-             end
-      i += 1
+      if c == "-"
+        std << "+"
+      elsif c == "_"
+        std << "/"
+      else
+        std << c.to_s
+      end
+      i = i + 1
     end
     strict_decode64(std)
   end

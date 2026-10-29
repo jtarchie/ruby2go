@@ -39,7 +39,7 @@ puts "toupper('q') = #{toupper.call("q".ord).chr}"
 qsort = Fiddle::Function.new(
   libc["qsort"],
   [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T, Fiddle::TYPE_SIZE_T, Fiddle::TYPE_VOIDP],
-  Fiddle::TYPE_VOID
+  Fiddle::TYPE_VOID,
 )
 compare = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_INT, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP]) do |a, b|
   a[0] <=> b[0]
@@ -51,7 +51,7 @@ puts "sorted: #{buf[0, 6]}"
 
 # Pointer arithmetic and C strings.
 greeting = Fiddle::Pointer["hello, world"]
-puts "C string: #{greeting}, from offset 7: #{greeting + 7}"
+puts "C string: #{greeting.to_s}, from offset 7: #{(greeting + 7).to_s}"
 
 begin
   Fiddle.dlopen("/nonexistent/libnope.so")

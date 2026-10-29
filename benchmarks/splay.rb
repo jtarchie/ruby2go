@@ -42,7 +42,7 @@ class SplayTree
         @root = node
       end
     end
-    @size += 1
+    @size = @size + 1
   end
 
   def find(key)
@@ -61,27 +61,35 @@ class SplayTree
     t = @root
     while true
       if key < t.key
-        break if t.left.nil?
+        if t.left.nil?
+          break
+        end
 
         if key < t.left.key
           y = t.left
           t.left = y.right
           y.right = t
           t = y
-          break if t.left.nil?
+          if t.left.nil?
+            break
+          end
         end
         sr.left = t
         sr = t
         t = t.left
       elsif key > t.key
-        break if t.right.nil?
+        if t.right.nil?
+          break
+        end
 
         if key > t.right.key
           y = t.right
           t.right = y.left
           y.left = t
           t = y
-          break if t.right.nil?
+          if t.right.nil?
+            break
+          end
         end
         sl.right = t
         sl = t
@@ -101,20 +109,22 @@ end
 # Deterministic: insert keys 0..24999 in scrambled order
 tree = SplayTree.new
 idx = 0
-while idx < 25_000
-  key = (idx * 7919) % 100_000
+while idx < 25000
+  key = (idx * 7919) % 100000
   tree.insert(key, idx)
-  idx += 1
+  idx = idx + 1
 end
 
 # Find known keys
 found = 0
 idx = 0
-while idx < 25_000
-  key = (idx * 7919) % 100_000
+while idx < 25000
+  key = (idx * 7919) % 100000
   result = tree.find(key)
-  found += 1 if result == key
-  idx += 1
+  if result == key
+    found = found + 1
+  end
+  idx = idx + 1
 end
 
 puts found

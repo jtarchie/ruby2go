@@ -15,7 +15,7 @@ module Tep
           hi = Url.hex_nibble(s[i + 1])
           lo = Url.hex_nibble(s[i + 2])
           if hi >= 0 && lo >= 0
-            out << (hi * 16 + lo).chr
+            out << ((hi * 16 + lo).chr)
             i += 3
           else
             out << c
@@ -45,7 +45,7 @@ module Tep
           b = c.bytes[0]
           hi = b / 16
           lo = b % 16
-          out << "%#{Url.hex_char(hi)}#{Url.hex_char(lo)}"
+          out << "%" + Url.hex_char(hi) + Url.hex_char(lo)
         end
         i += 1
       end
@@ -53,15 +53,23 @@ module Tep
     end
 
     def self.hex_char(n)
-      return ("0".bytes[0] + n).chr if n < 10
+      if n < 10
+        return ("0".bytes[0] + n).chr
+      end
 
       ("A".bytes[0] + n - 10).chr
     end
 
     def self.hex_nibble(c)
-      return c.bytes[0] - "0".bytes[0] if c >= "0" && c <= "9"
-      return c.bytes[0] - "a".bytes[0] + 10 if c >= "a" && c <= "f"
-      return c.bytes[0] - "A".bytes[0] + 10 if c >= "A" && c <= "F"
+      if c >= "0" && c <= "9"
+        return c.bytes[0] - "0".bytes[0]
+      end
+      if c >= "a" && c <= "f"
+        return c.bytes[0] - "a".bytes[0] + 10
+      end
+      if c >= "A" && c <= "F"
+        return c.bytes[0] - "A".bytes[0] + 10
+      end
 
       -1
     end
@@ -99,7 +107,7 @@ module Tep
         rest = rest[8, rest.length - 8]
       end
 
-      if out["scheme"].length.positive?
+      if out["scheme"].length > 0
         slash = rest.index("/")
         hostport = rest
         tail     = "/"
@@ -124,26 +132,30 @@ module Tep
         out["path"]  = rest[0, qi]
         out["query"] = rest[qi + 1, rest.length - qi - 1]
       end
-      out["path"] = "/" if out["path"].empty?
+      if out["path"].length == 0
+        out["path"] = "/"
+      end
       out
     end
 
     # "a=1&b=2&c" -> Hash {"a"=>"1","b"=>"2","c"=>""}
     def self.parse_query(s)
       h = Tep.str_hash
-      return h if s.empty?
+      if s.length == 0
+        return h
+      end
 
       pairs = s.split("&")
       pairs.each do |pair|
-        next unless pair.length.positive?
-
-        eq = pair.index("=")
-        if eq.nil?
-          h[Url.unescape(pair)] = +""
-        else
-          k = pair[0, eq]
-          v = pair[eq + 1, pair.length - eq - 1]
-          h[Url.unescape(k)] = Url.unescape(v)
+        if pair.length > 0
+          eq = pair.index("=")
+          if eq.nil?
+            h[Url.unescape(pair)] = +""
+          else
+            k = pair[0, eq]
+            v = pair[eq + 1, pair.length - eq - 1]
+            h[Url.unescape(k)] = Url.unescape(v)
+          end
         end
       end
       h

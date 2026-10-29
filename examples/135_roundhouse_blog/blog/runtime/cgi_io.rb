@@ -35,7 +35,7 @@ module CgiIo
     403 => "Forbidden",
     404 => "Not Found",
     422 => "Unprocessable Entity",
-    500 => "Internal Server Error"
+    500 => "Internal Server Error",
   }.freeze
 
   # Parse a CGI request from the given env hash + body-readable IO.
@@ -48,13 +48,13 @@ module CgiIo
     params = {}
     parse_form_into(query, params) unless query.empty?
 
-    if %w[POST PATCH PUT].include?(method)
+    if method == "POST" || method == "PATCH" || method == "PUT"
       length = (env["CONTENT_LENGTH"] || "0").to_i
       ctype  = env["CONTENT_TYPE"] || ""
-      if length.positive? && ctype.start_with?("application/x-www-form-urlencoded")
+      if length > 0 && ctype.start_with?("application/x-www-form-urlencoded")
         body = stdin.read(length).to_s
         parse_form_into(body, params)
-      elsif length.positive? && ctype.start_with?("multipart/form-data")
+      elsif length > 0 && ctype.start_with?("multipart/form-data")
         # File parts land in the params tree as UploadedFile objects
         # under their bracket-nested name, the way Rack nests them; see
         # runtime/multipart.rb.
@@ -73,9 +73,9 @@ module CgiIo
     # GETs ignore the override.
     if method == "POST"
       override = params.delete("_method")
-      unless override.nil?
+      if !override.nil?
         upcased = override.to_s.upcase
-        method = upcased if %w[PATCH PUT DELETE].include?(upcased)
+        method = upcased if upcased == "PATCH" || upcased == "PUT" || upcased == "DELETE"
       end
     end
 
@@ -183,7 +183,7 @@ module CgiIo
       segments.push(rest[1...close_bracket])
       rest = rest[(close_bracket + 1)..]
     end
-    return unless rest.empty?
+    return if !rest.empty?
 
     current = into
     key = raw_key[0, open_bracket]
@@ -208,12 +208,12 @@ module CgiIo
   def self.url_encode(s)
     out = String.new
     s.to_s.each_byte do |b|
-      out << if (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
-                b == 45 || b == 46 || b == 95 || b == 126
-               b.chr
-             else
-               format("%%%02X", b)
-             end
+      if (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
+         b == 45 || b == 46 || b == 95 || b == 126
+        out << b.chr
+      else
+        out << format("%%%02X", b)
+      end
     end
     out
   end

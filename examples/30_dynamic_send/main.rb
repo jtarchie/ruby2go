@@ -27,7 +27,7 @@ class Ghost
   def method_missing(name, *args) = "ghost #{name}(#{args.size})"
 
   #: (Symbol, ?bool) -> bool
-  def respond_to_missing?(name, _include_private = false) = name.to_s.start_with?("g")
+  def respond_to_missing?(name, include_private = false) = name.to_s.start_with?("g")
 end
 
 things = [Greeter.new("ada"), Ghost.new] #: Array[untyped]
@@ -38,8 +38,8 @@ end
 
 greeter = things.fetch(0)
 puts greeter.send(:greet, "yo"), greeter.public_send(:name), greeter.lucky.inspect
-%w[greet shout name].each { |m| puts greeter.send(m) }
-puts %w[name fly].map { |m| greeter.respond_to?(m) }.inspect
+["greet", "shout", "name"].each { |m| puts greeter.send(m) }
+puts ["name", "fly"].map { |m| greeter.respond_to?(m) }.inspect
 
 class_name = "Greeter"
 klass = Object.const_get(class_name)

@@ -75,7 +75,7 @@ end
 
 shapes = [Circle.new(1.5), Square.new(3)] #: Array[Circle | Square]
 shapes.each { |s| puts "#{s.name}: #{s.area}" }
-areas = shapes.map(&:area)
+areas = shapes.map { |s| s.area }
 p areas
 puts areas.sum
 

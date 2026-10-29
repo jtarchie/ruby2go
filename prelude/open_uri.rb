@@ -145,7 +145,9 @@ module OpenURI
       return __open_uri(uri, headers, opts, mode) if uri.is_a?(URI::HTTP)
       raise NotImplementedError, "open-uri: #{uri.scheme} is not supported" if (uri.scheme || "").downcase == "ftp"
     end
-    raise NotImplementedError, "URI.open of a local file in mode #{mode} is not supported; use File.open" unless __read_mode?(mode)
+    unless __read_mode?(mode)
+      raise NotImplementedError, "URI.open of a local file in mode #{mode} is not supported; use File.open"
+    end
 
     StringIO.new(File.read(name))
   end
@@ -211,7 +213,7 @@ module OpenURI
   def self.__redirectable?(from, to)
     a = (from.scheme || "").downcase
     b = (to.scheme || "").downcase
-    a == b || %w[http ftp].include?(a) && %w[http https ftp].include?(b)
+    a == b || (a == "http" || a == "ftp") && (b == "http" || b == "https" || b == "ftp")
   end
 
   # MRI's OpenURI.open_http, minus proxies.
@@ -235,7 +237,7 @@ module OpenURI
       clp = opts.content_length_proc
       if clp
         len = res["content-length"]
-        clp.call(len&.to_i)
+        clp.call(len ? len.to_i : nil)
       end
       pp = opts.progress_proc
       pp.call(res.body.bytesize) if pp && !res.body.empty?

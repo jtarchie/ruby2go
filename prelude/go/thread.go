@@ -41,6 +41,8 @@ type rbGoTag struct {
 	_     []struct{ key, value string }
 	id    int64
 	fiber *Fiber // the Fiber this goroutine runs, for Fiber.current and Fiber.yield (decision 403)
+
+	recDepth, recHashDepth int // Struct comparisons and hashes in progress (decision 407)
 }
 
 // The label slot's accessors: runtime/pprof's, which the runtime keeps for linkname users (go.dev/issue/67401).

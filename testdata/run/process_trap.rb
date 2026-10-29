@@ -23,7 +23,7 @@ end
 q = Queue.new #: Queue[Integer]
 trap(:USR2) { |s| q << s }
 p Process.kill("USR2", Process.pid)
-p((q.pop || 0).positive?)
+p((q.pop || 0) > 0)
 trap("INT", "IGNORE")
 Process.kill(:INT, Process.pid)
 sleep(0.05)

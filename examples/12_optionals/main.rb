@@ -44,7 +44,7 @@ puts(found ? found * 2 : -1)
 v = find_gt(nums, 100) || 0
 puts v + 1
 name = nil
-puts "#{name}|", name.inspect
+puts name.to_s + "|", name.inspect
 name = "x" if nums.size > 2
 puts name.inspect
 puts "big" if found && found > 3

@@ -125,7 +125,7 @@ module Turbo
     include Turbo::Streams::StreamName::ClassMethods
 
     def subscribed
-      if (stream_name = verified_stream_name_from_params)
+      if stream_name = verified_stream_name_from_params
         stream_from stream_name
       else
         reject
@@ -207,8 +207,12 @@ module Turbo
       remove_got = REMOVE_CALLS[0]
       REPLACE_EXPECTED[0] = -1
       REMOVE_EXPECTED[0] = -1
-      raise "Turbo::StreamsChannel.broadcast_replace_to was expected #{replace_expected} time(s), got #{replace_got}" if replace_expected >= 0 && replace_got != replace_expected
-      raise "Turbo::StreamsChannel.broadcast_remove_to was expected #{remove_expected} time(s), got #{remove_got}" if remove_expected >= 0 && remove_got != remove_expected
+      if replace_expected >= 0 && replace_got != replace_expected
+        raise "Turbo::StreamsChannel.broadcast_replace_to was expected #{replace_expected} time(s), got #{replace_got}"
+      end
+      if remove_expected >= 0 && remove_got != remove_expected
+        raise "Turbo::StreamsChannel.broadcast_remove_to was expected #{remove_expected} time(s), got #{remove_got}"
+      end
 
       nil
     end

@@ -104,7 +104,7 @@ module ActionDispatch
 
     def fetch(key, default = nil)
       v = self[key]
-      return v unless v.nil?
+      return v if !v.nil?
 
       default
     end
@@ -143,15 +143,15 @@ module ActionDispatch
     # when one calls the other.
     def length
       n = 0
-      n += 1 unless @notice.nil?
-      n += 1 unless @alert.nil?
+      n += 1 if !@notice.nil?
+      n += 1 if !@alert.nil?
       n
     end
 
     def size
       n = 0
-      n += 1 unless @notice.nil?
-      n += 1 unless @alert.nil?
+      n += 1 if !@notice.nil?
+      n += 1 if !@alert.nil?
       n
     end
 
@@ -161,15 +161,15 @@ module ActionDispatch
 
     def keys
       result = []
-      result.push("notice") unless @notice.nil?
-      result.push("alert")  unless @alert.nil?
+      result.push("notice") if !@notice.nil?
+      result.push("alert")  if !@alert.nil?
       result
     end
 
     def values
       result = []
-      result.push(@notice) unless @notice.nil?
-      result.push(@alert)  unless @alert.nil?
+      result.push(@notice) if !@notice.nil?
+      result.push(@alert)  if !@alert.nil?
       result
     end
 
@@ -177,8 +177,8 @@ module ActionDispatch
     # HWIA's String-keyed yield shape so view extra-param plumbing
     # doesn't fork on receiver type.
     def each
-      yield "notice", @notice unless @notice.nil?
-      yield "alert",  @alert  unless @alert.nil?
+      yield "notice", @notice if !@notice.nil?
+      yield "alert",  @alert  if !@alert.nil?
       self
     end
 
@@ -187,8 +187,8 @@ module ActionDispatch
     # store is `Hash[String, String]`.
     def to_h
       result = {}
-      result["notice"] = @notice unless @notice.nil?
-      result["alert"]  = @alert  unless @alert.nil?
+      result["notice"] = @notice if !@notice.nil?
+      result["alert"]  = @alert  if !@alert.nil?
       result
     end
 

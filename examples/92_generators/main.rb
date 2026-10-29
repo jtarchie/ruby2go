@@ -3,8 +3,7 @@
 # Generators, external iteration, lazy pipelines over infinite sources, and a Fiber pausing mid-block.
 
 fib = Enumerator.new do |y|
-  a = 0
-  b = 1
+  a, b = 0, 1
   loop do
     y << a
     a, b = b, a + b

@@ -8,7 +8,7 @@
 # recognises the do/end form and emits a Streamer subclass for you.
 module Tep
   class Streamer
-    def pump(_out)
+    def pump(out)
       # default no-op; subclasses override
       0
     end

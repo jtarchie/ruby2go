@@ -14,9 +14,12 @@ class Struct < Object
     return Boolean(p != nil && *p)
   }
 
-  # MRI's rb_exec_recursive_paired: true when this goroutine is already comparing (kind, a, b) (0 is ==, 1 is eql?), so a
-  # struct holding itself answers "equal so far" instead of overflowing the stack; otherwise it records the pair until
-  # __rec_leave. The generated == and eql? bracket their member comparison with the two.
+  # One member of a generated Struct#==. Scalars compare directly; anything else (a Struct, Array or Hash that may lead
+  # back here) is bracketed by MRI's rb_exec_recursive_paired, so a struct that holds itself answers "equal so far"
+  # instead of overflowing the stack (decision 407). A member typed Integer or String is a scalar at compile time,
+  # so it pays nothing.
+  # true when this goroutine is already comparing (kind, a, b) (0 is ==, 1 is eql?); otherwise it counts the comparison in
+  # until __rec_leave.
   #: (Integer, untyped, untyped) -> bool
   def self.__rec_enter(kind, a, b) = %x{ return Boolean(rbRecEnter(kind, a, b)) }
 
@@ -34,4 +37,12 @@ end
 class Data < Object
   #: () -> bool
   def frozen? = true
+end
+
+# The comparison generated Struct#== uses for a member that could lead back to the struct (decision 407). A module
+# function, so a call is a plain Go function: scalars compare directly, anything else is bracketed by MRI's
+# rb_exec_recursive_paired, so a struct that holds itself answers "equal so far" instead of overflowing the stack.
+module StructEq
+  #: (untyped, untyped) -> bool
+  def self.same(a, b) = %x{ return Boolean(rbRecSame(a, b)) }
 end

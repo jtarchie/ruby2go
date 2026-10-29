@@ -53,11 +53,11 @@ module PpTests
     end
 
     def test_layout_8
-      assert_equal "1\n..\n5\n", PP.pp(1..5, "".dup, 3)
+      assert_equal "1\n..\n5\n", PP.pp((1..5), "".dup, 3)
     end
 
     def test_layout_9
-      assert_equal "1...\n", PP.pp(1..., "".dup, 79)
+      assert_equal "1...\n", PP.pp((1...), "".dup, 79)
     end
 
     def test_layout_10

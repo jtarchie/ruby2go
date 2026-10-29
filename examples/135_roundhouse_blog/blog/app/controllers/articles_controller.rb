@@ -6,39 +6,43 @@ class ArticlesController < ApplicationController
   def process_action(action_name)
     case action_name
     when :index
-      index
+      self.index
     when :show
-      show
+      self.show
     when :new
-      new_action
+      self.new_action
     when :edit
-      edit
+      self.edit
     when :create
-      create
+      self.create
     when :update
-      update
+      self.update
     when :destroy
-      destroy
+      self.destroy
     end
   end
 
   def index
     stmt = Db.prepare("SELECT id, title, body, created_at, updated_at FROM articles ORDER BY created_at DESC")
     results = []
-    results << Article.from_stmt(stmt) while Db.step?(stmt)
+    while Db.step?(stmt)
+      results << Article.from_stmt(stmt)
+    end
     Db.finalize(stmt)
-    __comments_ids = results.map(&:id)
-    __comments_stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE article_id IN (#{Db.escape_int_list(__comments_ids)})")
+    __comments_ids = results.map { |a| a.id }
+    __comments_stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE article_id IN (" + Db.escape_int_list(__comments_ids) + ")")
     __comments_loaded = []
-    __comments_loaded << Comment.from_stmt(__comments_stmt) while Db.step?(__comments_stmt)
+    while Db.step?(__comments_stmt)
+      __comments_loaded << Comment.from_stmt(__comments_stmt)
+    end
     Db.finalize(__comments_stmt)
-    results.each do |a|
+    results.each { |a|
       __comments_group = []
       __comments_loaded.each { |r| __comments_group << r if r.article_id == a.id }
       a._preload_comments(__comments_group)
-    end
+    }
     @articles = results
-    if request_format == :json
+    if self.request_format == :json
       render(Views::Articles.index_json(@articles), content_type: "application/json")
     else
       render(Views::Layouts.application(Views::Articles.index(@articles, @flash[:notice], @flash[:alert]), @flash[:notice], @flash[:alert]))
@@ -47,7 +51,7 @@ class ArticlesController < ApplicationController
 
   def show
     @article = Article.find(@params.fetch("id", "0").to_s.to_i)
-    if request_format == :json
+    if self.request_format == :json
       render(Views::Articles.show_json(@article), content_type: "application/json")
     else
       render(Views::Layouts.application(Views::Articles.show(@article, @flash[:notice], @flash[:alert]), @flash[:notice], @flash[:alert]))
@@ -65,9 +69,9 @@ class ArticlesController < ApplicationController
   end
 
   def create
-    @article = Article.from_params(article_params)
+    @article = Article.from_params(self.article_params)
     if @article.save
-      if request_format == :json
+      if self.request_format == :json
         render(Views::Articles.show_json(@article), status: :created, location: RouteHelpers.article_path(@article.id), content_type: "application/json")
       else
         redirect_to(RouteHelpers.article_path(@article.id), notice: "Article was successfully created.")
@@ -79,8 +83,8 @@ class ArticlesController < ApplicationController
 
   def update
     @article = Article.find(@params.fetch("id", "0").to_s.to_i)
-    if @article.update_from_article_params(article_params)
-      if request_format == :json
+    if @article.update_from_article_params(self.article_params)
+      if self.request_format == :json
         render(Views::Articles.show_json(@article), status: :ok, location: RouteHelpers.article_path(@article.id), content_type: "application/json")
       else
         redirect_to(RouteHelpers.article_path(@article.id), notice: "Article was successfully updated.", status: :see_other)
@@ -93,7 +97,7 @@ class ArticlesController < ApplicationController
   def destroy
     @article = Article.find(@params.fetch("id", "0").to_s.to_i)
     @article.destroy
-    if request_format == :json
+    if self.request_format == :json
       head(:no_content, content_type: "application/json")
     else
       redirect_to(RouteHelpers.articles_path, notice: "Article was successfully destroyed.", status: :see_other)

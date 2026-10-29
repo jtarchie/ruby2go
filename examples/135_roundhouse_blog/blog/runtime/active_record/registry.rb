@@ -44,7 +44,7 @@ module ActiveRecord
     # emit-time decisions that want a fallback path when the model
     # isn't present.
     def self.registered?(name)
-      @entries.key?(name)
+      @entries.has_key?(name)
     end
   end
 end

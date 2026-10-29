@@ -8,7 +8,7 @@ MAZE = [
   "#.#.#.#.#",
   "#.#...#E#",
   "#########"
-].freeze
+]
 
 #: (String) -> [Integer, Integer]?
 def locate(ch)

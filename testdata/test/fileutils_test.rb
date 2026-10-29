@@ -93,7 +93,7 @@ module FileUtilsTests
         File.symlink(a, sl)
         File.link(a, hl)
         msgs = [refuse(d) { FileUtils.cp(a, sl) }, refuse(d) { FileUtils.cp(a, hl) }, refuse(d) { FileUtils.cp(hl, a) }]
-        assert_equal %w[hello hello], [File.read(a), File.read(hl)]
+        assert_equal ["hello", "hello"], [File.read(a), File.read(hl)]
         assert_equal ["same file: D/a and D/sl", "same file: D/a and D/hl", "same file: D/hl and D/a"], msgs
       end
     end
@@ -143,7 +143,7 @@ module FileUtilsTests
         File.link(a, hl)
         assert_equal "same file: D/a and D/a", refuse(d) { FileUtils.mv(a, a) }
         assert_equal "same file: D/a and D/hl", refuse(d) { FileUtils.mv(a, hl) }
-        assert_equal %w[hello hello], [File.read(a), File.read(hl)]
+        assert_equal ["hello", "hello"], [File.read(a), File.read(hl)]
       end
     end
 
@@ -154,7 +154,7 @@ module FileUtilsTests
         File.write(a, "hello")
         File.write(b, "old and longer")
         FileUtils.cp(a, b)
-        assert_equal %w[hello hello], [File.read(a), File.read(b)]
+        assert_equal ["hello", "hello"], [File.read(a), File.read(b)]
         FileUtils.mkdir_p(File.join(d, "out"))
         FileUtils.cp_r(a, File.join(d, "out"))
         assert_equal "hello", File.read(File.join(d, "out", "a"))
@@ -205,7 +205,7 @@ module FileUtilsTests
           e.class
         end
         copied = [File.read(File.join(out, "a")), File.read(File.join(out, "sub", "b"))] unless err
-        assert_equal [nil, %w[A B], true], [err, copied, File.stat(out).mode.anybits?(0o200)]
+        assert_equal [nil, ["A", "B"], true], [err, copied, File.stat(out).mode.anybits?(0o200)]
       ensure
         File.chmod(0o755, File.join(d, "src", "sub")) if File.directory?(File.join(d, "src", "sub"))
         File.chmod(0o755, File.join(d, "src")) if File.directory?(File.join(d, "src"))
@@ -221,7 +221,7 @@ module FileUtilsTests
         Dir.mkdir(File.join(d, "dir"))
         FileUtils.ln_s(Pathname("a"), Pathname(File.join(d, "b")), force: true)
         FileUtils.ln_sf("a", File.join(d, "dir"))
-        assert_equal %w[a a x], [File.readlink(File.join(d, "b")), File.readlink(File.join(d, "dir", "a")), File.read(File.join(d, "b"))]
+        assert_equal ["a", "a", "x"], [File.readlink(File.join(d, "b")), File.readlink(File.join(d, "dir", "a")), File.read(File.join(d, "b"))]
       end
     end
 
@@ -261,7 +261,7 @@ module FileUtilsTests
 
     #: (String) { () -> void } -> String
     def fu_err(dir)
-      out, = capture_io { yield }
+      out, _ = capture_io { yield }
       out.gsub(dir, "D")
     end
 
@@ -457,11 +457,11 @@ module FileUtilsTests
           got << FileUtils.compare_file(a, b)
           next if n.zero?
 
-          File.write(b, "#{"x" * (n - 1)}y")
+          File.write(b, "x" * (n - 1) + "y")
           got << FileUtils.compare_file(a, b)
-          File.write(b, "y#{"x" * (n - 1)}")
+          File.write(b, "y" + "x" * (n - 1))
           got << FileUtils.compare_file(a, b)
-          File.write(b, "#{"x" * (n / 2)}y#{"x" * (n - (n / 2) - 1)}")
+          File.write(b, "x" * (n / 2) + "y" + "x" * (n - (n / 2) - 1))
           got << FileUtils.compare_file(a, b)
         end
         assert_equal [true, true, false] + ([true, true, false, false, false, false] * 5), got
@@ -515,19 +515,19 @@ module FileUtilsTests
     def test_mkdir_touch_chmod_return_the_path_list
       fu_in do
         assert_equal ["a"], FileUtils.mkdir("a")
-        assert_equal %w[b c], FileUtils.mkdir(%w[b c])
+        assert_equal ["b", "c"], FileUtils.mkdir(["b", "c"])
         assert_equal ["p/q"], FileUtils.mkdir_p("p/q")
         assert_equal ["s/t"], FileUtils.makedirs("s/t")
         assert_equal ["u/v"], FileUtils.mkpath("u/v")
-        assert_equal %w[w x], FileUtils.mkdir_p([Pathname("w"), "x"])
+        assert_equal ["w", "x"], FileUtils.mkdir_p([Pathname("w"), "x"])
         assert_equal ["y"], FileUtils.mkdir_p("y", noop: true)
         assert_equal ["y"], FileUtils.mkpath("y", noop: true)
         assert_nil FileUtils.mkdir("z", noop: true)
-        assert_equal %w[f g], FileUtils.touch(%w[f g])
+        assert_equal ["f", "g"], FileUtils.touch(["f", "g"])
         assert_equal ["f"], FileUtils.touch(Pathname("f"))
         assert_nil FileUtils.touch("f", noop: true)
         assert_equal ["f"], FileUtils.chmod(0o600, "f")
-        assert_equal %w[f g], FileUtils.chmod("u+w", %w[f g])
+        assert_equal ["f", "g"], FileUtils.chmod("u+w", ["f", "g"])
         assert_equal ["a"], FileUtils.chmod_R(0o755, "a")
         assert_equal ["f"], FileUtils.chown(nil, nil, "f")
         assert_equal ["a"], FileUtils.chown_R(nil, nil, "a")
@@ -541,14 +541,14 @@ module FileUtilsTests
         assert_equal ["f1"], FileUtils.rm(fu_mk("f1", false))
         fu_mk("f2", false)
         fu_mk("f3", false)
-        assert_equal %w[f2 f3], FileUtils.rm(%w[f2 f3])
+        assert_equal ["f2", "f3"], FileUtils.rm(["f2", "f3"])
         assert_equal ["f4"], FileUtils.remove(fu_mk("f4", false))
-        assert_equal %w[f5 missing], FileUtils.rm_f([fu_mk("f5", false), "missing"])
+        assert_equal ["f5", "missing"], FileUtils.rm_f([fu_mk("f5", false), "missing"])
         assert_equal ["f6"], FileUtils.rm(Pathname(fu_mk("f6", false)))
         assert_equal ["f7"], FileUtils.safe_unlink(fu_mk("f7", false))
         assert_equal ["d1"], FileUtils.rm_r(fu_mk("d1", true))
         assert_equal ["d2"], FileUtils.rm_rf(fu_mk("d2", true))
-        assert_equal %w[d3 missing], FileUtils.rm_rf([fu_mk("d3", true), "missing"])
+        assert_equal ["d3", "missing"], FileUtils.rm_rf([fu_mk("d3", true), "missing"])
         assert_equal ["d4"], FileUtils.rmtree(fu_mk("d4", true))
         assert_equal ["d5"], FileUtils.rm_r(Pathname(fu_mk("d5", true)))
         assert_equal ["e1"], FileUtils.rmdir(fu_mk("e1", true))
@@ -652,7 +652,7 @@ module FileUtilsTests
           klass = RUBY_PLATFORM.include?("darwin") ? Errno::EPERM : Errno::EISDIR
           want = [klass, "apply2files - sub"]
           assert_equal [want, want, want], [fu_failure { File.delete("sub") }, fu_failure { File.unlink("sub") }, fu_failure { FileUtils.rm("sub") }]
-          assert_equal([], fu_failure { FileUtils.rm_f("sub") })
+          assert_equal [], fu_failure { FileUtils.rm_f("sub") }
           assert File.directory?("sub")
           File.write("f", "x")
           assert_equal 1, File.delete("f")
@@ -719,12 +719,12 @@ module FileUtilsTests
         File.write("out/tree/a", "old")
         File.write("out/tree/keep", "K")
         FileUtils.cp_r("tree", "out", remove_destination: true)
-        assert_equal %w[A K], [File.read("out/tree/a"), File.read("out/tree/keep")]
+        assert_equal ["A", "K"], [File.read("out/tree/a"), File.read("out/tree/keep")]
       end
     end
 
     def test_remove_destination_verbose_message
-      out, = capture_io { FileUtils.cp_r("a", "b", noop: true, verbose: true, remove_destination: true) }
+      out, _ = capture_io { FileUtils.cp_r("a", "b", noop: true, verbose: true, remove_destination: true) }
       assert_equal "cp -r --remove-destination a b\n", out
     end
 
@@ -756,7 +756,7 @@ module FileUtilsTests
         File.write("real", "R")
         File.symlink("real", "link")
         File.write("out", "old")
-        assert_equal(Errno::EEXIST, fu_raised { FileUtils.cp_r("link", "out", dereference_root: false) })
+        assert_equal Errno::EEXIST, fu_raised { FileUtils.cp_r("link", "out", dereference_root: false) }
         FileUtils.cp_r("link", "out", dereference_root: false, remove_destination: true)
         assert_equal [true, "R"], [File.symlink?("out"), File.read("real")]
       end

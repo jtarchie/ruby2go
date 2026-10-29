@@ -8,15 +8,21 @@ module Tep
       # String#index returns nil (not -1) when not found — matches CRuby.
       # See matz/spinel#532; spinel 0210389 fixed the prior -1 sentinel.
       end_of_headers = blob.index("\r\n\r\n")
-      return nil if end_of_headers.nil?
+      if end_of_headers.nil?
+        return nil
+      end
 
       headers_blob = blob[0, end_of_headers]
       lines = headers_blob.split("\r\n")
-      return nil if lines.empty?
+      if lines.length == 0
+        return nil
+      end
 
       first = lines[0]
       first_parts = first.split(" ")
-      return nil if first_parts.length < 3
+      if first_parts.length < 3
+        return nil
+      end
 
       req = Request.new
       req.verb         = first_parts[0]
@@ -53,21 +59,23 @@ module Tep
       # Parse Cookie header into req.cookies. Format: "k=v; k2=v2; ...".
       # Whitespace around `;` is allowed and stripped.
       cookie_blob = req.req_headers["cookie"]
-      if cookie_blob.length.positive?
+      if cookie_blob.length > 0
         cookie_blob.split(";").each do |pair|
           eq = pair.index("=")
-          next unless !eq.nil? && eq.positive?
-
-          cname  = pair[0, eq].strip
-          cvalue = pair[eq + 1, pair.length - eq - 1].strip
-          req.cookies[cname] = Url.unescape(cvalue)
+          if !eq.nil? && eq > 0
+            cname  = pair[0, eq].strip
+            cvalue = pair[eq + 1, pair.length - eq - 1].strip
+            req.cookies[cname] = Url.unescape(cvalue)
+          end
         end
       end
 
       # Carry over any body bytes already in the blob (the C helper
       # may have read more than just the headers in one recv()).
       body_start = end_of_headers + 4
-      req.raw_body = blob[body_start, blob.length - body_start] if body_start < blob.length
+      if body_start < blob.length
+        req.raw_body = blob[body_start, blob.length - body_start]
+      end
 
       req
     end

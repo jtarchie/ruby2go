@@ -5,7 +5,7 @@
 # The unmodified kramdown gem: parse a Markdown document and convert it to HTML, many times over.
 require "kramdown"
 
-SECTION = <<~MD.freeze
+SECTION = <<~MD
   ## Section
 
   Some *emphasis*, **strong**, `code`, a [link](https://example.com "title") and an ![image](a.png).
@@ -34,7 +34,7 @@ SECTION = <<~MD.freeze
   [^1]: The footnote text.
 MD
 
-DOC = "# Benchmark {#top}\n\n#{SECTION * 20}".freeze
+DOC = "# Benchmark {#top}\n\n" + (SECTION * 20)
 
 bytes = 0
 html = ""

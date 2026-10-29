@@ -251,3 +251,63 @@ Style/StderrPuts:
   Exclude:
     - prelude/**/*
     - prelude.rb
+
+# rugaroo compiles these files and compares them with MRI, so a rewritten construct is a lost test and a rewritten
+# prelude line is a changed program. Only Layout (whitespace, which leaves the parse tree identical) applies to them;
+# the Style, Lint, Naming and Security cops are for the code around them (scripts/, cmd/, the Cask).
+Style:
+  Exclude:
+    - testdata/**/*
+    - examples/**/*
+    - benchmarks/**/*
+    - prelude/**/*
+    - prelude.rb
+    - internal/boot/**/*
+Lint:
+  Exclude:
+    - testdata/**/*
+    - examples/**/*
+    - benchmarks/**/*
+    - prelude/**/*
+    - prelude.rb
+    - internal/boot/**/*
+Naming:
+  Exclude:
+    - testdata/**/*
+    - examples/**/*
+    - benchmarks/**/*
+    - prelude/**/*
+    - prelude.rb
+    - internal/boot/**/*
+Security:
+  Exclude:
+    - testdata/**/*
+    - examples/**/*
+    - benchmarks/**/*
+    - prelude/**/*
+    - prelude.rb
+    - internal/boot/**/*
+Bundler:
+  Exclude:
+    - testdata/**/*
+    - examples/**/*
+    - benchmarks/**/*
+    - prelude/**/*
+    - prelude.rb
+    - internal/boot/**/*
+Gemspec:
+  Exclude:
+    - testdata/**/*
+    - examples/**/*
+    - benchmarks/**/*
+    - prelude/**/*
+    - prelude.rb
+    - internal/boot/**/*
+Layout/IndentationStyle:
+  Exclude:
+    # tabs inside a %x{} Go body are the Go text, not Ruby indentation
+    - prelude/errno_process.rb
+Layout/EmptyLineBetweenDefs:
+  Exclude:
+    # blank lines inside this file's Go bodies are Go text
+    - prelude/errno_process.rb

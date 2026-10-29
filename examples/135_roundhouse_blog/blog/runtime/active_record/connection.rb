@@ -122,9 +122,11 @@ module ActiveRecord
       out = ""
       i = 0
       while i < parts.length
-        out += parts[i].to_s
+        out = out + parts[i].to_s
         bind = i + 1
-        out += ActiveRecord.adapter.escape_value(statement[bind]) if bind < statement.length
+        if bind < statement.length
+          out = out + ActiveRecord.adapter.escape_value(statement[bind])
+        end
         i += 1
       end
       out
@@ -140,7 +142,7 @@ module ActiveRecord
         result = yield
         Db.exec("COMMIT")
         result
-      rescue StandardError => e
+      rescue => e
         Db.exec("ROLLBACK")
         raise e
       end
@@ -186,12 +188,14 @@ module ActiveRecord
     # that has timestamps. Returns the affected-row count, the same
     # currency `update_counters` deals in.
     def self.upsert_all(rows, unique_by: nil, on_duplicate: nil, returning: nil)
-      return 0 if rows.empty?
-      raise NotImplementedError, "#{name}.upsert_all: RETURNING is not supported" if returning
+      return 0 if rows.length == 0
+      if returning
+        raise NotImplementedError, "#{name}.upsert_all: RETURNING is not supported"
+      end
 
       cols = rows[0].keys
       target = unique_by.nil? ? primary_key : unique_by
-      target_names = target.is_a?(Array) ? target.map(&:to_s) : [target.to_s]
+      target_names = target.is_a?(Array) ? target.map { |c| c.to_s } : [target.to_s]
 
       tuples = rows.map do |row|
         "(" + cols.map { |c| ActiveRecord.adapter.escape_value(row[c]) }.join(", ") + ")"
@@ -203,7 +207,7 @@ module ActiveRecord
         # Every column IS the conflict target: there is nothing left to
         # assign, and `DO UPDATE SET` with an empty list is a syntax
         # error. Rails degrades to a no-op insert here too.
-        assigns = updatable.empty? ? nil : updatable.map { |c| "#{c} = excluded.#{c}" }.join(", ")
+        assigns = updatable.length == 0 ? nil : updatable.map { |c| "#{c} = excluded.#{c}" }.join(", ")
       end
       action = assigns.nil? ? "DO NOTHING" : "DO UPDATE SET #{assigns}"
 

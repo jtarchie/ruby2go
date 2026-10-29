@@ -45,7 +45,7 @@ module Rails
 
     # Per-shard cap, so the total stays what the shared runtime
     # documents (`MAX_ENTRIES`) rather than that times the shard count.
-    SHARD_MAX = (MAX_ENTRIES / SHARD_COUNT).positive? ? (MAX_ENTRIES / SHARD_COUNT) : 1
+    SHARD_MAX = (MAX_ENTRIES / SHARD_COUNT) > 0 ? (MAX_ENTRIES / SHARD_COUNT) : 1
 
     # Built with a `while` loop rather than `Array.new(n) { … }` or
     # `(0...n).map`: a block that constructs per-element state is the
@@ -59,7 +59,7 @@ module Rails
       SHARD_LOCKS.push(Mutex.new)
       SHARD_ENTRIES.push({})
       SHARD_EXPIRES.push({})
-      i += 1
+      i = i + 1
     end
 
     # Which shard owns a key. Read from the TAIL, because that is where
@@ -71,7 +71,7 @@ module Rails
     # exists to avoid.
     def shard_of(k)
       n = k.bytesize
-      return 0 if n.zero?
+      return 0 if n == 0
 
       ((k.getbyte(n - 1) * 31) + k.getbyte(n / 2)) % SHARD_COUNT
     end
@@ -85,7 +85,7 @@ module Rails
       SHARD_LOCKS[s].synchronize do
         if entries.key?(k)
           due = SHARD_EXPIRES[s][k]
-          if due.zero? || due > Time.now.to_i
+          if due == 0 || due > Time.now.to_i
             hit = entries[k]
           else
             expired = true
@@ -107,7 +107,7 @@ module Rails
       expires = SHARD_EXPIRES[s]
       SHARD_LOCKS[s].synchronize do
         entries[k] = value
-        expires[k] = ttl.positive? ? Time.now.to_i + ttl : 0
+        expires[k] = ttl > 0 ? Time.now.to_i + ttl : 0
         if entries.size > SHARD_MAX
           entries.clear
           expires.clear
@@ -132,7 +132,7 @@ module Rails
         if hit.nil? || due.nil? || (due != 0 && due <= Time.now.to_i)
           n = 1
           entries[k] = "1"
-          expires[k] = ttl.positive? ? Time.now.to_i + ttl : 0
+          expires[k] = ttl > 0 ? Time.now.to_i + ttl : 0
           if entries.size > SHARD_MAX
             entries.clear
             expires.clear
@@ -163,7 +163,7 @@ module Rails
           SHARD_ENTRIES[s].clear
           SHARD_EXPIRES[s].clear
         end
-        s += 1
+        s = s + 1
       end
       nil
     end

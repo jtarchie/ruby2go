@@ -18,7 +18,7 @@ module Fiddle
         return [m[2].to_s, parse_ctype(m[1].to_s.strip, tymap), __split_arguments(m[3].to_s).map { |arg| parse_ctype(arg, tymap) }]
       end
 
-      raise "can't parse the function prototype: #{signature}"
+      raise RuntimeError, "can't parse the function prototype: #{signature}"
     end
 
     #: (String, ?Hash[String, String]?) -> Integer

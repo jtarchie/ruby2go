@@ -71,7 +71,7 @@ class IPAddr
     bits = octets.length * 8
     raise InvalidAddressError, "invalid address: #{addr}" if prefix > bits
 
-    prefix = bits if prefix.negative?
+    prefix = bits if prefix < 0
     @prefix = prefix
     @octets = IPAddr.mask(octets, prefix)
   end
@@ -100,7 +100,7 @@ class IPAddr
   # stdlib answers every predicate below about the embedded address, so
   # the tests here reduce to the v4 ones on the last four octets.
   def ipv4_mapped?
-    return false unless ipv6?
+    return false if !ipv6?
 
     i = 0
     while i < 10
@@ -118,7 +118,7 @@ class IPAddr
   # `@addr < 2` test (measured: `::0.0.0.1` is false, `::1.2.3.4` is
   # true).
   def ipv4_compat?
-    return false unless ipv6?
+    return false if !ipv6?
 
     i = 0
     while i < 12
@@ -200,7 +200,7 @@ class IPAddr
   # column. A nil at the call site is a type error there, which is
   # where it belongs.
   def self.parse_octets(addr)
-    raise InvalidAddressError, "invalid address: #{addr}" if addr.empty?
+    raise InvalidAddressError, "invalid address: #{addr}" if addr.length == 0
     return parse_v6(addr) if addr.include?(":")
 
     parse_v4(addr)
@@ -212,14 +212,14 @@ class IPAddr
   # invalid address, which is what the stdlib answers for `"1.2.3.4/"`
   # too.
   def self.parse_prefix(part, addr)
-    raise InvalidAddressError, "invalid address: #{addr}" if part.empty?
+    raise InvalidAddressError, "invalid address: #{addr}" if part.length == 0
     raise InvalidAddressError, "invalid address: #{addr}" if part.length > 3
 
     value = 0
     i = 0
     while i < part.length
       d = digit_value(part[i, 1], 10)
-      raise InvalidAddressError, "invalid address: #{addr}" if d.negative?
+      raise InvalidAddressError, "invalid address: #{addr}" if d < 0
 
       value = value * 10 + d
       i += 1
@@ -237,13 +237,13 @@ class IPAddr
     i = 0
     while i < octets.length
       bit = i * 8
-      out << if bit + 8 <= prefix
-               octets[i]
-             elsif bit >= prefix
-               0
-             else
-               (octets[i] & ((0xff << (8 - (prefix - bit))) & 0xff))
-             end
+      if bit + 8 <= prefix
+        out << octets[i]
+      elsif bit >= prefix
+        out << 0
+      else
+        out << (octets[i] & ((0xff << (8 - (prefix - bit))) & 0xff))
+      end
       i += 1
     end
     out
@@ -263,14 +263,14 @@ class IPAddr
   end
 
   def self.parse_dec_octet(part, text)
-    raise InvalidAddressError, "invalid address: #{text}" if part.empty?
+    raise InvalidAddressError, "invalid address: #{text}" if part.length == 0
     raise InvalidAddressError, "invalid address: #{text}" if part.length > 3
 
     value = 0
     i = 0
     while i < part.length
       d = digit_value(part[i, 1], 10)
-      raise InvalidAddressError, "invalid address: #{text}" if d.negative?
+      raise InvalidAddressError, "invalid address: #{text}" if d < 0
 
       value = value * 10 + d
       i += 1
@@ -299,9 +299,9 @@ class IPAddr
     right = parse_v6_groups(tail, text)
     fill = 16 - left.length - right.length
     if elided
-      raise InvalidAddressError, "invalid address: #{text}" if fill.negative?
-    elsif fill != 0
-      raise InvalidAddressError, "invalid address: #{text}"
+      raise InvalidAddressError, "invalid address: #{text}" if fill < 0
+    else
+      raise InvalidAddressError, "invalid address: #{text}" if fill != 0
     end
 
     out = []
@@ -319,7 +319,7 @@ class IPAddr
   # side, which is what makes `::1` and `fe80::` both work.
   def self.parse_v6_groups(part, text)
     out = []
-    return out if part.empty?
+    return out if part.length == 0
 
     groups = part.split(":", -1)
     i = 0
@@ -339,14 +339,14 @@ class IPAddr
   end
 
   def self.parse_hex_group(group, text)
-    raise InvalidAddressError, "invalid address: #{text}" if group.empty?
+    raise InvalidAddressError, "invalid address: #{text}" if group.length == 0
     raise InvalidAddressError, "invalid address: #{text}" if group.length > 4
 
     value = 0
     i = 0
     while i < group.length
       d = digit_value(group[i, 1], 16)
-      raise InvalidAddressError, "invalid address: #{text}" if d.negative?
+      raise InvalidAddressError, "invalid address: #{text}" if d < 0
 
       value = value * 16 + d
       i += 1
@@ -364,7 +364,7 @@ class IPAddr
       n = ch.ord - 87 if ch >= "a" && ch <= "f"
       n = ch.ord - 55 if ch >= "A" && ch <= "F"
     end
-    return -1 if n.negative? || n >= base
+    return -1 if n < 0 || n >= base
 
     n
   end
@@ -374,7 +374,7 @@ class IPAddr
     out = +""
     shift = 12
     while shift >= 0
-      out += digits[(value >> shift) & 0xf, 1]
+      out = out + digits[(value >> shift) & 0xf, 1]
       shift -= 4
     end
     out

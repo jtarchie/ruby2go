@@ -24,18 +24,20 @@ bad = 0
 ensured = 0
 inputs = %w[1 x 3 4 y 6 7 8 z 0]
 100_000.times do |i|
-  ok += parse_digit(inputs[i % 10] || "")
-rescue ParseError => e
-  bad += e.pos
-ensure
-  ensured += 1
+  begin
+    ok += parse_digit(inputs[i % 10] || "")
+  rescue ParseError => e
+    bad += e.pos
+  ensure
+    ensured += 1
+  end
 end
 puts ok, bad, ensured
 
 found = 0
 50_000.times do |i|
   found += catch(:done) do
-    10.times { |j| throw :done, j if ((i + j) % 7).zero? }
+    10.times { |j| throw :done, j if (i + j) % 7 == 0 }
     0
   end
 end

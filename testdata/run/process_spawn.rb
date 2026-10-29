@@ -2,10 +2,9 @@
 
 # Process.spawn, wait, wait2, waitpid and Kernel#exec (decision 107).
 
-require "English"
 pid = Process.spawn("sh", "-c", "exit 3")
 puts "wait returns the pid: #{Process.wait(pid) == pid}"
-puts "status: #{$CHILD_STATUS&.exitstatus} success? #{$CHILD_STATUS&.success?}"
+puts "status: #{$?&.exitstatus} success? #{$?&.success?}"
 
 pid = Process.spawn("true")
 reaped, status = Process.wait2(pid)

@@ -23,7 +23,7 @@ module ActiveStorage
     end
 
     def path_for(key)
-      "#{root}/#{key[0, 2]}/#{key[2, 2]}/#{key}"
+      root + "/" + key[0, 2].to_s + "/" + key[2, 2].to_s + "/" + key
     end
 
     # `mkdir -p` for the two-level fan-out, one segment at a time:
@@ -32,16 +32,16 @@ module ActiveStorage
     def ensure_dir(path)
       built = +""
       path.split("/").each do |seg|
-        next if seg.empty?
+        next if seg.length == 0
 
-        built = built.empty? ? seg : "#{built}/#{seg}"
+        built = built.length == 0 ? seg : built + "/" + seg
         Dir.mkdir(built) unless Dir.exist?(built)
       end
       nil
     end
 
     def upload(key, data)
-      ensure_dir("#{root}/#{key[0, 2]}/#{key[2, 2]}")
+      ensure_dir(root + "/" + key[0, 2].to_s + "/" + key[2, 2].to_s)
       File.binwrite(path_for(key), data)
       nil
     end
@@ -68,13 +68,14 @@ module ActiveStorage
     # from a direct upload. Anything else — including the bare filename
     # a urlencoded form posts for a file field — attaches nothing.
     def self.from_attachable(value)
-      case value
-      when ActionDispatch::Http::UploadedFile
+      if value.is_a?(ActionDispatch::Http::UploadedFile)
         Blob.create_and_upload!(value.read, value.original_filename, value.content_type)
-      when ActiveStorage::Blob
+      elsif value.is_a?(ActiveStorage::Blob)
         value
-      when String
+      elsif value.is_a?(String)
         Blob.find_signed(value)
+      else
+        nil
       end
     end
   end
@@ -84,22 +85,30 @@ module ActiveStorage
   # decoder — which is all Rails' own `ImageAnalyzer` reports either.
   # `[0, 0]` for anything else, which `BlobMetadata` answers as nil.
   class ImageAnalyzer
-    def self.dimensions(data, _content_type)
+    def self.dimensions(data, content_type)
       n = data.bytesize
       return [0, 0] if n < 10
 
       b0 = data.getbyte(0).to_i
       b1 = data.getbyte(1).to_i
-      return [be32(data, 16), be32(data, 20)] if b0 == 0x89 && b1 == 0x50 && n >= 24
-      return [le16(data, 6), le16(data, 8)] if b0 == 0x47 && b1 == 0x49
+      if b0 == 0x89 && b1 == 0x50 && n >= 24
+        return [be32(data, 16), be32(data, 20)]
+      end
+      if b0 == 0x47 && b1 == 0x49
+        return [le16(data, 6), le16(data, 8)]
+      end
 
       if b0 == 0x42 && b1 == 0x4D && n >= 26
         h = le32(data, 22)
-        h = 4_294_967_296 - h if h > 2_147_483_647
+        h = 4294967296 - h if h > 2147483647
         return [le32(data, 18), h]
       end
-      return jpeg_dimensions(data) if b0 == 0xFF && b1 == 0xD8
-      return webp_dimensions(data) if b0 == 0x52 && b1 == 0x49 && n >= 30 && data.byteslice(8, 4) == "WEBP"
+      if b0 == 0xFF && b1 == 0xD8
+        return jpeg_dimensions(data)
+      end
+      if b0 == 0x52 && b1 == 0x49 && n >= 30 && data.byteslice(8, 4) == "WEBP"
+        return webp_dimensions(data)
+      end
 
       [0, 0]
     end
@@ -109,7 +118,7 @@ module ActiveStorage
     end
 
     def self.be32(data, at)
-      be16(data, at) * 65_536 + be16(data, at + 2)
+      be16(data, at) * 65536 + be16(data, at + 2)
     end
 
     def self.le16(data, at)
@@ -117,11 +126,11 @@ module ActiveStorage
     end
 
     def self.le24(data, at)
-      data.getbyte(at + 2).to_i * 65_536 + le16(data, at)
+      data.getbyte(at + 2).to_i * 65536 + le16(data, at)
     end
 
     def self.le32(data, at)
-      le16(data, at + 2) * 65_536 + le16(data, at)
+      le16(data, at + 2) * 65536 + le16(data, at)
     end
 
     # Walk the marker segments to the first SOFn frame header, which
@@ -144,7 +153,9 @@ module ActiveStorage
         end
         sof = (marker >= 0xC0 && marker <= 0xC3) || (marker >= 0xC5 && marker <= 0xC7) ||
               (marker >= 0xC9 && marker <= 0xCB) || (marker >= 0xCD && marker <= 0xCF)
-        return [be16(data, i + 7), be16(data, i + 5)] if sof
+        if sof
+          return [be16(data, i + 7), be16(data, i + 5)]
+        end
 
         i += 2 + be16(data, i + 2)
       end
@@ -156,13 +167,17 @@ module ActiveStorage
     # (VP8X, 24-bit fields minus one).
     def self.webp_dimensions(data)
       kind = data.byteslice(12, 4).to_s
-      return [le16(data, 26) & 0x3FFF, le16(data, 28) & 0x3FFF] if kind == "VP8 "
+      if kind == "VP8 "
+        return [le16(data, 26) & 0x3FFF, le16(data, 28) & 0x3FFF]
+      end
 
       if kind == "VP8L"
         bits = le32(data, 21)
         return [(bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1]
       end
-      return [le24(data, 24) + 1, le24(data, 27) + 1] if kind == "VP8X"
+      if kind == "VP8X"
+        return [le24(data, 24) + 1, le24(data, 27) + 1]
+      end
 
       [0, 0]
     end
@@ -191,7 +206,7 @@ module ActiveStorage
         ActionDispatch::Router::Route.new(
           "GET", "/rails/active_storage/disk/:encoded_key/*filename",
           :active_storage_disk, :show
-        )
+        ),
       ]
     end
 
@@ -217,10 +232,10 @@ module ActiveStorage
   # reader stops at the first comma or brace of a bare value.
   module DiskKey
     def self.encode(key, disposition)
-      exp = "\"#{ActionController::MessageVerifier.iso8601_ms(Time.now + 300)}\""
+      exp = "\"" + ActionController::MessageVerifier.iso8601_ms(Time.now + 300) + "\""
       ActionController::MessageVerifier.data_envelope(
         Rails.application.secret_key_base, "ActiveStorage",
-        ActionController::MessageVerifier.json_string("#{key}|#{disposition}"),
+        ActionController::MessageVerifier.json_string(key + "|" + disposition),
         "disk_key", exp, false
       )
     end
@@ -240,7 +255,8 @@ module ActiveStorage
     end
 
     def self.disk_url(blob, disposition)
-      "/rails/active_storage/disk/#{encode(blob.key, disposition)}/#{ActiveStorage.url_filename(blob.filename.to_s)}"
+      "/rails/active_storage/disk/" + encode(blob.key, disposition) + "/" +
+        ActiveStorage.url_filename(blob.filename.to_s)
     end
   end
 
@@ -249,7 +265,7 @@ module ActiveStorage
   # base class. `params` carries the route's segments and the query.
   module Blobs
     class RedirectController < ActionController::Base
-      def process_action(_action_name)
+      def process_action(action_name)
         show
         nil
       end
@@ -275,7 +291,7 @@ module ActiveStorage
   # decodes to nothing is the identity variant: the original.
   module Representations
     class RedirectController < ActionController::Base
-      def process_action(_action_name)
+      def process_action(action_name)
         show
         nil
       end
@@ -306,7 +322,7 @@ module ActiveStorage
   # makes a "Download" link download; the app's initializer asks for an
   # hour of public caching on this route and gets it.
   class DiskController < ActionController::Base
-    def process_action(_action_name)
+    def process_action(action_name)
       show
       nil
     end
@@ -321,7 +337,8 @@ module ActiveStorage
         head(:not_found)
         return nil
       end
-      @headers["Content-Disposition"] = "#{disposition}; filename=\"#{ActiveStorage.url_filename(blob.filename.to_s)}\""
+      @headers["Content-Disposition"] = disposition + "; filename=\"" +
+                                        ActiveStorage.url_filename(blob.filename.to_s) + "\""
       @headers["Cache-Control"] = "max-age=3600, public"
       send_data(service.download(key), type: blob.content_type, disposition: disposition)
       nil

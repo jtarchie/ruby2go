@@ -57,8 +57,8 @@ module ActionView
       out = +""
       i = int.length
       while i > 3
-        out = ",#{int[i - 3, 3]}#{out}"
-        i -= 3
+        out = "," + int[i - 3, 3].to_s + out
+        i = i - 3
       end
       out = int[0, i].to_s + out
       sign + out
@@ -82,9 +82,9 @@ module ActionView
         # isn't in the proven surface.
         c = name[i, 1].to_s
         if c != "]"
-          out += ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-:.".include?(c) ? c : "_")
+          out = out + ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-:.".include?(c) ? c : "_")
         end
-        i += 1
+        i = i + 1
       end
       out
     end
@@ -142,14 +142,14 @@ module ActionView
     # integer-only (no float/precision machinery) keeps every site typed.
     def self.number_to_human(value, format: "%n %u")
       units = ["", "Thousand", "Million", "Billion", "Trillion", "Quadrillion"]
-      neg = value.negative?
+      neg = value < 0
       n = neg ? -value : value
       idx = 0
       while n >= 1000 && idx < units.length - 1
-        n /= 1000
-        idx += 1
+        n = n / 1000
+        idx = idx + 1
       end
-      num = neg ? "-#{n}" : n.to_s
+      num = neg ? "-" + n.to_s : n.to_s
       format.sub("%n", num).sub("%u", units[idx]).strip
     end
 
@@ -170,9 +170,9 @@ module ActionView
     # targets, and THIS FILE is already ruby-family-only (see the header:
     # it is deliberately absent from runtime_loader's tables). So the
     # boundary it describes is the boundary this file already sits on.
-    MINUTES_IN_YEAR = 525_600
-    MINUTES_IN_QUARTER_YEAR = 131_400
-    MINUTES_IN_THREE_QUARTERS_YEAR = 394_200
+    MINUTES_IN_YEAR = 525600
+    MINUTES_IN_QUARTER_YEAR = 131400
+    MINUTES_IN_THREE_QUARTERS_YEAR = 394200
 
     def self.time_ago_in_words(from_time, include_seconds: false)
       distance_of_time_in_words(from_time, Time.now, include_seconds: include_seconds)
@@ -208,7 +208,7 @@ module ActionView
       case distance_in_minutes
       when 0..1
         unless include_seconds
-          return distance_in_minutes.zero? ? "less than a minute" : "1 minute"
+          return distance_in_minutes == 0 ? "less than a minute" : "1 minute"
         end
 
         case distance_in_seconds
@@ -223,11 +223,11 @@ module ActionView
       when 45...90      then "about 1 hour"
       when 90...1440    then "about #{(distance_in_minutes.to_f / 60.0).round} hours"
       when 1440...2520  then "1 day"
-      when 2520...43_200 then "#{(distance_in_minutes.to_f / 1440.0).round} days"
-      when 43_200...86_400
-        months = (distance_in_minutes.to_f / 43_200.0).round
+      when 2520...43200 then "#{(distance_in_minutes.to_f / 1440.0).round} days"
+      when 43200...86400
+        months = (distance_in_minutes.to_f / 43200.0).round
         months == 1 ? "about 1 month" : "about #{months} months"
-      when 86_400...525_600 then "#{(distance_in_minutes.to_f / 43_200.0).round} months"
+      when 86400...525600 then "#{(distance_in_minutes.to_f / 43200.0).round} months"
       else
         from_year = earlier.year
         from_year += 1 if earlier.month >= 3
@@ -301,8 +301,7 @@ module ActionView
       n = s.length
       while i < n
         c = s[i, 1].to_s
-        case c
-        when "<"
+        if c == "<"
           if s[i, 4] == "<!--"
             close = s.index("-->", i + 4)
             # An unterminated comment eats the remainder, as in Rails.
@@ -311,24 +310,24 @@ module ActionView
             after = tag_end_index(s, i)
             i = after.nil? ? n : after
           else
-            out += "&lt;"
-            i += 1
+            out = out + "&lt;"
+            i = i + 1
           end
-        when ">"
-          out += "&gt;"
-          i += 1
-        when "&"
+        elsif c == ">"
+          out = out + "&gt;"
+          i = i + 1
+        elsif c == "&"
           len = entity_reference_length(s, i)
-          if len.zero?
-            out += "&amp;"
-            i += 1
+          if len == 0
+            out = out + "&amp;"
+            i = i + 1
           else
-            out += s[i, len].to_s
-            i += len
+            out = out + s[i, len].to_s
+            i = i + len
           end
         else
-          out += c
-          i += 1
+          out = out + c
+          i = i + 1
         end
       end
       out
@@ -412,11 +411,11 @@ module ActionView
 
     # Rails::HTML5::SafeListSanitizer.allowed_tags, 1.7.1.
     def self.sanitize_default_tags
-      %w[a abbr acronym address b big blockquote
-         br cite code dd del dfn div dl dt
-         em h1 h2 h3 h4 h5 h6 hr i img
-         ins kbd li mark ol p pre samp small
-         span strong sub sup time tt ul var]
+      ["a", "abbr", "acronym", "address", "b", "big", "blockquote",
+       "br", "cite", "code", "dd", "del", "dfn", "div", "dl", "dt",
+       "em", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img",
+       "ins", "kbd", "li", "mark", "ol", "p", "pre", "samp", "small",
+       "span", "strong", "sub", "sup", "time", "tt", "ul", "var"]
     end
 
     # Rails::HTML5::SafeListSanitizer.allowed_attributes, 1.7.1.
@@ -434,10 +433,10 @@ module ActionView
 
     # Loofah::HTML5::SafeList::ALLOWED_PROTOCOLS.
     def self.sanitize_allowed_protocols
-      %w[afs aim callto data ed2k fax ftp gopher
-         http https irc line mailto modem news
-         nntp rsync rtsp sftp sms ssh tag tel
-         telnet urn webcal xmpp]
+      ["afs", "aim", "callto", "data", "ed2k", "fax", "ftp", "gopher",
+       "http", "https", "irc", "line", "mailto", "modem", "news",
+       "nntp", "rsync", "rtsp", "sftp", "sms", "ssh", "tag", "tel",
+       "telnet", "urn", "webcal", "xmpp"]
     end
 
     # Loofah::HTML5::SafeList::ALLOWED_URI_DATA_MEDIATYPES.
@@ -448,7 +447,7 @@ module ActionView
     # Loofah::HTML5::SafeList::VOID_ELEMENTS — serialized with no close
     # tag, never pushed on the open stack.
     def self.sanitize_void_elements
-      %w[area br hr img input]
+      ["area", "br", "hr", "img", "input"]
     end
 
     # HTML5 RAWTEXT / escapable-rawtext containers: their content is
@@ -458,13 +457,13 @@ module ActionView
     # `noscript` is deliberately absent — with scripting off, which is
     # how the gem's parser runs, its children parse as markup.
     def self.sanitize_rawtext_elements
-      %w[iframe noembed noframes plaintext script style
-         textarea title xmp]
+      ["iframe", "noembed", "noframes", "plaintext", "script", "style",
+       "textarea", "title", "xmp"]
     end
 
     # Allow-list entries this port refuses to serve (see the header).
     def self.sanitize_unservable_tags
-      sanitize_rawtext_elements + %w[svg math template]
+      sanitize_rawtext_elements + ["svg", "math", "template"]
     end
 
     def self.sanitize_space?(c)
@@ -480,7 +479,7 @@ module ActionView
         c = raw[i, 1].to_s
         break if sanitize_space?(c) || c == "/"
 
-        i += 1
+        i = i + 1
       end
       raw[0, i].to_s.downcase
     end
@@ -497,8 +496,10 @@ module ActionView
                 "served — rawtext, foreign and template content parse under a " \
                 "different grammar; see runtime/ruby/action_view/view_helpers_ext.rb"
         end
-        allowed.push(t) if t != "" && t != "mglyph" && t != "malignmark" && !allowed.include?(t)
-        ti += 1
+        if t != "" && t != "mglyph" && t != "malignmark" && !allowed.include?(t)
+          allowed.push(t)
+        end
+        ti = ti + 1
       end
       attrs = [""]
       attrs.pop
@@ -512,7 +513,7 @@ module ActionView
                 "runtime/ruby/action_view/view_helpers_ext.rb"
         end
         attrs.push(a) if a != "" && !attrs.include?(a)
-        ai += 1
+        ai = ai + 1
       end
 
       open_stack = [""]
@@ -522,8 +523,7 @@ module ActionView
       n = s.length
       while i < n
         c = s[i, 1].to_s
-        case c
-        when "<"
+        if c == "<"
           if s[i, 4] == "<!--"
             close = s.index("-->", i + 4)
             i = close.nil? ? n : close + 3
@@ -542,30 +542,30 @@ module ActionView
                   # stays well-formed when the input interleaved tags.
                   # A close that nothing opened falls through and is
                   # dropped, which is the gem's answer as well.
-                  while open_stack.length.positive?
+                  while open_stack.length > 0
                     top = open_stack.pop.to_s
-                    out = "#{out}</#{top}>"
+                    out = out + "</" + top + ">"
                     break if top == name
                   end
                 end
                 i = after
               else
                 name = sanitize_tag_name(raw)
-                if %w[svg math].include?(name)
+                if name == "svg" || name == "math"
                   # Foreign content is PRUNED whole — children, text and
                   # all — matching the gem's namespace rule. A
                   # self-closing root (`<svg/>`) contains nothing.
-                  i = if raw[raw.length - 1, 1].to_s == "/"
-                        after
-                      else
-                        sanitize_foreign_end(s, after, name)
-                      end
+                  if raw[raw.length - 1, 1].to_s == "/"
+                    i = after
+                  else
+                    i = sanitize_foreign_end(s, after, name)
+                  end
                 elsif sanitize_rawtext_elements.include?(name)
                   # Content up to the matching close is character data:
                   # escape it like text. (These names cannot be in
                   # `allowed` — the engine refused them above.)
                   close_at = sanitize_rawtext_close_at(s, after, name)
-                  out += sanitize_text(s[after, close_at - after].to_s)
+                  out = out + sanitize_text(s[after, close_at - after].to_s)
                   if close_at >= n
                     i = n
                   else
@@ -573,7 +573,7 @@ module ActionView
                     i = gt.nil? ? n : gt + 1
                   end
                 elsif allowed.include?(name)
-                  out += sanitize_open_tag(name, raw, attrs)
+                  out = out + sanitize_open_tag(name, raw, attrs)
                   open_stack.push(name) unless sanitize_void_elements.include?(name)
                   i = after
                 else
@@ -584,29 +584,31 @@ module ActionView
               end
             end
           else
-            out += "&lt;"
-            i += 1
+            out = out + "&lt;"
+            i = i + 1
           end
-        when ">"
-          out += "&gt;"
-          i += 1
-        when "&"
+        elsif c == ">"
+          out = out + "&gt;"
+          i = i + 1
+        elsif c == "&"
           len = entity_reference_length(s, i)
-          if len.zero?
-            out += "&amp;"
-            i += 1
+          if len == 0
+            out = out + "&amp;"
+            i = i + 1
           else
-            out += s[i, len].to_s
-            i += len
+            out = out + s[i, len].to_s
+            i = i + len
           end
         else
-          out += c
-          i += 1
+          out = out + c
+          i = i + 1
         end
       end
       # Close anything the input left open, innermost first — measured:
       # the gem answers "<b>unclosed</b>" for "<b>unclosed".
-      out = "#{out}</#{open_stack.pop}>" while open_stack.length.positive?
+      while open_stack.length > 0
+        out = out + "</" + open_stack.pop.to_s + ">"
+      end
       out
     end
 
@@ -618,7 +620,7 @@ module ActionView
       depth = 1
       j = from
       n = s.length
-      while j < n && depth.positive?
+      while j < n && depth > 0
         lt = s.index("<", j)
         return n if lt.nil?
 
@@ -631,16 +633,16 @@ module ActionView
 
           raw = s[lt + 1, te - lt - 2].to_s
           if raw[0, 1].to_s == "/"
-            depth -= 1 if sanitize_tag_name(raw[1, raw.length - 1].to_s) == name
+            depth = depth - 1 if sanitize_tag_name(raw[1, raw.length - 1].to_s) == name
           elsif sanitize_tag_name(raw) == name && raw[raw.length - 1, 1].to_s != "/"
-            depth += 1
+            depth = depth + 1
           end
           j = te
         else
           j = lt + 1
         end
       end
-      depth.positive? ? n : j
+      depth > 0 ? n : j
     end
 
     # Index of the `</name` (case-insensitive, followed by a delimiter)
@@ -670,7 +672,7 @@ module ActionView
     # `>` inside a value stay raw — measured against the gem, which
     # serializes `title="a<b>c"` exactly so.
     def self.sanitize_open_tag(name, raw, attrs)
-      out = "<#{name}"
+      out = "<" + name
       seen = [""]
       seen.pop
       i = 0
@@ -680,49 +682,63 @@ module ActionView
         c = raw[i, 1].to_s
         break if sanitize_space?(c)
 
-        i += 1
+        i = i + 1
       end
       while i < n
         c = raw[i, 1].to_s
         if sanitize_space?(c) || c == "/"
-          i += 1
+          i = i + 1
         else
           astart = i
           while i < n
             c = raw[i, 1].to_s
             break if sanitize_space?(c) || c == "="
 
-            i += 1
+            i = i + 1
           end
           aname = raw[astart, i - astart].to_s.downcase
-          i += 1 while i < n && sanitize_space?(raw[i, 1].to_s)
+          while i < n && sanitize_space?(raw[i, 1].to_s)
+            i = i + 1
+          end
           value = ""
           if raw[i, 1].to_s == "="
-            i += 1
-            i += 1 while i < n && sanitize_space?(raw[i, 1].to_s)
+            i = i + 1
+            while i < n && sanitize_space?(raw[i, 1].to_s)
+              i = i + 1
+            end
             q = raw[i, 1].to_s
-            if ["\"", "'"].include?(q)
-              i += 1
+            if q == "\"" || q == "'"
+              i = i + 1
               vstart = i
-              i += 1 while i < n && raw[i, 1].to_s != q
+              while i < n && raw[i, 1].to_s != q
+                i = i + 1
+              end
               value = raw[vstart, i - vstart].to_s
-              i += 1 if i < n
+              i = i + 1 if i < n
             else
               vstart = i
-              i += 1 while i < n && !sanitize_space?(raw[i, 1].to_s)
+              while i < n && !sanitize_space?(raw[i, 1].to_s)
+                i = i + 1
+              end
               value = raw[vstart, i - vstart].to_s
             end
           end
           if aname != "" && !seen.include?(aname)
             seen.push(aname)
             keep = attrs.include?(aname)
-            keep = sanitize_uri_allowed?(value) if keep && sanitize_uri_attributes.include?(aname)
-            keep = false if keep && aname == "src" && sanitize_blank_value?(value)
-            out = "#{out} #{aname}=\"#{sanitize_attr_value(value)}\"" if keep
+            if keep && sanitize_uri_attributes.include?(aname)
+              keep = sanitize_uri_allowed?(value)
+            end
+            if keep && aname == "src" && sanitize_blank_value?(value)
+              keep = false
+            end
+            if keep
+              out = out + " " + aname + "=\"" + sanitize_attr_value(value) + "\""
+            end
           end
         end
       end
-      "#{out}>"
+      out + ">"
     end
 
     def self.sanitize_blank_value?(value)
@@ -731,7 +747,7 @@ module ActionView
       while i < n
         return false if value[i, 1].to_s.ord > 32
 
-        i += 1
+        i = i + 1
       end
       true
     end
@@ -744,25 +760,24 @@ module ActionView
       n = t.length
       while i < n
         c = t[i, 1].to_s
-        case c
-        when "<"
-          out += "&lt;"
-          i += 1
-        when ">"
-          out += "&gt;"
-          i += 1
-        when "&"
+        if c == "<"
+          out = out + "&lt;"
+          i = i + 1
+        elsif c == ">"
+          out = out + "&gt;"
+          i = i + 1
+        elsif c == "&"
           len = entity_reference_length(t, i)
-          if len.zero?
-            out += "&amp;"
-            i += 1
+          if len == 0
+            out = out + "&amp;"
+            i = i + 1
           else
-            out += t[i, len].to_s
-            i += len
+            out = out + t[i, len].to_s
+            i = i + len
           end
         else
-          out += c
-          i += 1
+          out = out + c
+          i = i + 1
         end
       end
       out
@@ -778,20 +793,20 @@ module ActionView
       while i < n
         c = value[i, 1].to_s
         if c == "\""
-          out += "&quot;"
-          i += 1
+          out = out + "&quot;"
+          i = i + 1
         elsif c == "&"
           len = entity_reference_length(value, i)
-          if len.zero?
-            out += "&amp;"
-            i += 1
+          if len == 0
+            out = out + "&amp;"
+            i = i + 1
           else
-            out += value[i, len].to_s
-            i += len
+            out = out + value[i, len].to_s
+            i = i + len
           end
         else
-          out += c
-          i += 1
+          out = out + c
+          i = i + 1
         end
       end
       out
@@ -825,10 +840,10 @@ module ActionView
         c = t[i, 1].to_s
         break unless c != "" && "abcdefghijklmnopqrstuvwxyz0123456789+-.".include?(c)
 
-        i += 1
+        i = i + 1
       end
       sep = sanitize_uri_separator_length(t, i)
-      return true if sep.zero?
+      return true if sep == 0
 
       protocol = t[0, i].to_s
       return false unless sanitize_allowed_protocols.include?(protocol)
@@ -838,10 +853,10 @@ module ActionView
         j = i + sep
         while j < n
           c = t[j, 1].to_s
-          break if [";", ","].include?(c)
+          break if c == ";" || c == ","
 
-          m += c
-          j += 1
+          m = m + c
+          j = j + 1
         end
         return sanitize_data_mediatypes.include?(m)
       end
@@ -861,11 +876,15 @@ module ActionView
 
         j = i + 2
         if t[j, 1].to_s == "x"
-          j += 1
-          j += 1 while t[j, 1].to_s == "0"
+          j = j + 1
+          while t[j, 1].to_s == "0"
+            j = j + 1
+          end
           return j + 2 - i if t[j, 2] == "3a"
         else
-          j += 1 while t[j, 1].to_s == "0"
+          while t[j, 1].to_s == "0"
+            j = j + 1
+          end
           return j + 2 - i if t[j, 2] == "58"
         end
       end
@@ -881,8 +900,10 @@ module ActionView
       while i < n
         c = value[i, 1].to_s
         o = c.ord
-        out += c unless o <= 32 || o == 127 || (o >= 128 && o <= 257) || c == "`"
-        i += 1
+        unless o <= 32 || o == 127 || (o >= 128 && o <= 257) || c == "`"
+          out = out + c
+        end
+        i = i + 1
       end
       out
     end
@@ -904,8 +925,8 @@ module ActionView
       n = value.length
       while i < n
         if value[i, 1].to_s != "&"
-          out += value[i, 1].to_s
-          i += 1
+          out = out + value[i, 1].to_s
+          i = i + 1
         else
           rep = ""
           len = 0
@@ -927,23 +948,27 @@ module ActionView
               len = 6
             end
           end
-          if len.zero? && value[i + 1, 1].to_s == "#"
+          if len == 0 && value[i + 1, 1].to_s == "#"
             j = i + 2
             hex = false
             marker = value[j, 1].to_s
             if marker == "x" || (!first_pass && marker == "X")
               hex = true
-              j += 1
+              j = j + 1
             end
             digits = hex ? "0123456789abcdefABCDEF" : "0123456789"
             dstart = j
-            j += 1 while j < n && digits.include?(value[j, 1].to_s) && value[j, 1].to_s != ""
+            while j < n && digits.include?(value[j, 1].to_s) && value[j, 1].to_s != ""
+              j = j + 1
+            end
             if j > dstart
               semi = value[j, 1].to_s == ";"
               if semi || !first_pass
                 dtext = value[dstart, j - dstart].to_s
                 k = 0
-                k += 1 while k < dtext.length && dtext[k, 1].to_s == "0"
+                while k < dtext.length && dtext[k, 1].to_s == "0"
+                  k = k + 1
+                end
                 sig = dtext.length - k
                 if sig <= (hex ? 6 : 7)
                   cp = dtext.to_i(hex ? 16 : 10)
@@ -956,12 +981,12 @@ module ActionView
               end
             end
           end
-          if len.zero?
-            out += "&"
-            i += 1
+          if len == 0
+            out = out + "&"
+            i = i + 1
           else
-            out += rep
-            i += len
+            out = out + rep
+            i = i + len
           end
         end
       end
@@ -977,8 +1002,8 @@ module ActionView
         ascii = "!\"\#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
         return ascii[cp - 33, 1].to_s
       end
-      return nil if cp >= 55_296 && cp <= 57_343
-      return nil if cp > 1_114_111
+      return nil if cp >= 55296 && cp <= 57343
+      return nil if cp > 1114111
 
       "?"
     end
@@ -990,7 +1015,7 @@ module ActionView
     # which end at the next `>` and vanish like a tag.
     def self.tag_open_at?(s, i)
       c = s[i + 1, 1].to_s
-      return true if ["!", "?"].include?(c)
+      return true if c == "!" || c == "?"
 
       c = s[i + 2, 1].to_s if c == "/"
       # Inline literal, not a module const: a module-const receiver
@@ -1012,12 +1037,12 @@ module ActionView
         c = s[j, 1].to_s
         if quote != ""
           quote = "" if c == quote
-        elsif ["\"", "'"].include?(c)
+        elsif c == "\"" || c == "'"
           quote = c
         elsif c == ">"
           out = j + 1
         end
-        j += 1
+        j = j + 1
       end
       out
     end
@@ -1032,20 +1057,22 @@ module ActionView
       j = i + 1
       digits = ""
       if s[j, 1].to_s == "#"
-        j += 1
-        if %w[x X].include?(s[j, 1].to_s)
-          j += 1
+        j = j + 1
+        if s[j, 1].to_s == "x" || s[j, 1].to_s == "X"
+          j = j + 1
           digits = "0123456789abcdefABCDEF"
         else
           digits = "0123456789"
         end
       else
-        digits = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        digits = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" + "0123456789"
         # A named reference must OPEN with a letter: `&1;` is not one.
         return 0 unless "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".include?(s[j, 1].to_s) && s[j, 1].to_s != ""
       end
       start = j
-      j += 1 while j < n && digits.include?(s[j, 1].to_s) && s[j, 1].to_s != ""
+      while j < n && digits.include?(s[j, 1].to_s) && s[j, 1].to_s != ""
+        j = j + 1
+      end
       return 0 if j == start
       return 0 unless s[j, 1].to_s == ";"
 
@@ -1162,8 +1189,8 @@ module ActionView
         if c == "<"
           open_lt = i
           open_lt_closes = !s.index(">", i).nil?
-          out += c
-          i += 1
+          out = out + c
+          i = i + 1
         elsif c == ">" && open_lt >= 0
           # The anchor state turns over HERE and not at the `<`: the
           # gem's second clause is `pre.rindex(/<a\b.*?>/i)`, which
@@ -1173,24 +1200,24 @@ module ActionView
           in_anchor = false if auto_link_anchor_close?(tag)
           open_lt = -1
           open_lt_closes = false
-          out += c
-          i += 1
+          out = out + c
+          i = i + 1
         elsif in_anchor || (open_lt >= 0 && open_lt_closes && i >= open_lt + 2)
-          out += c
-          i += 1
+          out = out + c
+          i = i + 1
         else
           len = do_urls ? auto_link_url_length(s, i) : 0
-          if len.positive?
-            out += auto_link_url(s[i, len].to_s, html)
-            i += len
+          if len > 0
+            out = out + auto_link_url(s[i, len].to_s, html)
+            i = i + len
           else
             len = do_emails ? auto_link_email_length(s, i) : 0
-            if len.positive?
-              out += mail_to(s[i, len].to_s, "", html)
-              i += len
+            if len > 0
+              out = out + mail_to(s[i, len].to_s, "", html)
+              i = i + len
             else
-              out += c
-              i += 1
+              out = out + c
+              i = i + 1
             end
           end
         end
@@ -1220,10 +1247,12 @@ module ActionView
     def self.auto_link_url_length(s, i)
       n = s.length
       j = auto_link_url_prefix_end(s, i)
-      return 0 if j.zero?
+      return 0 if j == 0
 
       k = j
-      k += 1 while k < n && auto_link_url_char?(s[k, 1].to_s)
+      while k < n && auto_link_url_char?(s[k, 1].to_s)
+        k = k + 1
+      end
       return 0 if k == j
 
       k - i
@@ -1232,7 +1261,9 @@ module ActionView
     # Index just past `scheme://` or `www.` + one word char, or 0 if
     # neither opens at `i`.
     def self.auto_link_url_prefix_end(s, i)
-      return i + 5 if s[i, 4].to_s.downcase == "www." && auto_link_word_char?(s[i + 4, 1].to_s)
+      if s[i, 4].to_s.downcase == "www." && auto_link_word_char?(s[i + 4, 1].to_s)
+        return i + 5
+      end
 
       colon = s.index(":", i)
       return 0 if colon.nil?
@@ -1252,14 +1283,14 @@ module ActionView
 
       "|ed2k|ftp|http|https|irc|mailto|news|gopher|nntp|telnet|webcal|" \
       "xmpp|callto|feed|svn|urn|aim|rsync|tag|ssh|sftp|rtsp|afs|file|"
-        .include?("|#{name}|")
+        .include?("|" + name + "|")
     end
 
     # `[^\s< "]` — Ruby's `\s` is exactly `[ \t\r\n\f\v]` here.
     def self.auto_link_url_char?(c)
       return false if c == ""
-      return false if [" ", "\t", "\r", "\n"].include?(c)
-      return false if ["\f", "\v"].include?(c)
+      return false if c == " " || c == "\t" || c == "\r" || c == "\n"
+      return false if c == "\f" || c == "\v"
 
       c != "<" && c != "\""
     end
@@ -1295,19 +1326,19 @@ module ActionView
     def self.auto_link_url(matched, html)
       href = matched
       punctuation = []
-      while href.length.positive? && !auto_link_url_tail_char?(href[href.length - 1, 1].to_s)
+      while href.length > 0 && !auto_link_url_tail_char?(href[href.length - 1, 1].to_s)
         last = href[href.length - 1, 1].to_s
         href = href[0, href.length - 1].to_s
         punctuation.push(last)
         opening = auto_link_bracket_opening(last)
-        next unless opening != "" && auto_link_count(href, opening) > auto_link_count(href, last)
-
-        # `href << punctuation.pop` in the gem. Split, and the pop is a
-        # STATEMENT: used as a value it types as an Option on the
-        # strict targets, and `last` is the same character anyway.
-        punctuation.pop
-        href += last
-        break
+        if opening != "" && auto_link_count(href, opening) > auto_link_count(href, last)
+          # `href << punctuation.pop` in the gem. Split, and the pop is a
+          # STATEMENT: used as a value it types as an Option on the
+          # strict targets, and `last` is the same character anyway.
+          punctuation.pop
+          href = href + last
+          break
+        end
       end
       # `&gt;` survives the loop above (`;` is a keeper) and is not part
       # of the URL either — it is the escaped `>` of the markup around
@@ -1323,7 +1354,7 @@ module ActionView
       label = href
       # The gem's condition is `if scheme.nil?`, and scheme is nil for
       # exactly the `www.` branch — no listed scheme name is "www".
-      href = "http://#{href}" if href[0, 4].to_s.downcase == "www."
+      href = "http://" + href if href[0, 4].to_s.downcase == "www."
       # The gem runs `href` and the label through `sanitize` here, and
       # then hands `content_tag` an `escape` flag. NEITHER is reproduced,
       # and neither needs to be:
@@ -1364,8 +1395,8 @@ module ActionView
       i = 0
       n = s.length
       while i < n
-        count += 1 if s[i, 1].to_s == c
-        i += 1
+        count = count + 1 if s[i, 1].to_s == c
+        i = i + 1
       end
       count
     end
@@ -1383,14 +1414,14 @@ module ActionView
       placed = false
       html.each do |k, v|
         if k.to_s == "href"
-          attrs = "#{attrs} href=\"#{href}\""
+          attrs = attrs + " href=\"" + href + "\""
           placed = true
         else
-          attrs = "#{attrs} #{k}=\"#{html_escape(v.to_s)}\""
+          attrs = attrs + " " + k.to_s + "=\"" + html_escape(v.to_s) + "\""
         end
       end
-      attrs = "#{attrs} href=\"#{href}\"" unless placed
-      "<a#{attrs}>#{text}</a>"
+      attrs = attrs + " href=\"" + href + "\"" unless placed
+      "<a" + attrs + ">" + text + "</a>"
     end
 
     # Length of the e-mail match starting at `i`, or 0. The gem's
@@ -1400,17 +1431,21 @@ module ActionView
     # domain of two or more `[\w-]` labels.
     def self.auto_link_email_length(s, i)
       n = s.length
-      return 0 if i.positive? && auto_link_email_local_char?(s[i - 1, 1].to_s)
+      return 0 if i > 0 && auto_link_email_local_char?(s[i - 1, 1].to_s)
       return 0 unless auto_link_email_start_char?(s[i, 1].to_s)
 
       j = i + 1
-      j += 1 if s[j, 1].to_s == "."
-      j += 1 while j < n && auto_link_email_local_char?(s[j, 1].to_s)
+      j = j + 1 if s[j, 1].to_s == "."
+      while j < n && auto_link_email_local_char?(s[j, 1].to_s)
+        j = j + 1
+      end
       return 0 unless s[j, 1].to_s == "@"
 
-      j += 1
+      j = j + 1
       k = j
-      k += 1 while k < n && auto_link_email_domain_char?(s[k, 1].to_s)
+      while k < n && auto_link_email_domain_char?(s[k, 1].to_s)
+        k = k + 1
+      end
       return 0 if k == j
 
       # `(?:\.[\w-]+)+` — one label is not a domain.
@@ -1418,17 +1453,19 @@ module ActionView
       more = true
       while more
         more = false
-        next unless s[k, 1].to_s == "."
-
-        m = k + 1
-        m += 1 while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
-        next unless m > k + 1
-
-        k = m
-        labels += 1
-        more = true
+        if s[k, 1].to_s == "."
+          m = k + 1
+          while m < n && auto_link_email_domain_char?(s[m, 1].to_s)
+            m = m + 1
+          end
+          if m > k + 1
+            k = m
+            labels = labels + 1
+            more = true
+          end
+        end
       end
-      return 0 if labels.zero?
+      return 0 if labels == 0
 
       k - i
     end
@@ -1493,7 +1530,7 @@ module ActionView
     # that does appear says which one it is, instead of vanishing into a
     # NameError (or, on a strict target, an unresolved-call build wall
     # with no explanation attached).
-    def self.concat(_string)
+    def self.concat(string)
       raise "concat outside capture — emitted views buffer through io<<, not concat"
     end
 

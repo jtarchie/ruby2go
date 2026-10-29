@@ -4,7 +4,7 @@ require_relative "../../route_helpers"
 
 module Views
   module Articles
-    def self.article_into(io, article, _notice, _alert)
+    def self.article_into(io, article, notice, alert)
       io << "<div id=\""
       io << ActionView::ViewHelpers.dom_id(article)
       io << "\" class=\"flex flex-col sm:flex-row justify-between items-center pb-5 sm:pb-0\">\n  <div class=\"p-4 border rounded mb-4 flex-grow\">\n    <h2 class=\"text-xl font-bold\">\n      "

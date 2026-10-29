@@ -81,7 +81,9 @@ module Main
     # poly-into-poly unifies (a raw StrStrHash value would not).
     out = Main.deep_dup(path_params)
     scalars.each { |k, v| out[k] = v }
-    out[outer_name] = Main.deep_dup(sub) if outer_name.length.positive?
+    if outer_name.length > 0
+      out[outer_name] = Main.deep_dup(sub)
+    end
     out
   end
 
@@ -103,7 +105,9 @@ module Main
         inner = k[(ob + 1)...cb].to_s
         merged = {}
         existing = out[outer]
-        existing.each { |sk, sv| merged[sk.to_s] = sv } if existing.is_a?(Hash)
+        if existing.is_a?(Hash)
+          existing.each { |sk, sv| merged[sk.to_s] = sv }
+        end
         merged[inner] = file
         out[outer] = merged
       end
@@ -119,11 +123,11 @@ module Main
   def self.deep_dup(h)
     out = {}
     h.each do |k, v|
-      out[k.to_s] = if v.is_a?(Hash)
-                      Main.deep_dup(v)
-                    else
-                      v
-                    end
+      if v.is_a?(Hash)
+        out[k.to_s] = Main.deep_dup(v)
+      else
+        out[k.to_s] = v
+      end
     end
     out
   end
@@ -148,7 +152,7 @@ module Main
   # bans` from a file whose `bans` table is right there on disk.
   def self.default_db_path
     db_path = ENV["BLOG_DB"]
-    !db_path.nil? && !db_path.empty? ? db_path : "storage/development.sqlite3"
+    (!db_path.nil? && !db_path.empty?) ? db_path : "storage/development.sqlite3"
   end
 
   def self.configure_default_adapter!
@@ -168,7 +172,9 @@ module Main
   # The `..` guard blocks path-traversal escapes (`/assets/../../etc`)
   # before the path is concatenated onto the static/ root.
   def self.static_asset?(path)
-    return false if path.include?("..")
+    if path.include?("..")
+      return false
+    end
 
     path.start_with?("/assets/") || path == "/icon.png" || path == "/icon.svg"
   end
@@ -180,8 +186,8 @@ module Main
   # working directory is the app root — where `make assets` writes
   # static/ and `./build/blog` is launched from.
   def self.serve_static(path, res)
-    disk = "static#{path}"
-    if Sock.sphttp_filesize(disk).negative?
+    disk = "static" + path
+    if Sock.sphttp_filesize(disk) < 0
       res.status = 404
       res.body = "<h1>404 Not Found</h1>"
       return nil
@@ -262,9 +268,11 @@ module Main
   # inline is that a job's latency and a job's failure both stop
   # belonging to a request.
   def self.job_loop
-    loop do
+    while true
       sleep(JOB_POLL_INTERVAL)
-      Db.with_connection { ActiveJob.drain } if ActiveJob.pending_count.positive?
+      if ActiveJob.pending_count > 0
+        Db.with_connection { ActiveJob.drain }
+      end
     end
     0
   end
@@ -274,7 +282,9 @@ module Main
     Broadcasts.reset_log!
     # Under RH_SQL_TRACE the request line brackets its queries, so a
     # tally script can attribute each SQL line to the request that ran it.
-    warn "-- #{req.verb} #{req.path}" if Db.sql_trace?
+    if Db.sql_trace?
+      $stderr.puts "-- " + req.verb + " " + req.path
+    end
 
     # Action Cable: upgrade /cable to a WebSocket and hand off to the
     # Cable glue. Tep::Server::Scheduled's write path runs the recv
@@ -316,7 +326,9 @@ module Main
     verb = req.verb
     if verb == "POST"
       override = req.req_params.fetch("_method", "").upcase
-      verb = override if %w[PATCH PUT DELETE].include?(override)
+      if override == "PATCH" || override == "PUT" || override == "DELETE"
+        verb = override
+      end
     end
 
     matched = ActionDispatch::Router.match(verb, request_path, Main.route_table)
@@ -367,7 +379,7 @@ module Main
     # the form body into flat bracket keys (req.req_params["article[title]"]);
     # re-nest them + merge the route's path captures (id, ...).
     controller.params = Main.nest_params(req.req_params, matched.path_params)
-    Main.nest_uploads(controller.params, req.uploads) if req.uploads.length.positive?
+    Main.nest_uploads(controller.params, req.uploads) if req.uploads.length > 0
     # Typed request object + per-request context statics. Helpers are
     # module functions with no controller in scope; the emit rewrites
     # their bare `request` reads to `ActionController::Current.request`
@@ -441,9 +453,9 @@ module Main
     # never empty, so non-empty == present.
     inbound_flash = Tep.str_hash
     cin = req.cookies.fetch("flash_notice", "")
-    inbound_flash["notice"] = cin if cin.length.positive?
+    inbound_flash["notice"] = cin if cin.length > 0
     ain = req.cookies.fetch("flash_alert", "")
-    inbound_flash["alert"] = ain if ain.length.positive?
+    inbound_flash["alert"] = ain if ain.length > 0
     controller.flash = ActionDispatch::Flash.new(inbound_flash)
     controller.request_format = request_format
 
@@ -497,15 +509,15 @@ module Main
     # re-persisted so a consumed flash doesn't stick on the next nav.
     persisted = controller.flash.to_persisted
     pn = persisted.fetch("notice", "")
-    if pn.length.positive?
+    if pn.length > 0
       Main.set_flash_cookie(res, "flash_notice", pn)
-    elsif req.cookies.fetch("flash_notice", "").length.positive?
+    elsif req.cookies.fetch("flash_notice", "").length > 0
       Main.clear_flash_cookie(res, "flash_notice")
     end
     pa = persisted.fetch("alert", "")
-    if pa.length.positive?
+    if pa.length > 0
       Main.set_flash_cookie(res, "flash_alert", pa)
-    elsif req.cookies.fetch("flash_alert", "").length.positive?
+    elsif req.cookies.fetch("flash_alert", "").length > 0
       Main.clear_flash_cookie(res, "flash_alert")
     end
 
@@ -530,12 +542,12 @@ module Main
     # lazily-created tokens are captured, and on redirects too (login
     # sets `session[:u]` then 302s).
     session_out = controller.session.to_cookie
-    return unless session_out != session_in
-
-    if session_out == ""
-      Main.clear_flash_cookie(res, session_cookie)
-    else
-      Main.set_flash_cookie(res, session_cookie, session_out)
+    if session_out != session_in
+      if session_out == ""
+        Main.clear_flash_cookie(res, session_cookie)
+      else
+        Main.set_flash_cookie(res, session_cookie, session_out)
+      end
     end
   end
 
@@ -600,8 +612,8 @@ workers = (ENV["WORKERS"] || "1").to_i
 i = 0
 while i < ARGV.length
   arg = ARGV[i]
-  if ["--help", "-h"].include?(arg)
-    puts "usage: #{$PROGRAM_NAME} [options]"
+  if arg == "--help" || arg == "-h"
+    puts "usage: " + $PROGRAM_NAME + " [options]"
     puts ""
     puts "  -p, --port N     listen port (default 3000; PORT env)"
     puts "  -w, --workers N  prefork N processes (default 1; WORKERS env)"
@@ -612,19 +624,19 @@ while i < ARGV.length
     puts "    (HTTP only, one thread; the measurement lane, matz/spinel#4306)"
     puts "  SQLite file: BLOG_DB env (default storage/development.sqlite3)"
     exit(0)
-  elsif ["--port", "-p"].include?(arg) && i + 1 < ARGV.length
+  elsif (arg == "--port" || arg == "-p") && i + 1 < ARGV.length
     port = ARGV[i + 1].to_i
     i += 2
-  elsif ["--workers", "-w"].include?(arg) && i + 1 < ARGV.length
+  elsif (arg == "--workers" || arg == "-w") && i + 1 < ARGV.length
     workers = ARGV[i + 1].to_i
     i += 2
   else
-    warn "unknown option: #{arg} (try --help)"
+    $stderr.puts "unknown option: " + arg + " (try --help)"
     exit(1)
   end
 end
-if port <= 0 || port > 65_535
-  warn "invalid port: #{port}"
+if port <= 0 || port > 65535
+  $stderr.puts "invalid port: " + port.to_s
   exit(1)
 end
 Main.configure_default_adapter!

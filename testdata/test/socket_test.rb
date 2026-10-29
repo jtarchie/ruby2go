@@ -7,7 +7,7 @@ require "tmpdir"
 # socket (decision 135): ports, fds and temp paths differ per run, so they are masked or only compared as booleans.
 module SocketTests
   class SocketTest < Minitest::Test
-    LINGER_RESET = "\x01\x00\x00\x00\x00\x00\x00\x00".freeze #: String
+    LINGER_RESET = "\x01\x00\x00\x00\x00\x00\x00\x00" #: String
 
     #: (String, Integer) -> String
     def mask(s, port) = s.gsub(port.to_s, "P")
@@ -24,7 +24,7 @@ module SocketTests
     def socket_raised
       yield
       ["none", ""]
-    rescue StandardError => e
+    rescue => e
       [e.class.name.to_s, e.message]
     end
 
@@ -42,7 +42,7 @@ module SocketTests
       client.print("c", "d")
       client << "e" << "f"
       client.puts "g"
-      client.puts %w[h i]
+      client.puts ["h", "i"]
       client.close_write
       assert_equal "abc", peer.read(3)
       assert_equal "defg\n", peer.gets
@@ -66,7 +66,7 @@ module SocketTests
       assert_equal "tw", peer.readpartial(2)
       lines = [] #: Array[String]
       peer.each_line { |l| lines << l }
-      assert_equal %W[o\n three], lines
+      assert_equal ["o\n", "three"], lines
       assert_nil peer.recv(10)
       [server, client, peer].each(&:close)
     end
@@ -75,7 +75,7 @@ module SocketTests
       server, client, peer = tcp_trio
       assert_equal 3, client.send("a\nb", 0)
       client.close_write
-      assert_equal %W[a\n b], peer.readlines
+      assert_equal ["a\n", "b"], peer.readlines
       [server, client, peer].each(&:close)
     end
 
@@ -94,7 +94,7 @@ module SocketTests
     def test_addresses
       server, client, peer = tcp_trio
       port = server.addr[1]
-      assert port.positive?
+      assert port > 0
       assert_equal ["AF_INET", "127.0.0.1", "127.0.0.1"], [server.addr[0], server.addr[2], server.addr[3]]
       assert client.peeraddr[1] == port
       assert peer.addr[1] == port
@@ -103,7 +103,7 @@ module SocketTests
       assert_equal "127.0.0.1", server.local_address.ip_address
       assert server.local_address.ip_port == port
       assert_equal [true, false, false], [peer.local_address.ipv4?, peer.local_address.ipv6?, peer.local_address.unix?]
-      assert(/\A#<TCPSocket:fd \d+, AF_INET, 127\.0\.0\.1, \d+>\z/.match?(client.inspect))
+      assert /\A#<TCPSocket:fd \d+, AF_INET, 127\.0\.0\.1, \d+>\z/.match?(client.inspect)
       assert_equal "#<TCPServer:fd F, AF_INET, 127.0.0.1, P>", mask(server.inspect, port).sub(/fd \d+/, "fd F")
       assert client.fileno >= 0
       [server, client, peer].each(&:close)
@@ -191,7 +191,7 @@ module SocketTests
       client.close
       client = TCPSocket.new("127.0.0.1", server.addr[1])
       server.accept.close
-      raised = socket_raised { loop { client.write("x" * 65_536) } }
+      raised = socket_raised { loop { client.write("x" * 65536) } }
       assert ["Errno::EPIPE Broken pipe", "Errno::ECONNRESET Connection reset by peer"].include?("#{raised[0]} #{raised[1]}") # which one is a race
       client.close
       server.close
@@ -248,7 +248,7 @@ module SocketTests
       cls, msg = socket_raised { v.send("x", 0, "127.0.0.1", port) }
       assert_equal ["Errno::EISCONN", "Socket is already connected - sendto(2) for \"127.0.0.1\" port P"], [cls, mask(msg, port)]
       assert v.peeraddr[1] == port
-      assert(/\A#<UDPSocket:fd \d+, AF_INET, 127\.0\.0\.1, \d+>\z/.match?(u.inspect))
+      assert /\A#<UDPSocket:fd \d+, AF_INET, 127\.0\.0\.1, \d+>\z/.match?(u.inspect)
       u.close
       v.close
       assert u.closed?
@@ -272,7 +272,7 @@ module SocketTests
         client = UNIXSocket.new(path)
         peer = server.accept
         assert_equal UNIXSocket, peer.class
-        assert(/\A#<UNIXSocket:fd \d+>\z/.match?(client.inspect))
+        assert /\A#<UNIXSocket:fd \d+>\z/.match?(client.inspect)
         assert peer.path == path
         assert_equal "", client.path
         assert_equal ["AF_UNIX", ""], client.addr
@@ -299,7 +299,7 @@ module SocketTests
       assert_equal [UNIXSocket, UNIXSocket], [a.class, b.class]
       assert_equal ["AF_UNIX", ""], a.addr
       assert_equal ["AF_UNIX", ""], a.peeraddr
-      assert(/\A#<UNIXSocket:fd \d+>\z/.match?(a.inspect))
+      assert /\A#<UNIXSocket:fd \d+>\z/.match?(a.inspect)
       a.write("pair")
       a.close_write
       assert_equal "pair", b.read
@@ -324,7 +324,7 @@ module SocketTests
       a, b = UNIXSocket.pair
       n = a.send("x" * 4_000_000, 0)
       a.close
-      assert n.positive?
+      assert n > 0
       assert_equal n, b.read.bytesize
       e = assert_raises(ArgumentError) { b.readpartial(-1) }
       assert_equal "negative length -1 given", e.message
@@ -368,8 +368,8 @@ module SocketTests
       assert_equal "need AF_UNIX address", e.message
       assert_equal ["#<Addrinfo: 127.0.0.1:80 TCP>", "#<Addrinfo: 127.0.0.1:80 UDP>", "#<Addrinfo: 127.0.0.1:80 SOCK_RAW>"], Addrinfo.getaddrinfo("127.0.0.1", 80).map(&:inspect)
       assert_equal ["#<Addrinfo: 127.0.0.1:80 UDP>"], Addrinfo.getaddrinfo("127.0.0.1", 80, :INET, :DGRAM).map(&:inspect)
-      assert_equal([], Addrinfo.getaddrinfo("localhost", 80, nil, :STREAM).map(&:ip_address).reject { |a| ["127.0.0.1", "::1"].include?(a) })
-      assert(Addrinfo.getaddrinfo("localhost", 80, nil, :STREAM).all? { |a| a.inspect.end_with?(" TCP (localhost)>") })
+      assert_equal [], Addrinfo.getaddrinfo("localhost", 80, nil, :STREAM).map(&:ip_address).reject { |a| ["127.0.0.1", "::1"].include?(a) }
+      assert Addrinfo.getaddrinfo("localhost", 80, nil, :STREAM).all? { |a| a.inspect.end_with?(" TCP (localhost)>") }
     end
 
     def test_socket_class_methods
@@ -378,14 +378,14 @@ module SocketTests
       assert_equal 3, Socket.getaddrinfo("127.0.0.1", nil).size
       assert_equal [["AF_INET6", 22, "::1", "::1", Socket::AF_INET6, Socket::SOCK_DGRAM, Socket::IPPROTO_UDP]],
                    Socket.getaddrinfo("::1", 22, :INET6, :DGRAM)
-      assert_equal([80], Socket.getaddrinfo("127.0.0.1", "http", nil, :STREAM).map { |r| r[1] })
+      assert_equal [80], Socket.getaddrinfo("127.0.0.1", "http", nil, :STREAM).map { |r| r[1] }
       e = assert_raises(Socket::ResolutionError) { Socket.getaddrinfo("nonexistent.invalid", 80) }
       assert e.message.start_with?("getaddrinfo: ")
       name = Socket.gethostname
       assert_kind_of String, name
       refute name.empty?
       list = Socket.ip_address_list
-      assert(list.all? { |a| a.is_a?(Addrinfo) })
+      assert list.all? { |a| a.is_a?(Addrinfo) }
       assert list.map(&:ip_address).include?("127.0.0.1")
       assert_equal "127.0.0.1", IPSocket.getaddress("127.0.0.1")
     end

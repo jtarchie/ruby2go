@@ -3,7 +3,7 @@ require_relative "../../route_helpers"
 
 module Views
   module Articles
-    def self.index_into(io, articles, notice, _alert)
+    def self.index_into(io, articles, notice, alert)
       io << ActionView::ViewHelpers.turbo_stream_from("articles", "Turbo::StreamsChannel")
       io << "\n\n"
       ActionView::ViewHelpers.content_for_set(:title, "Articles")

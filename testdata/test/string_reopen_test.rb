@@ -7,13 +7,13 @@ require "minitest/autorun"
 # prelude calls, &:sym blocks, then, and untyped receivers.
 class String
   #: () -> String
-  def shout = "#{upcase}!"
+  def shout = upcase + "!"
 
   #: () -> bool
   def palindrome? = self == reverse
 
   #: (Integer) -> String
-  def truncate(n) = size > n ? "#{chars.first(n).join}..." : self
+  def truncate(n) = size > n ? (chars.first(n).join + "...") : self
 
   #: () -> Integer
   def vowel_count
@@ -52,9 +52,9 @@ module StringReopenTests
       assert_equal "d", "d".at_least("c")
       assert_equal :c, :b.at_least(:c)
       assert_equal :ABC, :abc.up
-      assert_equal %i[X Y], %i[x y].map(&:up)
+      assert_equal [:X, :Y], %i[x y].map(&:up)
       assert_equal "BA...", "ab".reverse.shout.truncate(2)
-      assert_equal false, "xy".palindrome?
+      assert_equal false, ("x" + "y").palindrome?
       assert_equal true, "noon".strip.palindrome?
       u = string_reopen_ident("dynamo")
       assert_equal "DYNAMO!", u.shout

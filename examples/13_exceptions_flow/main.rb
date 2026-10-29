@@ -37,14 +37,16 @@ end
 
 #: (Integer) -> String
 def classify(n)
-  raise ArgumentError, "negative" if n.negative?
-  return "zero" if n.zero?
+  begin
+    raise ArgumentError, "negative" if n < 0
+    return "zero" if n == 0
 
-  "positive"
-rescue ArgumentError => e
-  "error(#{e.message})"
-ensure
-  puts "classified #{n}"
+    "positive"
+  rescue ArgumentError => e
+    return "error(#{e.message})"
+  ensure
+    puts "classified #{n}"
+  end
 end
 
 puts classify(-1), classify(0), classify(1)
@@ -61,7 +63,7 @@ begin
   rescue RuntimeError => e
     raise ArgumentError, "outer from #{e.message}"
   end
-rescue StandardError => e
+rescue => e
   puts e.message, e.inspect
 end
 

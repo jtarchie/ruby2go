@@ -114,9 +114,12 @@ module GenericClassTests
   # @rbs generic E
   # @rbs generic P
   class MinQ < Heap #[E, P]
-    alias extract_min dequeue
+    alias_method :extract_min, :dequeue
 
     #: (E, P) -> self
+    def push(e, pr)
+      super
+    end
   end
 
   # @rbs generic A
@@ -210,7 +213,7 @@ module GenericClassTests
       a = Box.new(1)
       s = Box.new("a")
       assert_equal 3, a.get + 2
-      assert_equal "ab", "#{s.get}b"
+      assert_equal "ab", s.get + "b"
       a.set(5)
       assert_equal [5, 5], a.twice
     end
@@ -260,7 +263,7 @@ module GenericClassTests
       ints = Bag.new([3, 1, 2])
       strs = Bag.new(%w[b a])
       assert_equal [1, 2, 3], ints.sort
-      assert_equal([6, 2, 4], ints.map { |x| x * 2 })
+      assert_equal [6, 2, 4], ints.map { |x| x * 2 }
       assert_equal "a", strs.min
       assert strs.include?("a")
     end
@@ -301,7 +304,7 @@ module GenericClassTests
       ints.push(1).push(2)
       strs.push("x").push("y")
       assert_equal [2, 1], ints.to_a
-      assert_equal %w[y x], strs.to_a
+      assert_equal ["y", "x"], strs.to_a
       assert_equal 3, ints.to_a.sum
     end
 
@@ -328,13 +331,13 @@ module GenericClassTests
       assert_equal 10, h.total
       assert_equal [IntHeap, Heap, Object], IntHeap.ancestors.take(3)
       held = h #: untyped
-      assert held.is_a?(Heap)
+      assert Heap === held
     end
 
     def test_untyped_receiver
       items = [Box.new(1), Box.new("a")] #: Array[untyped]
       assert_equal [1, "a"], items.map(&:get)
-      assert_equal([true, true], items.map { |x| x.is_a?(Box) })
+      assert_equal [true, true], items.map { |x| x.is_a?(Box) }
       assert_equal 1, items[0].send(:get)
       assert_equal [Box, Box], items.map(&:class)
     end
@@ -347,8 +350,8 @@ module GenericClassTests
              else :other
              end
       assert_equal :box, kind
-      assert v.is_a?(Box)
-      refute v.is_a?(Stack)
+      assert Box === v
+      refute Stack === v
     end
   end
 
@@ -410,7 +413,7 @@ module GenericClassTests
       s = nil
       assert_equal "none", s ? s.name : "none"
       shapes = [NilSquare.new, nil, NilShape.new] #: Array[NilShape?]
-      assert_equal %w[square shape], shapes.compact.map(&:name)
+      assert_equal ["square", "shape"], shapes.compact.map(&:name)
       assert_equal 1, shapes.count(&:nil?)
     end
 

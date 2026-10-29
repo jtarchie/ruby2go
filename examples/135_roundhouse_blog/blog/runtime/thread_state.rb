@@ -220,18 +220,18 @@ module ActiveJob
 
   def self.drain
     ran = 0
-    loop do
+    while true
       work = nil
       QUEUE_LOCK.synchronize do
-        work = PENDING.shift if PENDING.length.positive?
+        work = PENDING.shift if PENDING.length > 0
       end
       break if work.nil?
 
       begin
         work.call
-        ran += 1
+        ran = ran + 1
       rescue StandardError => e
-        warn "[job] a queued job raised: #{e.message}"
+        warn "[job] a queued job raised: " + e.message
       end
     end
     ran
@@ -254,14 +254,16 @@ module TypedStore
     while i < lines.length
       line = lines[i].to_s
       i += 1
-      next if ["---", ""].include?(line)
+      next if line == "---" || line == ""
 
       c0 = line[0, 1].to_s
-      next if [" ", "-", "#"].include?(c0)
+      next if c0 == " " || c0 == "-" || c0 == "#"
 
       sep = line.index(": ")
       if sep.nil?
-        h[line[0, line.length - 1].to_s] = nil if line.end_with?(":")
+        if line.end_with?(":")
+          h[line[0, line.length - 1].to_s] = nil
+        end
         next
       end
       key = line[0, sep].to_s
@@ -293,7 +295,7 @@ module TypedStore
     Thread.current[:typed_store_key] = nil
     out = "---\n"
     h.each do |k, v|
-      out += "#{k}: #{v.nil? ? "" : v.to_s}\n"
+      out += k.to_s + ": " + (v.nil? ? "" : v.to_s) + "\n"
     end
     out
   end

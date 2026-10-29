@@ -4,7 +4,7 @@ require "csv"
 
 # CSV with headers: rows read by column name, and numbers converted.
 
-SALES = <<~CSV.freeze
+SALES = <<~CSV
   region,product,units,price
   north,widget,12,2.50
   south,widget,7,2.50
@@ -35,4 +35,4 @@ puts "--- without headers, converted"
 CSV.parse(SALES, converters: :numeric).first(2).each { |r| p r }
 
 puts "--- as text again"
-print table
+print table.to_s

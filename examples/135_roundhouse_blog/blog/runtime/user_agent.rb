@@ -65,11 +65,11 @@ class UserAgent
   # `useragent`'s own MATCHER, with its `^` written `\A` (a user-agent
   # header is one line) and the outer alternation made non-capturing so
   # the comment is group 3.
-  MATCHER = %r{\A['"]*([^/\s]+)/?([^\s,]*)(?:\s\(([^)]*)\)|,gzip\(gfe\))?}
+  MATCHER = /\A['"]*([^\/\s]+)\/?([^\s,]*)(?:\s\(([^\)]*)\)|,gzip\(gfe\))?/
 
   DEFAULT_USER_AGENT = "Mozilla/4.0 (compatible)"
 
-  GECKO_BROWSERS = %w[PaleMoon Firefox Camino Iceweasel Seamonkey]
+  GECKO_BROWSERS = ["PaleMoon", "Firefox", "Camino", "Iceweasel", "Seamonkey"]
 
   # `Browsers::Webkit::BuildVersions` — the WebKit build → Safari
   # version table for the releases before Safari 3, which shipped no
@@ -167,12 +167,16 @@ class UserAgent
     if !app.nil? && !app.comment.empty?
       second = app.comment[1]
       joined = app.comment.join("; ")
-      return "internet_explorer" if (!second.nil? && second.match?(/MSIE/)) || joined.match?(/Trident.+rv:/)
+      if (!second.nil? && second.match?(/MSIE/)) || joined.match?(/Trident.+rv:/)
+        return "internet_explorer"
+      end
     end
     first = tokens.first
     first_product = first.nil? ? "" : first.product
     app_product = app.nil? ? "" : app.product
-    return "opera" if first_product == "Opera" || app_product == "Opera" || last_product == "OPR"
+    if first_product == "Opera" || app_product == "Opera" || last_product == "OPR"
+      return "opera"
+    end
     return "vivaldi" if product?(tokens, "Vivaldi")
     return "chrome" if product?(tokens, "Chrome") || product?(tokens, "CriOS")
     return "webkit" if webkit?(tokens)
@@ -186,7 +190,7 @@ class UserAgent
       return true if t.product.match?(/\AAppleWebKit\z/i)
 
       t.comment.each do |c|
-        return true if c.match?(%r{\A(AppleWebKit)/([\d.]+)}i)
+        return true if c.match?(/\A(AppleWebKit)\/([\d\.]+)/i)
       end
     end
     false
@@ -242,11 +246,7 @@ class UserAgent
       end
     when "gecko"
       named = gecko_browser
-      if named.empty?
-        app.nil? ? "" : app.product
-      else
-        named
-      end
+      named.empty? ? (app.nil? ? "" : app.product) : named
     else
       app.nil? ? "" : app.product
     end
@@ -268,7 +268,7 @@ class UserAgent
     when "internet_explorer"
       return "" if app.nil?
 
-      app.comment.join("; ")[/(MSIE\s|rv:)([\d.]+)/, 2].to_s
+      app.comment.join("; ")[/(MSIE\s|rv:)([\d\.]+)/, 2].to_s
     when "chrome"
       t = UserAgent.find_product(@tokens, "CriOS")
       t = UserAgent.find_product(@tokens, "Chrome") if t.nil?
@@ -279,11 +279,7 @@ class UserAgent
       named = gecko_browser
       t = named.empty? ? nil : UserAgent.find_product(@tokens, named)
       v = t.nil? ? "" : t.version
-      if v.empty?
-        app.nil? ? "" : app.version
-      else
-        v
-      end
+      v.empty? ? (app.nil? ? "" : app.version) : v
     else
       app.nil? ? "" : app.version
     end
@@ -295,7 +291,7 @@ class UserAgent
     t = UserAgent.find_product(@tokens, "Version")
     return t.version unless t.nil?
 
-    ios = os[/iOS ([\d.]+)/, 1].to_s
+    ios = os[/iOS ([\d\.]+)/, 1].to_s
     return ios.tr("_", ".") if !ios.empty? && browser == "Safari"
 
     build = webkit_build
@@ -309,7 +305,7 @@ class UserAgent
 
     @tokens.each do |tok|
       tok.comment.each do |c|
-        v = c[%r{\A(AppleWebKit)/([\d.]+)}i, 2].to_s
+        v = c[/\A(AppleWebKit)\/([\d\.]+)/i, 2].to_s
         return v unless v.empty?
       end
     end
@@ -348,7 +344,7 @@ class UserAgent
       return "" if app.comment.empty?
 
       first = app.comment[0]
-      return "" if %w[compatible Mobile].include?(first)
+      return "" if first == "compatible" || first == "Mobile"
       return "Windows" if !first.nil? && first.match?(/\AWindows /)
 
       first.nil? ? "" : first
@@ -363,10 +359,10 @@ class UserAgent
 
     case @kind
     when "edge"
-      UserAgent.normalize_os(comment_match(/Windows NT [\d.]+|Windows Phone (OS )?[\d.]+/))
+      UserAgent.normalize_os(comment_match(/Windows NT [\d\.]+|Windows Phone (OS )?[\d\.]+/))
     when "internet_explorer"
       UserAgent.normalize_os(
-        app.comment.join("; ")[/Windows NT [\d.]+|Windows Phone (OS )?[\d.]+/, 0].to_s
+        app.comment.join("; ")[/Windows NT [\d\.]+|Windows Phone (OS )?[\d\.]+/, 0].to_s
       )
     when "chrome"
       chrome_os(app)
@@ -428,7 +424,7 @@ class UserAgent
             else
               1
             end
-    return "" if index.negative?
+    return "" if index < 0
 
     slot = app.comment[index]
     UserAgent.normalize_os(slot.nil? ? "" : slot)
@@ -508,7 +504,7 @@ class UserAgent
     while i < str.length
       ch = str[i, 1]
       if ch >= "0" && ch <= "9"
-        run += ch
+        run = run + ch
       else
         parts << run unless run.empty?
         run = ""
@@ -541,12 +537,12 @@ class UserAgent
     # an empty capture" and "did not match" are different answers. The
     # iOS and ChromeOS groups are mandatory, so a non-empty capture is
     # itself the proof that the pattern hit.
-    unless os[/(?:Intel|PPC) Mac OS X\s*([0-9_.]+)?/, 0].to_s.empty?
-      v = os[/(?:Intel|PPC) Mac OS X\s*([0-9_.]+)?/, 1].to_s
-      return v.empty? ? "OS X" : "OS X #{v.tr("_", ".")}"
+    unless os[/(?:Intel|PPC) Mac OS X\s*([0-9_\.]+)?/, 0].to_s.empty?
+      v = os[/(?:Intel|PPC) Mac OS X\s*([0-9_\.]+)?/, 1].to_s
+      return v.empty? ? "OS X" : "OS X #{v.tr('_', '.')}"
     end
     v = os[IOS_VERSION_REGEX, 1].to_s
-    return "iOS #{v.tr("_", ".")}" unless v.empty?
+    return "iOS #{v.tr('_', '.')}" unless v.empty?
 
     v = os[/CrOS\s([^\s]+)\s(\d+(\.\d+)*)/, 2].to_s
     return "ChromeOS #{v}" unless v.empty?

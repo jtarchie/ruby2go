@@ -454,19 +454,21 @@ func rbEncInvalid(src, dst string, bad, again []byte, incomplete bool) {
 	panic(NewEncoding_InvalidByteSequenceError(Ref(String(msg)), Ref(String(src)), Ref(String(dst)), Ref(String(bad)), ra, Ref(Boolean(incomplete))))
 }
 
-// rbEncUndef raises Encoding::UndefinedConversionError: "X from A to B" when the step that failed is the whole conversion, else "X to B in conversion from A to UTF-8 to C".
+// rbEncUndef raises Encoding::UndefinedConversionError: "X from A to B" for a conversion of one step, else "X to B in conversion from A to UTF-8 to C" (MRI 4.0.9 words a one-step conversion by the converters' own names, WINDOWS-1252, where 4.0.7 spelled it out).
 func rbEncUndef(path []string, src, dst, shown, char string) {
-	msg := shown + " from " + src + " to " + dst
-	_, named := rbXConvName[src]
 	if c, ok := rbXConvName[dst]; ok { // MRI's converter for it goes by another name (WINDOWS-1252), which its message gives
 		path = append(path[:len(path)-1:len(path)-1], c)
-		dst, named = c, true
-	}
-	if len(path) > 2 || named {
-		msg = shown + " to " + dst + " in conversion from " + strings.Join(path, " to ")
+		dst = c
 	}
 	if c, ok := rbXConvName[src]; ok { // the error's source_encoding_name is the converter's too
 		src = c
+	}
+	if c, ok := rbXConvName[path[0]]; ok { // and so is the path's first name
+		path = append([]string{c}, path[1:]...)
+	}
+	msg := shown + " from " + src + " to " + dst
+	if len(path) > 2 {
+		msg = shown + " to " + dst + " in conversion from " + strings.Join(path, " to ")
 	}
 	panic(NewEncoding_UndefinedConversionError(Ref(String(msg)), Ref(String(src)), Ref(String(dst)), Ref(String(char))))
 }

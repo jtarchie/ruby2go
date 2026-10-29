@@ -3,7 +3,7 @@ require_relative "../../route_helpers"
 
 module Views
   module Articles
-    def self.show_into(io, article, notice, _alert)
+    def self.show_into(io, article, notice, alert)
       ActionView::ViewHelpers.content_for_set(:title, "Showing article")
       io << "\n"
       cf_head = String.new

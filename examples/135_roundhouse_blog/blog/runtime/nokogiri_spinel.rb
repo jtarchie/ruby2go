@@ -79,7 +79,9 @@ module Nokogiri
       bracket = text.index("[")
       name = bracket.nil? ? text : text[0, bracket].to_s
       predicate = bracket.nil? ? "" : text[bracket + 1, text.length - bracket - 2].to_s
-      GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})") unless ActionText::Fragment.element_name?(name) && (bracket.nil? || text.end_with?("]"))
+      unless ActionText::Fragment.element_name?(name) && (bracket.nil? || text.end_with?("]"))
+        GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})")
+      end
       keys = []
       prefixes = []
       predicate.split(" or ").each do |clause|
@@ -87,7 +89,9 @@ module Nokogiri
         next if clause == ""
 
         # starts-with(@attr, "prefix")
-        GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})") unless clause.start_with?("starts-with(@") && clause.end_with?(")")
+        unless clause.start_with?("starts-with(@") && clause.end_with?(")")
+          GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})")
+        end
         inner = clause[13, clause.length - 14].to_s
         comma = inner.index(",")
         GemFacade.fail!("Nokogiri::Document#xpath(#{expression.inspect})") if comma.nil?
@@ -96,7 +100,9 @@ module Nokogiri
       end
       out = []
       ActionText::Fragment.new(@html.to_s).find_all(name).each do |node|
-        out << Element.new.load(node.name, node.attributes) if Document.starts_with_any?(node.attributes, keys, prefixes)
+        if Document.starts_with_any?(node.attributes, keys, prefixes)
+          out << Element.new.load(node.name, node.attributes)
+        end
       end
       out
     end
@@ -110,7 +116,7 @@ module Nokogiri
         value = attributes.fetch(keys[i], nil)
         return true if !value.nil? && value.start_with?(prefixes[i])
 
-        i += 1
+        i = i + 1
       end
       false
     end
@@ -122,15 +128,15 @@ module Nokogiri
 
         equiv = node["http-equiv"]
         content = node["content"]
-        next unless !equiv.nil? && equiv.downcase == "content-type" && !content.nil?
-
-        at = content.downcase.index("charset=")
-        next if at.nil?
-
-        value = content[at + 8, content.length].to_s.strip
-        semi = value.index(";")
-        value = value[0, semi].to_s unless semi.nil?
-        return value.gsub("\"", "").gsub("'", "").strip if value != ""
+        if !equiv.nil? && equiv.downcase == "content-type" && !content.nil?
+          at = content.downcase.index("charset=")
+          if !at.nil?
+            value = content[at + 8, content.length].to_s.strip
+            semi = value.index(";")
+            value = value[0, semi].to_s if !semi.nil?
+            return value.gsub("\"", "").gsub("'", "").strip if value != ""
+          end
+        end
       end
       nil
     end

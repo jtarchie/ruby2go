@@ -27,7 +27,7 @@ module JsonBuilder
     "\r" => "\\r",
     "\t" => "\\t",
     "\b" => "\\b",
-    "\f" => "\\f"
+    "\f" => "\\f",
   }.freeze
 
   # `\x08` rather than `\b` for the backspace because Rust's `regex`
@@ -35,7 +35,7 @@ module JsonBuilder
   # otherwise be word-boundary, which makes no sense inside `[]`).
   # Ruby/JS/Crystal/RE2 all accept the hex escape, so this is the
   # cross-target spelling.
-  ESCAPE_PATTERN = /[\\"\n\r\t\x08\f]/
+  ESCAPE_PATTERN = /[\\"\n\r\t\x08\f]/.freeze
 
   # Escape a string for embedding inside JSON double-quotes. Does
   # NOT add the surrounding quotes — `encode_value` wraps a String
@@ -78,7 +78,7 @@ module JsonBuilder
   # no strict target has to narrow an `Integer?` — neither Rust's nor
   # Swift's emit does past a `nil?` guard.
   def self.encode_enum(labels, value)
-    return "null" if value.negative? || value >= labels.length
+    return "null" if value < 0 || value >= labels.length
 
     "\"#{encode_string(labels[value])}\""
   end

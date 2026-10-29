@@ -51,4 +51,4 @@ CHECKSUMS
   sqlite3 (2.10.2-x86_64-linux-musl) sha256=b9f8fc62f3e0eb8966b41de251b492b4c8e9d1b23559beb6e150ad7f8d590941
 
 BUNDLED WITH
-  4.0.20
+  4.0.23

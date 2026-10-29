@@ -5,7 +5,7 @@
 # The unmodified liquid gem: parse a template once and render it many times with fresh data.
 require "liquid"
 
-TEMPLATE = <<~LIQUID.freeze
+TEMPLATE = <<~LIQUID
   {%- assign title = page.title | default: "Untitled" -%}
   # {{ title | upcase }}
   {% for item in items -%}

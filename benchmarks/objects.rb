@@ -19,7 +19,7 @@ class Vec
   def -(other) = Vec.new(@x - other.x, @y - other.y)
 
   #: (Float k) -> Vec
-  def *(other) = Vec.new(@x * other, @y * other)
+  def *(k) = Vec.new(@x * k, @y * k)
 
   #: () -> Float
   def length = Math.sqrt(@x * @x + @y * @y)
@@ -105,4 +105,4 @@ shapes = [] #: Array[Shape]
 end
 puts shapes.sum(&:area).round(2)
 puts shapes.max&.area
-puts(shapes.count { |s| s > shapes.fetch(1) })
+puts shapes.count { |s| s > shapes.fetch(1) }

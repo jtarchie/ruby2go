@@ -54,7 +54,7 @@ module Tep
         plen = @payload.bytesize
         if plen <= 125
           head << plen
-        elsif plen <= 65_535
+        elsif plen <= 65535
           head << 126
           head << ((plen >> 8) & 0xff)
           head << (plen & 0xff)
@@ -111,7 +111,7 @@ module Tep
           return out
         end
         if Frame.control_opcode?(opcode)
-          unless fin
+          if !fin
             out.outcome = "close"
             out.close_code = Tep::WebSocket::CLOSE_PROTOCOL_ERROR
             return out
@@ -122,7 +122,7 @@ module Tep
             return out
           end
         end
-        unless masked
+        if !masked
           # Server MUST close on unmasked client frame (§5.3).
           out.outcome = "close"
           out.close_code = Tep::WebSocket::CLOSE_PROTOCOL_ERROR
@@ -183,15 +183,15 @@ module Tep
         while i < plen
           b = s.getbyte(pos + i)
           mask_byte = 0
-          mask_byte = if (i & 3) == 0
-                        m0
-                      elsif (i & 3) == 1
-                        m1
-                      elsif (i & 3) == 2
-                        m2
-                      else
-                        m3
-                      end
+          if (i & 3) == 0
+            mask_byte = m0
+          elsif (i & 3) == 1
+            mask_byte = m1
+          elsif (i & 3) == 2
+            mask_byte = m2
+          else
+            mask_byte = m3
+          end
           bytes << (b ^ mask_byte)
           i += 1
         end
@@ -204,18 +204,32 @@ module Tep
       end
 
       def self.reserved_opcode?(op)
-        return false if op == Tep::WebSocket::OPCODE_CONTINUATION
-        return false if op == Tep::WebSocket::OPCODE_TEXT
-        return false if op == Tep::WebSocket::OPCODE_BINARY
-        return false if op == Tep::WebSocket::OPCODE_CLOSE
-        return false if op == Tep::WebSocket::OPCODE_PING
-        return false if op == Tep::WebSocket::OPCODE_PONG
+        if op == Tep::WebSocket::OPCODE_CONTINUATION
+          return false
+        end
+        if op == Tep::WebSocket::OPCODE_TEXT
+          return false
+        end
+        if op == Tep::WebSocket::OPCODE_BINARY
+          return false
+        end
+        if op == Tep::WebSocket::OPCODE_CLOSE
+          return false
+        end
+        if op == Tep::WebSocket::OPCODE_PING
+          return false
+        end
+        if op == Tep::WebSocket::OPCODE_PONG
+          return false
+        end
 
         true
       end
 
       def self.control_opcode?(op)
-        [Tep::WebSocket::OPCODE_CLOSE, Tep::WebSocket::OPCODE_PING, Tep::WebSocket::OPCODE_PONG].include?(op)
+        op == Tep::WebSocket::OPCODE_CLOSE ||
+          op == Tep::WebSocket::OPCODE_PING ||
+          op == Tep::WebSocket::OPCODE_PONG
       end
     end
 

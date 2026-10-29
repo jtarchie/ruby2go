@@ -18,19 +18,18 @@ module FiberTests
 
     def test_generator
       gen = Fiber.new do
-        a = 0
-        b = 1
+        a, b = 0, 1
         loop do
           Fiber.yield a
           a, b = b, a + b
         end
       end
-      assert_equal([0, 1, 1, 2, 3, 5], 6.times.map { gen.resume })
+      assert_equal [0, 1, 1, 2, 3, 5], 6.times.map { gen.resume }
       counter = Fiber.new do
         3.times { |i| Fiber.yield i }
         :done
       end
-      assert_equal([0, 1, 2, :done], 4.times.map { counter.resume })
+      assert_equal [0, 1, 2, :done], 4.times.map { counter.resume }
     end
 
     def test_values
@@ -91,15 +90,12 @@ module FiberTests
       refute late.alive?
 
       in_thread = Thread.new do
-        f = Fiber.new do
-          Fiber.yield Fiber.current.alive?
-          :done
-        end
+        f = Fiber.new { Fiber.yield Fiber.current.alive?; :done }
         [f.resume, f.resume, f.alive?]
       end
       assert_equal [true, :done, false], in_thread.value
       many = Fiber.new { loop { Fiber.yield 1 } }
-      assert_equal(1000, 1000.times.sum { many.resume })
+      assert_equal 1000, 1000.times.sum { many.resume }
     end
 
     def test_nested

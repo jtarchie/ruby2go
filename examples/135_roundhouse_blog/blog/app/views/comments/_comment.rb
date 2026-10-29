@@ -3,7 +3,7 @@ require_relative "../../route_helpers"
 
 module Views
   module Comments
-    def self.comment_into(io, comment, _notice, _alert)
+    def self.comment_into(io, comment, notice, alert)
       io << "<div id=\""
       io << ActionView::ViewHelpers.dom_id(comment)
       io << "\" class=\"p-4 bg-gray-50 rounded\">\n  <p class=\"font-semibold\">"

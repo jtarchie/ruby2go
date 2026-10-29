@@ -94,7 +94,8 @@ func rbRegexpErr(err error, src string) string {
 		return err.Error()
 	}
 	msg := ""
-	//exhaustive:ignore // the codes with an Onigmo twin; the rest keep Go's wording
+	// the codes with an Onigmo twin; the rest keep Go's wording
+	//exhaustive:ignore
 	switch se.Code {
 	case syntax.ErrMissingParen:
 		msg = "end pattern with unmatched parenthesis"

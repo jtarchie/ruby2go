@@ -70,7 +70,7 @@ module ActionMailer
   class Base
     # Class-body DSL (`default from: ...`) — accepted and ignored when
     # an ingest ever carries it through (today it's dropped upstream).
-    def self.default(_opts = nil)
+    def self.default(opts = nil)
       nil
     end
 

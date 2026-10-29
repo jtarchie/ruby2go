@@ -61,7 +61,7 @@ module Net
     # of its tests exist only to exercise that path — a `read_body` that
     # handed the whole String over in one yield would pass the happy
     # path and silently break all three.
-    READ_BODY_CHUNK = 16_384
+    READ_BODY_CHUNK = 16384
 
     # `response.read_body { |chunk| ... }` — CRuby streams the body from
     # the socket here; this package has already read it whole, so the
@@ -86,7 +86,7 @@ module Net
     # `.to_i` and compares, so nil has to survive the read.
     def content_length
       v = @headers["content-length"]
-      v&.to_i
+      v.nil? ? nil : v.to_i
     end
   end
 
@@ -131,12 +131,12 @@ module Net
     def request(req, &blk)
       i = HttpStub.find_for(req.method, stub_url(req.path), req.body)
       res =
-        if i.negative?
+        if i < 0
           transport_request(req)
         else
           build_response("1.1", HttpStub::STUB_STATUSES[i].to_s, "", HttpStub.headers_at(i), HttpStub::STUB_BODIES[i])
         end
-      blk&.call(res)
+      blk.call(res) unless blk.nil?
       res
     end
 

@@ -21,10 +21,10 @@ module ActiveSupport
   class Duration
     SECONDS_PER_MINUTE = 60
     SECONDS_PER_HOUR = 3600
-    SECONDS_PER_DAY = 86_400
-    SECONDS_PER_WEEK = 604_800
-    SECONDS_PER_MONTH = 2_629_746
-    SECONDS_PER_YEAR = 31_556_952
+    SECONDS_PER_DAY = 86400
+    SECONDS_PER_WEEK = 604800
+    SECONDS_PER_MONTH = 2629746
+    SECONDS_PER_YEAR = 31556952
 
     def initialize(seconds)
       @seconds = seconds
@@ -142,7 +142,7 @@ module ActiveSupport
     # [:max_age].to_i` (campfire's QR code test) holds against an
     # Integer. Ruby's `!=` is the negation of this.
     def ==(other)
-      @seconds == (other.is_a?(Duration) ? other.seconds : other)
+      other.is_a?(Duration) ? @seconds == other.seconds : @seconds == other
     end
 
     # Ordering, the same rule: Rails' Duration compares as its seconds
@@ -157,7 +157,7 @@ module ActiveSupport
     end
 
     def <(other)
-      (self <=> other).negative?
+      (self <=> other) < 0
     end
 
     def <=(other)
@@ -165,7 +165,7 @@ module ActiveSupport
     end
 
     def >(other)
-      (self <=> other).positive?
+      (self <=> other) > 0
     end
 
     def >=(other)

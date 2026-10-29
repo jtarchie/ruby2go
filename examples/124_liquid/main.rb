@@ -5,7 +5,7 @@
 # The unmodified liquid gem (Jekyll 4's template language): parse a template once, render it with data.
 require "liquid"
 
-TEMPLATE = <<~LIQUID.freeze
+TEMPLATE = <<~LIQUID
   {%- assign title = page.title | default: "Untitled" -%}
   # {{ title | upcase }}
   {% comment %}This line never renders.{% endcomment %}
@@ -31,8 +31,8 @@ data = {
   "items" => [
     { "name" => "Pen", "price" => 1.25, "qty" => 4 },
     { "name" => "Ink", "price" => 3.5, "qty" => 1 },
-    { "name" => "Pad", "price" => 2.0, "qty" => 0 }
-  ]
+    { "name" => "Pad", "price" => 2.0, "qty" => 0 },
+  ],
 }
 puts template.render(data)
 p template.errors

@@ -38,7 +38,7 @@ module ActiveSupport
     "Paris" => "Europe/Paris",
     "Berlin" => "Europe/Berlin",
     "Tokyo" => "Asia/Tokyo",
-    "Sydney" => "Australia/Sydney"
+    "Sydney" => "Australia/Sydney",
   }.freeze
 
   # ---- THE TEST CLOCK ------------------------------------------------
@@ -110,9 +110,11 @@ module ActiveSupport
         c = str[20 + digits, 1]
         break if c.nil? || c.empty? || c < "0" || c > "9"
 
-        digits += 1
+        digits = digits + 1
       end
-      micros = "#{str[20, digits]}000000"[0, 6].to_i if digits.positive?
+      if digits > 0
+        micros = "#{str[20, digits]}000000"[0, 6].to_i
+      end
     end
     # The micros go in as `Time.utc`'s seventh argument, NOT as a float
     # added afterwards. `t + 170926 / 1_000_000.0` lands at

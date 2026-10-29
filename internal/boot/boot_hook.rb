@@ -16,6 +16,8 @@ module RugarooBoot
   @features = nil
 
   class << self
+    attr_reader :classes, :define_methods, :aliases, :evals, :autoloads, :pid
+
     # Valid UTF-8, since JSON raises on a binary or invalid String.
     def text(s)
       s.is_a?(String) ? s.dup.force_encoding(Encoding::UTF_8).scrub : s
@@ -36,7 +38,7 @@ module RugarooBoot
       @delegators = {}
     end
 
-    attr_reader :classes, :define_methods, :aliases, :evals, :autoloads, :pid, :delegators
+    attr_reader :delegators
 
     # Forwardable's delegated names by call site, for a list built at load time (`*(DSL_METHODS - [:x])`, decision 204).
     def install_forwardable
@@ -92,7 +94,7 @@ module RugarooBoot
       @line_tp.enable
       calls = []
       @define_method_tp = TracePoint.new(:c_call, :c_return) do |tp|
-        next unless %i[define_method define_singleton_method].include?(tp.method_id)
+        next unless tp.method_id == :define_method || tp.method_id == :define_singleton_method
 
         if tp.event == :c_call
           b = @line_bindings["#{tp.path}:#{tp.lineno}"]
@@ -106,11 +108,7 @@ module RugarooBoot
 
         singleton = owner.singleton_class?
         named = singleton ? owner.attached_object : owner
-        m = begin
-          owner.instance_method(name)
-        rescue StandardError
-          nil
-        end
+        m = (owner.instance_method(name) rescue nil)
         from = m && m.original_name != name ? m.owner : nil
         @define_methods << {
           "owner" => safe_name(named), "singleton" => singleton, "name" => name.to_s, "file" => path, "line" => line,
@@ -127,14 +125,10 @@ module RugarooBoot
     # becomes the alias it made (decision 330). The old name is the alias's original_name, read after the call.
     def install_alias_method
       @alias_tp = TracePoint.new(:c_return) do |tp|
-        next unless tp.method_id == :alias_method && tp.self.is_a?(Module) && tp.return_value.is_a?(Symbol)
+        next unless tp.method_id == :alias_method && Module === tp.self && tp.return_value.is_a?(Symbol)
 
         owner = tp.self
-        m = begin
-          owner.instance_method(tp.return_value)
-        rescue StandardError
-          next
-        end
+        m = (owner.instance_method(tp.return_value) rescue next)
         singleton = owner.singleton_class?
         @aliases << { "owner" => safe_name(singleton ? owner.attached_object : owner), "singleton" => singleton,
                       "name" => tp.return_value.to_s, "old" => m.original_name.to_s, "file" => tp.path, "line" => tp.lineno }
@@ -154,7 +148,7 @@ module RugarooBoot
 
           @anon_sites[tp.return_value] ||= "#{tp.path}:#{tp.lineno}"
         when :include
-          next unless tp.self.is_a?(Module)
+          next unless Module === tp.self
 
           if tp.event == :c_call
             stack << MOD_ANCESTORS.bind_call(tp.self)
@@ -177,11 +171,7 @@ module RugarooBoot
     def captures(b)
       return {} unless b
 
-      nesting = begin
-        b.eval("Module.nesting")
-      rescue StandardError
-        []
-      end
+      nesting = (b.eval("Module.nesting") rescue [])
       b.local_variables.each_with_object({}) do |v, out|
         value = b.local_variable_get(v)
         lit = literal(value) || held_by_constant(value, nesting)
@@ -197,11 +187,7 @@ module RugarooBoot
         mod.constants(false).each do |c|
           next if mod.autoload?(c, false) # resolving it would load a file the program never did (decision 404)
 
-          obj = begin
-            mod.const_get(c, false)
-          rescue StandardError
-            next
-          end
+          obj = (mod.const_get(c, false) rescue next)
           return "#{name}::#{c}" if obj.equal?(value)
 
           case obj
@@ -219,19 +205,9 @@ module RugarooBoot
       return nil if depth > 6
 
       case x
-      when Float then if x.nan?
-                        "Float::NAN"
-                      else
-                        x.infinite? ? "#{"-" if x.negative?}Float::INFINITY" : x.inspect
-                      end
+      when Float then x.nan? ? "Float::NAN" : x.infinite? ? "#{"-" if x < 0}Float::INFINITY" : x.inspect # NaN/Infinity inspect as bare words
       when nil, true, false, Integer, Symbol then x.inspect
-      when Module then if (n = MOD_NAME.bind_call(x)) && begin
-        Object.const_get(n)
-      rescue StandardError
-        nil
-      end.equal?(x)
-                         "::#{n}"
-                       end
+      when Module then (n = MOD_NAME.bind_call(x)) && (Object.const_get(n) rescue nil).equal?(x) ? "::#{n}" : nil
       when Proc then (loc = x.source_location) && !x.lambda? ? "proc@#{loc[0]}:#{loc[1]}" : nil # rebuilt from its literal block
       when String then x.size > 100_000 ? nil : x.inspect
       when Array
@@ -311,7 +287,7 @@ module RugarooBoot
     def safe_name(obj)
       return nil if obj.nil?
 
-      obj.is_a?(Module) ? MOD_NAME.bind_call(obj) : obj.to_s # not obj.name: a module may define its own (REXML::Functions.name)
+      Module === obj ? MOD_NAME.bind_call(obj) : obj.to_s # not obj.name: a module may define its own (REXML::Functions.name)
     rescue StandardError
       nil
     end
@@ -398,18 +374,14 @@ module RugarooBoot
       out = {}
       @classes.each_key do |name|
         owner = RugarooBoot.const_at(name)
-        next unless owner.is_a?(Module)
+        next unless Module === owner
 
         # Module's own methods: a module can make them private for itself (brew's Cask::Quarantine, `extend self`).
         (MOD_CONSTANTS.bind_call(owner, false) | @private_constants[owner]).each do |c|
           next if MOD_AUTOLOAD.bind_call(owner, c)
 
-          v = begin
-            MOD_CONST_GET.bind_call(owner, c, false)
-          rescue StandardError
-            next
-          end
-          next unless v.is_a?(Module) # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
+          v = (MOD_CONST_GET.bind_call(owner, c, false) rescue next)
+          next unless Module === v # not v.is_a?: a BasicObject constant (brew's LazyObject) has none
 
           vn = MOD_NAME.bind_call(v)
           out["#{name}::#{c}"] = vn if vn && vn != "#{name}::#{c}"
@@ -428,11 +400,7 @@ module RugarooBoot
       ObjectSpace.each_object(Class) do |k|
         next unless k < ::T::Struct && MOD_NAME.bind_call(k)
 
-        props = begin
-          k.props
-        rescue StandardError
-          next
-        end
+        props = (k.props rescue next)
         out[MOD_NAME.bind_call(k)] = props.map do |name, rules|
           h = { "name" => name.to_s, "type" => rules[:type_object].to_s }
           if rules.key?(:default)
@@ -469,7 +437,7 @@ module RugarooBoot
         "branches" => branches,
         "const_classes" => const_classes,
         "delegators" => @delegators,
-        "structs" => sorbet_structs
+        "structs" => sorbet_structs,
       }
       File.write(path, generate(manifest))
     end

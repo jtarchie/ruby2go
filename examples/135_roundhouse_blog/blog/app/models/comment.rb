@@ -37,7 +37,7 @@ class Comment < ApplicationRecord
   end
 
   def created_at
-    @created_at ||= ActiveSupport.parse_db_time(@created_at_raw)
+    @__t_created_at ||= ActiveSupport.parse_db_time(@created_at_raw)
   end
 
   def created_at_raw
@@ -54,7 +54,7 @@ class Comment < ApplicationRecord
   end
 
   def updated_at
-    @updated_at ||= ActiveSupport.parse_db_time(@updated_at_raw)
+    @__t_updated_at ||= ActiveSupport.parse_db_time(@updated_at_raw)
   end
 
   def updated_at_raw
@@ -75,11 +75,11 @@ class Comment < ApplicationRecord
   end
 
   def self.schema_columns
-    %i[id article_id commenter body created_at updated_at]
+    [:id, :article_id, :commenter, :body, :created_at, :updated_at]
   end
 
   def self.schema_time_columns
-    %i[created_at updated_at]
+    [:created_at, :updated_at]
   end
 
   def self.instantiate(row)
@@ -92,8 +92,8 @@ class Comment < ApplicationRecord
     instance = Comment.new
     instance.id = row.id
     instance.article_id = row.article_id
-    instance.commenter = row.commenter&.to_s
-    instance.body = row.body&.to_s
+    instance.commenter = (row.commenter).nil? ? nil : (row.commenter).to_s
+    instance.body = (row.body).nil? ? nil : (row.body).to_s
     instance.created_at_raw = row.created_at
     instance.updated_at_raw = row.updated_at
     instance._note_hydrated
@@ -117,13 +117,13 @@ class Comment < ApplicationRecord
     super()
     self.id = (attrs[:id] || 0).to_i
     self.article_id = attrs[:article_id] || 0
-    self.commenter = attrs[:commenter]&.to_s
-    self.body = attrs[:body]&.to_s
+    self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s
+    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s
     self.created_at_raw = attrs[:created_at] || ""
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].nil?
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !(attrs[:created_at].nil?)
     self.updated_at_raw = attrs[:updated_at] || ""
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].nil?
-    self.article_id = attrs[:article].id unless attrs[:article].nil?
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !(attrs[:updated_at].nil?)
+    self.article_id = attrs[:article].id if !(attrs[:article].nil?)
   end
 
   def attributes
@@ -137,9 +137,9 @@ class Comment < ApplicationRecord
     when :article_id
       @article_id
     when :commenter
-      @commenter&.to_s
+      (@commenter).nil? ? nil : (@commenter).to_s
     when :body
-      @body&.to_s
+      (@body).nil? ? nil : (@body).to_s
     when :created_at
       @created_at_raw
     when :updated_at
@@ -150,59 +150,61 @@ class Comment < ApplicationRecord
   def []=(name, value)
     case name
     when :id
-      @id = value.to_i
+      @id = (value).to_i
     when :article_id
-      @article_id = value.to_i
+      @article_id = (value).to_i
     when :commenter
-      @commenter = value&.to_s
+      @commenter = (value).nil? ? nil : (value).to_s
     when :body
-      @body = value&.to_s
+      @body = (value).nil? ? nil : (value).to_s
     when :created_at
-      @created_at_raw = value.to_s
+      @created_at_raw = (value).to_s
     when :updated_at
-      @updated_at_raw = value.to_s
+      @updated_at_raw = (value).to_s
     end
   end
 
   def update(attrs)
-    self.article_id = attrs[:article_id].to_i if attrs.key?(:article_id)
-    self.commenter = attrs[:commenter]&.to_s if attrs.key?(:commenter)
-    self.body = attrs[:body]&.to_s if attrs.key?(:body)
-    self.created_at_raw = attrs[:created_at].to_s if attrs.key?(:created_at)
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].to_s.nil?
-    self.updated_at_raw = attrs[:updated_at].to_s if attrs.key?(:updated_at)
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].to_s.nil?
-    save
+    self.article_id = (attrs[:article_id]).to_i if attrs.key?(:article_id)
+    self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s if attrs.key?(:commenter)
+    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s if attrs.key?(:body)
+    self.created_at_raw = (attrs[:created_at]).to_s if attrs.key?(:created_at)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !((attrs[:created_at]).to_s.nil?)
+    self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !((attrs[:updated_at]).to_s.nil?)
+    self.save
   end
 
   def update!(attrs)
-    self.article_id = attrs[:article_id].to_i if attrs.key?(:article_id)
-    self.commenter = attrs[:commenter]&.to_s if attrs.key?(:commenter)
-    self.body = attrs[:body]&.to_s if attrs.key?(:body)
-    self.created_at_raw = attrs[:created_at].to_s if attrs.key?(:created_at)
-    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) unless attrs[:created_at].to_s.nil?
-    self.updated_at_raw = attrs[:updated_at].to_s if attrs.key?(:updated_at)
-    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) unless attrs[:updated_at].to_s.nil?
-    save!
+    self.article_id = (attrs[:article_id]).to_i if attrs.key?(:article_id)
+    self.commenter = (attrs[:commenter]).nil? ? nil : (attrs[:commenter]).to_s if attrs.key?(:commenter)
+    self.body = (attrs[:body]).nil? ? nil : (attrs[:body]).to_s if attrs.key?(:body)
+    self.created_at_raw = (attrs[:created_at]).to_s if attrs.key?(:created_at)
+    self.created_at_raw = ActiveSupport.format_db_time(attrs[:created_at]) if !((attrs[:created_at]).to_s.nil?)
+    self.updated_at_raw = (attrs[:updated_at]).to_s if attrs.key?(:updated_at)
+    self.updated_at_raw = ActiveSupport.format_db_time(attrs[:updated_at]) if !((attrs[:updated_at]).to_s.nil?)
+    self.save!
     self
   end
 
   def fill_timestamps(creating)
     now = ActiveSupport.db_now
-    if !creating || @updated_at_raw.nil? || (@updated_at_raw || "").empty?
+    if !(creating) || @updated_at_raw.nil? || (@updated_at_raw || "").empty?
       @__t_updated_at = nil
       @updated_at_raw = now
     end
-    return unless creating && (@created_at_raw.nil? || (@created_at_raw || "").empty?)
-
-    @__t_created_at = nil
-    @created_at_raw = now
+    if creating && (@created_at_raw.nil? || (@created_at_raw || "").empty?)
+      @__t_created_at = nil
+      @created_at_raw = now
+    end
   end
 
   def self._adapter_find_by_id(id)
-    stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = #{Db.escape_int(id)} LIMIT 1")
+    stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = " + Db.escape_int(id) + " LIMIT 1")
     result = nil
-    result = Comment.from_stmt(stmt) if Db.step?(stmt)
+    if Db.step?(stmt)
+      result = Comment.from_stmt(stmt)
+    end
     Db.finalize(stmt)
     result
   end
@@ -210,7 +212,9 @@ class Comment < ApplicationRecord
   def self._adapter_all
     stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments")
     results = []
-    results << Comment.from_stmt(stmt) while Db.step?(stmt)
+    while Db.step?(stmt)
+      results << Comment.from_stmt(stmt)
+    end
     Db.finalize(stmt)
     results
   end
@@ -218,22 +222,24 @@ class Comment < ApplicationRecord
   def self._adapter_last
     stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments ORDER BY id DESC LIMIT 1")
     result = nil
-    result = Comment.from_stmt(stmt) if Db.step?(stmt)
+    if Db.step?(stmt)
+      result = Comment.from_stmt(stmt)
+    end
     Db.finalize(stmt)
     result
   end
 
   def _adapter_insert
-    Db.exec("INSERT INTO comments (article_id, commenter, body, created_at, updated_at) VALUES (#{Db.escape_int(@article_id)}, #{Db.escape_string_opt(@commenter)}, #{Db.escape_string_opt(@body)}, #{Db.escape_string(@created_at_raw)}, #{Db.escape_string(@updated_at_raw)})")
+    Db.exec("INSERT INTO comments (article_id, commenter, body, created_at, updated_at) VALUES (" + Db.escape_int(@article_id) + ", " + Db.escape_string_opt(@commenter) + ", " + Db.escape_string_opt(@body) + ", " + Db.escape_string(@created_at_raw) + ", " + Db.escape_string(@updated_at_raw) + ")")
     Db.last_insert_rowid
   end
 
   def _adapter_update
-    Db.exec("UPDATE comments SET article_id = #{Db.escape_int(@article_id)}, commenter = #{Db.escape_string_opt(@commenter)}, body = #{Db.escape_string_opt(@body)}, created_at = #{Db.escape_string(@created_at_raw)}, updated_at = #{Db.escape_string(@updated_at_raw)} WHERE id = #{Db.escape_int(@id)}")
+    Db.exec("UPDATE comments SET article_id = " + Db.escape_int(@article_id) + ", commenter = " + Db.escape_string_opt(@commenter) + ", body = " + Db.escape_string_opt(@body) + ", created_at = " + Db.escape_string(@created_at_raw) + ", updated_at = " + Db.escape_string(@updated_at_raw) + " WHERE id = " + Db.escape_int(@id))
   end
 
   def _adapter_delete
-    Db.exec("DELETE FROM comments WHERE id = #{Db.escape_int(@id)}")
+    Db.exec("DELETE FROM comments WHERE id = " + Db.escape_int(@id))
   end
 
   def self._adapter_count
@@ -245,7 +251,7 @@ class Comment < ApplicationRecord
   end
 
   def self._adapter_exists_by_id?(id)
-    stmt = Db.prepare("SELECT 1 FROM comments WHERE id = #{Db.escape_int(id)} LIMIT 1")
+    stmt = Db.prepare("SELECT 1 FROM comments WHERE id = " + Db.escape_int(id) + " LIMIT 1")
     result = Db.step?(stmt)
     Db.finalize(stmt)
     result
@@ -262,7 +268,7 @@ class Comment < ApplicationRecord
   end
 
   def _adapter_reload
-    stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = #{Db.escape_int(@id)} LIMIT 1")
+    stmt = Db.prepare("SELECT id, article_id, commenter, body, created_at, updated_at FROM comments WHERE id = " + Db.escape_int(@id) + " LIMIT 1")
     if Db.step?(stmt)
       @id = Db.column_int(stmt, 0)
       @article_id = Db.column_int(stmt, 1)
@@ -272,7 +278,7 @@ class Comment < ApplicationRecord
       @created_at_raw = Db.column_text(stmt, 4)
       @__t_updated_at = nil
       @updated_at_raw = Db.column_text(stmt, 5)
-      mark_persisted!
+      self.mark_persisted!
     end
     Db.finalize(stmt)
     self
@@ -285,7 +291,9 @@ class Comment < ApplicationRecord
   def self._hydrate_all(sql)
     stmt = Db.prepare(sql)
     results = []
-    results << Comment.from_stmt(stmt) while Db.step?(stmt)
+    while Db.step?(stmt)
+      results << Comment.from_stmt(stmt)
+    end
     Db.finalize(stmt)
     results
   end
@@ -298,47 +306,49 @@ class Comment < ApplicationRecord
   end
 
   def update_from_comment_params(p)
-    if !p.commenter_provided
+    if !(p.commenter_provided)
       nil
     else
       self.commenter = p.commenter
     end
-    if !p.body_provided
+    if !(p.body_provided)
       nil
     else
       self.body = p.body
     end
-    save
+    self.save
   end
 
   def update_from_comment_params!(p)
-    if !p.commenter_provided
+    if !(p.commenter_provided)
       nil
     else
       self.commenter = p.commenter
     end
-    if !p.body_provided
+    if !(p.body_provided)
       nil
     else
       self.body = p.body
     end
-    save!
+    self.save!
     self
   end
 
   def validate
-    errors << "Commenter can't be blank" if @commenter.nil? || (@commenter || "").empty?
-    errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
-    errors << "Article must exist" if @article_id.nil? || @article_id.zero? || !Article.exists?(@article_id)
+    self.errors << "Commenter can't be blank" if @commenter.nil? || (@commenter || "").empty?
+    self.errors << "Body can't be blank" if @body.nil? || (@body || "").empty?
+    self.errors << "Article must exist" if @article_id.nil? || @article_id == 0 || !(Article.exists?(@article_id))
   end
 
   def article
-    if @article_id.zero?
+    if @article_id == 0
       nil
     else
-      stmt = Db.prepare("SELECT id, title, body, created_at, updated_at FROM articles WHERE id = #{Db.escape_int(@article_id)} LIMIT 1")
+      stmt = Db.prepare("SELECT id, title, body, created_at, updated_at FROM articles WHERE id = " + Db.escape_int(@article_id) + " LIMIT 1")
       result = nil
-      result = Article.from_stmt(stmt) if Db.step?(stmt)
+      if Db.step?(stmt)
+        result = Article.from_stmt(stmt)
+      end
       Db.finalize(stmt)
       result
     end
@@ -349,7 +359,7 @@ class Comment < ApplicationRecord
       @article_id = 0
     else
       @article_id = value.id
-      if value.id.zero?
+      if value.id == 0
         @article_cache = value
         @article_loaded = true
       end
@@ -369,7 +379,7 @@ class Comment < ApplicationRecord
   end
 
   def cache_key
-    if persisted?
+    if self.persisted?
       "comments/#{@id}"
     else
       "comments/new"
@@ -377,24 +387,24 @@ class Comment < ApplicationRecord
   end
 
   def cache_key_with_version
-    "#{cache_key}-#{@updated_at_raw}"
+    "#{self.cache_key}-#{@updated_at_raw}"
   end
 
   def after_create_commit
     Broadcasts.append(stream: "article_#{@article_id}_comments", target: "comments", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Comments.comment(self)))
-    parent = article
+    parent = self.article
     return if parent.nil?
 
     Broadcasts.replace(stream: "articles", target: "#{parent.dom_prefix}_#{parent.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Articles.article(parent)))
   end
 
   def after_update_commit
-    Broadcasts.replace(stream: "article_#{@article_id}_comments", target: "#{dom_prefix}_#{dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Comments.comment(self)))
+    Broadcasts.replace(stream: "article_#{@article_id}_comments", target: "#{self.dom_prefix}_#{self.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Comments.comment(self)))
   end
 
   def after_destroy_commit
-    Broadcasts.remove(stream: "article_#{@article_id}_comments", target: "#{dom_prefix}_#{dom_record_key}")
-    parent = article
+    Broadcasts.remove(stream: "article_#{@article_id}_comments", target: "#{self.dom_prefix}_#{self.dom_record_key}")
+    parent = self.article
     return if parent.nil?
 
     Broadcasts.replace(stream: "articles", target: "#{parent.dom_prefix}_#{parent.dom_record_key}", html: ActionView::ViewHelpers.broadcast_render(ActionView::ViewHelpers.begin_broadcast_render, Views::Articles.article(parent)))
@@ -405,10 +415,10 @@ class Comment < ApplicationRecord
   end
 
   def _autosave_article
-    return unless @article_loaded && @article_id.zero? && !@article_cache.nil?
-
-    @article_cache.save
-    @article_id = @article_cache.id
+    if @article_loaded && @article_id == 0 && !(@article_cache.nil?)
+      @article_cache.save
+      @article_id = @article_cache.id
+    end
   end
 
   def before_validation

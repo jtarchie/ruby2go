@@ -155,9 +155,9 @@ end
 def shape_of(v)
   case v
   when Array
-    v.reject(&:nil?).map(&:to_s).join(",")
+    v.select { |e| !e.nil? }.map { |e| e.to_s }.join(",")
   when Hash
-    v.keys.map(&:to_s).sort.join("/")
+    v.keys.map { |k| k.to_s }.sort.join("/")
   else
     "leaf"
   end
@@ -182,7 +182,7 @@ end
 
 #: (DynamicTests::Vehicle) -> String
 def checks(v)
-  [v.is_a?(DynamicTests::Vehicle), v.is_a?(DynamicTests::Car), v.is_a?(DynamicTests::Truck), v.is_a?(Object), v.is_a?(BasicObject), v.is_a?(Kernel)].inspect
+  [v.is_a?(DynamicTests::Vehicle), v.is_a?(DynamicTests::Car), v.kind_of?(DynamicTests::Truck), v.is_a?(Object), v.is_a?(BasicObject), v.is_a?(Kernel)].inspect
 end
 
 #: (untyped) -> String
@@ -192,14 +192,13 @@ end
 
 #: (untyped) -> String
 def dynamic_walk(v)
-  case v
-  when Array
-    v.map(&:to_s).join("+")
-  when Hash
+  if v.is_a?(Array)
+    v.map { |e| e.to_s }.join("+")
+  elsif v.is_a?(Hash)
     out = [] #: Array[String]
     v.each { |k, x| out << "#{k}=#{x}" }
     out.join(",")
-  when DynamicTests::Geo::Pt
+  elsif v.is_a?(DynamicTests::Geo::Pt)
     "pt #{v.x}"
   else
     "leaf"
@@ -272,7 +271,7 @@ def ident_opt(v) = v
 #: (untyped) -> String
 def nils(v)
   if v.is_a?(Array)
-    v.map(&:nil?).inspect
+    v.map { |e| e.nil? }.inspect
   else
     "?"
   end
@@ -281,7 +280,7 @@ end
 #: (untyped) -> String
 def nils_case(v)
   case v
-  when Array then v.select(&:nil?).size.to_s
+  when Array then v.select { |e| e.nil? }.size.to_s
   else "?"
   end
 end
@@ -324,7 +323,7 @@ end
 
 #: (String?) -> Integer
 def len_bang_guard(s)
-  return -3 unless s
+  return -3 if !s
 
   s.size + 2000
 end
@@ -361,7 +360,7 @@ end
 #: (DynamicTests::NShape) -> String
 def narrow_area_of(s)
   return "#{s.name}: #{s.radius * s.radius * 3}" if s.is_a?(DynamicTests::NCircle)
-  return "#{s.name}: #{s.side * s.side}" if s.is_a?(DynamicTests::NSquare)
+  return "#{s.name}: #{s.side * s.side}" if s.kind_of?(DynamicTests::NSquare)
 
   "#{s.name}: ?"
 end
@@ -483,11 +482,7 @@ def area_of(s) = s.area.inspect
 def sent_area(s) = s.send(:area).inspect
 
 #: (Integer) -> DynamicTests::Shape?
-def dynamic_pick(n) = if n.zero?
-                        nil
-                      else
-                        (n.positive? ? DynamicTests::Sq.new("p") : DynamicTests::Blob.new("q"))
-                      end
+def dynamic_pick(n) = n.zero? ? nil : (n.positive? ? DynamicTests::Sq.new("p") : DynamicTests::Blob.new("q"))
 
 #: (untyped) -> String
 def truth(v)
@@ -633,10 +628,10 @@ module DynamicTests
   # a public method_missing is still respond_to?-visible
   class MmConfig
     #: (Symbol, *untyped) -> String
-    def method_missing(name, *_args) = "mm #{name}"
+    def method_missing(name, *args) = "mm #{name}"
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(_name, _include_private = false) = false
+    def respond_to_missing?(name, include_private = false) = false
   end
 
   class Foo
@@ -658,7 +653,7 @@ module DynamicTests
       assert_equal true, [1].is_a?(Array)
       assert_equal true, { "a" => 1 }.is_a?(Hash)
       assert_equal true, BugCar.new.is_a?(BugVehicle)
-      assert_equal false, BugCar.new.is_a?(String)
+      assert_equal false, BugCar.new.kind_of?(String)
     end
 
     def test_is_a_string_narrows_a_nilable_before_a_typed_call
@@ -673,7 +668,7 @@ module DynamicTests
     def test_is_a_object_on_nil
       none = maybe_isa(-1)
       assert_equal true, none.is_a?(Object)
-      assert_equal true, none.is_a?(BasicObject)
+      assert_equal true, none.kind_of?(BasicObject)
       assert_equal true, none.is_a?(Kernel)
       assert_equal false, none.is_a?(Integer)
       assert_equal true, maybe_isa(2).is_a?(Object)
@@ -717,7 +712,7 @@ module DynamicTests
       assert_equal "DynamicTests::Foo", dynamic_ident_class(Foo.new).class.to_s
       assert_equal "Array", dynamic_ident_class([1]).class.to_s
       assert_equal "NilClass", dynamic_ident_class(nil).class.to_s
-      assert_equal "Float", dynamic_ident_class(2.5).class.to_s
+      assert_equal "Float", "#{dynamic_ident_class(2.5).class}"
     end
 
     def test_untyped_nilable_parameter
@@ -765,9 +760,9 @@ module DynamicTests
     VALS = [nil, 0, -7, 2.5, "héllo", "", :sym, [1, "a"], [], { "a" => 1, "b" => 2 }, {}, true, false] #: Array[untyped]
 
     def test_case_when_on_classes_over_untyped_values
-      assert_equal(["nil", "Integer 1", "Integer -6", "Float 5.0", "String HÉLLO (5)", "String  (0)", "Symbol :sym",
+      assert_equal ["nil", "Integer 1", "Integer -6", "Float 5.0", "String HÉLLO (5)", "String  (0)", "Symbol :sym",
                     "Array of 2: [1, \"a\"]", "Array of 0: []", "Hash with keys [\"a\", \"b\"]", "Hash with keys []",
-                    "something else: true", "something else: false"], VALS.map { |v| dynamic_classify(v) })
+                    "something else: true", "something else: false"], VALS.map { |v| dynamic_classify(v) }
       assert_equal "Puppy: yip from rex", dynamic_classify(Puppy.new("rex"))
       assert_equal "Dog: woof from fido", dynamic_classify(Dog.new("fido"))
       assert_equal "Animal tom", dynamic_classify(Cat.new("tom"))
@@ -775,14 +770,14 @@ module DynamicTests
     end
 
     def test_several_classes_in_one_when
-      assert_equal(["nothing", "number 0", "number -7", "number 2.5", "text \"héllo\"", "text \"\"", "text :sym",
-                    "other", "other", "other", "other", "other", "other"], VALS.map { |v| numeric_or_text(v) })
+      assert_equal ["nothing", "number 0", "number -7", "number 2.5", "text \"héllo\"", "text \"\"", "text :sym",
+                    "other", "other", "other", "other", "other", "other"], VALS.map { |v| numeric_or_text(v) }
     end
 
     def test_case_on_a_typed_struct_subject_narrows_to_subclasses
       animals = [Puppy.new("p"), Dog.new("d"), Cat.new("c"), Animal.new("a")] #: Array[Animal]
-      assert_equal(["yip from p", "woof from d", "meow from c", "... from a"], animals.map { |a| speak(a) })
-      assert_equal(["Animal first", "Animal first", "Animal first", "Animal first"], animals.map { |a| first_match_wins(a) })
+      assert_equal ["yip from p", "woof from d", "meow from c", "... from a"], animals.map { |a| speak(a) }
+      assert_equal ["Animal first", "Animal first", "Animal first", "Animal first"], animals.map { |a| first_match_wins(a) }
     end
 
     def test_case_on_a_nilable
@@ -892,7 +887,7 @@ module DynamicTests
     def car? = is_a?(Car)
 
     #: () -> bool
-    def self_truck? = is_a?(Truck)
+    def self_truck? = self.kind_of?(Truck)
   end
 
   class Car < Vehicle
@@ -921,19 +916,19 @@ module DynamicTests
 
   class DynamicIsATest < Minitest::Test
     def test_static_types_decide_is_a_on_primitives
-      assert_equal [true, false, true, true, true, true], [1.is_a?(Integer), 1.is_a?(Float), 1.is_a?(Comparable), 1.is_a?(Object), 1.is_a?(BasicObject), 1.is_a?(Kernel)]
+      assert_equal [true, false, true, true, true, true], [1.is_a?(Integer), 1.is_a?(Float), 1.is_a?(Comparable), 1.is_a?(Object), 1.kind_of?(BasicObject), 1.is_a?(Kernel)]
       assert_equal [true, false, true], [1.5.is_a?(Float), 1.5.is_a?(Integer), 1.5.is_a?(Comparable)]
-      assert_equal [true, true, false, true], ["s".is_a?(String), "s".is_a?(Comparable), "s".is_a?(Symbol), "".is_a?(Object)]
+      assert_equal [true, true, false, true], ["s".is_a?(String), "s".is_a?(Comparable), "s".is_a?(Symbol), "".kind_of?(Object)]
       sym = :s
       arr = [1]
       hsh = { "a" => 1 }
       assert_equal [true, false, true], [sym.is_a?(Symbol), sym.is_a?(String), sym.is_a?(Comparable)]
       assert_equal :s, sym
-      assert_equal [true, true, false, true], [arr.is_a?(Array), arr.is_a?(Enumerable), arr.is_a?(Hash), arr.is_a?(Object)]
+      assert_equal [true, true, false, true], [arr.is_a?(Array), arr.is_a?(Enumerable), arr.is_a?(Hash), arr.kind_of?(Object)]
       assert_equal [1], arr
       assert_equal [true, true, false], [hsh.is_a?(Hash), hsh.is_a?(Enumerable), hsh.is_a?(Array)]
       assert_equal "{\"a\" => 1}", hsh.inspect
-      assert_equal [true, true, false], [true.is_a?(Object), false.is_a?(Object), nil.is_a?(Integer)]
+      assert_equal [true, true, false], [true.is_a?(Object), false.kind_of?(Object), nil.is_a?(Integer)]
       pair = [1, "a"]
       assert_equal [true, true, false], [pair.is_a?(Array), pair.is_a?(Object), pair.is_a?(Hash)]
       assert_equal [1, "a"], pair
@@ -945,14 +940,14 @@ module DynamicTests
       assert_equal "[true, false, true, true, true, true]", checks(Truck.new)
       car = Car.new
       truck = Truck.new
-      assert_equal [true, false, true, false], [car.is_a?(Vehicle), car.is_a?(Truck), car.is_a?(Named), truck.is_a?(Car)]
+      assert_equal [true, false, true, false], [car.is_a?(Vehicle), car.is_a?(Truck), car.is_a?(Named), truck.kind_of?(Car)]
       assert_equal "car", car.kind
       assert_equal "vehicle", truck.kind
     end
 
     def test_untyped_values_use_a_type_assertion
       vals = [1, -2.5, "str", :sym, [1], { 1 => 2 }, Vehicle.new, Car.new, Truck.new, nil, true, false] #: Array[untyped]
-      assert_equal(["[true, false, false, false, false, false, false, false, true]",
+      assert_equal ["[true, false, false, false, false, false, false, false, true]",
                     "[false, true, false, false, false, false, false, false, true]",
                     "[false, false, true, false, false, false, false, false, true]",
                     "[false, false, false, true, false, false, false, false, true]",
@@ -963,11 +958,11 @@ module DynamicTests
                     "[false, false, false, false, false, false, true, false, true]",
                     "[false, false, false, false, false, false, false, false, true]",
                     "[false, false, false, false, false, false, false, false, true]",
-                    "[false, false, false, false, false, false, false, false, true]"], vals.map { |v| untyped_checks(v) })
+                    "[false, false, false, false, false, false, false, false, true]"], vals.map { |v| untyped_checks(v) }
       assert_equal true, dynamic_ident(Car.new).is_a?(Vehicle)
       assert_equal false, dynamic_ident(Truck.new).is_a?(Car)
-      assert_equal true, dynamic_ident([]).is_a?(Array)
-      assert_equal true, dynamic_ident({}).is_a?(Hash)
+      assert_equal true, dynamic_ident([]).kind_of?(Array)
+      assert_equal true, dynamic_ident({}).kind_of?(Hash)
     end
 
     def test_exceptions
@@ -980,7 +975,7 @@ module DynamicTests
                     [true, false, false, false, true, true],
                     [true, false, false, false, false, true]], got
       e = assert_raises(StandardError) { raise KeyError, "missing" }
-      assert_equal [true, true, false], [e.is_a?(KeyError), e.is_a?(IndexError), e.is_a?(ArgumentError)]
+      assert_equal [true, true, false], [e.is_a?(KeyError), e.is_a?(IndexError), e.kind_of?(ArgumentError)]
       assert_equal "missing", e.message
     end
 
@@ -993,7 +988,7 @@ module DynamicTests
       pt3 = Geo::Pt3.new(2)
       assert_equal true, dynamic_ident(Geo::Pt3.new(1)).is_a?(Geo::Pt)
       assert_equal false, dynamic_ident(Geo::Pt.new(1)).is_a?(Geo::Pt3)
-      assert_equal true, pt3.is_a?(Geo::Pt)
+      assert_equal true, pt3.kind_of?(Geo::Pt)
       assert_equal 2, pt3.x
     end
 
@@ -1011,7 +1006,7 @@ module DynamicTests
       assert_equal true, ex.is_a?(StandardError)
       assert_equal false, ex.is_a?(ArgumentError)
       assert_equal true, ex.is_a?(Exception)
-      assert_equal true, ex.is_a?(KeyError)
+      assert_equal true, ex.kind_of?(KeyError)
     end
 
     def test_is_a_on_self_in_a_method_body_is_a_runtime_check
@@ -1025,17 +1020,17 @@ module DynamicTests
     # Class values (decision 76).
     def test_module_case_equality_and_class_values
       cv_k = Car #: singleton(Vehicle)
-      assert_equal [true, false, true, true, false], [cv_k === Car.new, cv_k === Truck.new, Car.new.is_a?(Vehicle), Car.new.is_a?(Named), Truck.new.is_a?(Named)]
-      assert_equal [true, true, false, true, true, false], [3.is_a?(Integer), "s".is_a?(Comparable), :s.is_a?(String), nil.is_a?(NilClass), true.is_a?(TrueClass), true.is_a?(FalseClass)]
+      assert_equal [true, false, true, true, false], [cv_k === Car.new, cv_k === Truck.new, Vehicle === Car.new, Named === Car.new, Named === Truck.new]
+      assert_equal [true, true, false, true, true, false], [Integer === 3, Comparable === "s", String === :s, NilClass === nil, TrueClass === true, FalseClass === true]
       cv_e = KeyError.new("x")
-      assert_equal [true, true, true, false], [cv_e.is_a?(Exception), cv_e.is_a?(StandardError), cv_e.is_a?(IndexError), cv_e.is_a?(ArgumentError)]
+      assert_equal [true, true, true, false], [Exception === cv_e, StandardError === cv_e, IndexError === cv_e, ArgumentError === cv_e]
       cv_kinds = [KeyError, ArgumentError, IndexError] #: Array[singleton(StandardError)]
-      assert_equal([true, false, true], cv_kinds.map { |c| cv_e.is_a?(c) })
-      assert_equal([true, false, true], cv_kinds.map { |c| c === cv_e })
+      assert_equal [true, false, true], cv_kinds.map { |c| cv_e.is_a?(c) }
+      assert_equal [true, false, true], cv_kinds.map { |c| c === cv_e }
       cv_m = Named #: Module
-      assert_equal [true, false], [Car.new.is_a?(cv_m), 3.is_a?(cv_m)]
+      assert_equal [true, false], [Car.new.is_a?(cv_m), 3.kind_of?(cv_m)]
       assert_equal [false, true, true, false], [Car.new.instance_of?(Vehicle), Car.new.instance_of?(Car), 3.instance_of?(Integer), cv_e.instance_of?(IndexError)]
-      assert_equal([true, false, true], cv_kinds.map { |c| dynamic_ident(c) === cv_e })
+      assert_equal [true, false, true], cv_kinds.map { |c| dynamic_ident(c) === cv_e }
       assert_equal true, cv_e.is_a?(dynamic_ident(IndexError))
       cv_vals = [1, "a", nil, :x, 2.0, [1], { a: 1 }] #: Array[untyped]
       got = [Integer, String, NilClass, Symbol, Float, Array, Hash].map do |c|
@@ -1073,7 +1068,7 @@ module DynamicTests
     end
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, _include_private = false) = @values.key?(name.to_s)
+    def respond_to_missing?(name, include_private = false) = @values.key?(name.to_s)
 
     private
 
@@ -1097,7 +1092,7 @@ module DynamicTests
 
     #: (Symbol, *untyped) -> Integer
     def method_missing(name, *args)
-      @calls << "#{name}(#{args.map(&:inspect).join(", ")})"
+      @calls << "#{name}(#{args.map { |a| a.inspect }.join(", ")})"
       @calls.size
     end
   end
@@ -1107,16 +1102,16 @@ module DynamicTests
     def hi = "hi"
 
     #: () -> String
-    def call_hi = send(:hi)
+    def call_hi = self.send(:hi)
 
     #: () -> bool
     def can_hi = respond_to?(:hi)
 
     #: () -> bool
-    def can_bye = respond_to?(:bye)
+    def can_bye = self.respond_to?(:bye)
 
     #: (String) -> String
-    def call_named(n) = send(n)
+    def call_named(n) = self.send(n)
   end
 
   class Base
@@ -1137,7 +1132,7 @@ module DynamicTests
     def method_missing(name, *args) = "fallback #{name} #{args.size}"
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, _include_private = false) = name.to_s.end_with?("_x")
+    def respond_to_missing?(name, include_private = false) = name.to_s.end_with?("_x")
 
     #: () -> String
     def real = "real"
@@ -1157,7 +1152,7 @@ module DynamicTests
     include Chatty
 
     #: (Symbol, *untyped) -> String
-    def method_missing(name, *_args) = "talker #{name}"
+    def method_missing(name, *args) = "talker #{name}"
   end
 
   class Shy
@@ -1170,7 +1165,7 @@ module DynamicTests
     def method_missing(name, *args) = "shy #{name} #{args.inspect}"
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, _include_private = false) = name == :maybe
+    def respond_to_missing?(name, include_private = false) = name == :maybe
   end
 
   class Proxy
@@ -1180,10 +1175,10 @@ module DynamicTests
     end
 
     #: (Symbol, *untyped) -> untyped
-    def method_missing(name, *_args) = @target.send(name)
+    def method_missing(name, *args) = @target.send(name)
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, _include_private = false) = @target.respond_to?(name)
+    def respond_to_missing?(name, include_private = false) = @target.respond_to?(name)
   end
 
   class DynamicMethodMissingTest < Minitest::Test
@@ -1193,7 +1188,7 @@ module DynamicTests
       assert_equal "L", c.size
       assert_equal "", c.empty
       assert_equal "(no weight: [])", c.weight
-      assert_equal "(no weight: [1, \"two\", nil])", c.weight(1, "two", nil)
+      assert_equal "(no weight: [1, \"two\", nil])", (c.weight(1, "two", nil))
       assert_equal "BLUE", c.color.upcase
       assert_equal "blueblue", c.color_twice
       assert_equal "config", c.to_s
@@ -1208,7 +1203,7 @@ module DynamicTests
       r = Recorder.new
       assert_equal 1, r.first
       assert_equal 2, r.second(1)
-      assert_equal 3, r.third("a", [2], nil, 1.5, :sym)
+      assert_equal 3, (r.third("a", [2], nil, 1.5, :sym))
       assert_equal ["first()", "second(1)", "third(\"a\", [2], nil, 1.5, :sym)"], r.calls
       total = r.one + r.two
       assert_equal 9, total
@@ -1247,20 +1242,20 @@ module DynamicTests
       # send and public_send with literal names are ordinary calls
       assert_equal "hi", p1.send(:hello)
       assert_equal "hi", p1.public_send(:hello)
-      assert_equal 42, p1.send(:twice, 21)
-      assert_equal(-8, p1.public_send(:twice, -4))
+      assert_equal 42, (p1.send(:twice, 21))
+      assert_equal -8, (p1.public_send(:twice, -4))
       assert_equal "hi", p1.__send__(:hello)
       assert_equal "hidden", p1.send(:hidden)
       assert_equal "s3cret", c.send(:secret)
       assert_equal "blue", c.send(:color)
       assert_equal "L", c.public_send(:size)
-      assert_equal "(no weight: [3])", c.send(:weight, 3)
+      assert_equal "(no weight: [3])", (c.send(:weight, 3))
       assert_equal "hi", p1.send("hello")
-      assert_equal 10, p1.send("twice", 5)
-      assert_equal 8, 5.send(:+, 3)
+      assert_equal 10, (p1.send("twice", 5))
+      assert_equal 8, (5.send(:+, 3))
       assert_equal "ABC", "abc".send(:upcase)
-      assert_equal [1, 2, 3], [3, 1, 2].send(:sort)
-      assert_equal(-10, 10.public_send(:-, 20))
+      assert_equal [1, 2, 3], ([3, 1, 2].send(:sort))
+      assert_equal -10, (10.public_send(:-, 20))
     end
 
     def test_send_and_respond_to_on_self
@@ -1280,7 +1275,7 @@ module DynamicTests
       fc = FallbackChild.new
       assert_equal "own fallback zzz_x 0", fc.own
       assert_equal "fallback foo_x 0", fc.foo_x
-      assert_equal "fallback bar 2", fc.bar(1, 2)
+      assert_equal "fallback bar 2", (fc.bar(1, 2))
       assert_equal "real", fc.real
       assert_equal true, fc.respond_to?(:foo_x)
       assert_equal false, fc.respond_to?(:foo)
@@ -1291,9 +1286,9 @@ module DynamicTests
       assert_equal "own fallback zzz_x 0", fu.own
       assert_equal true, fu.respond_to?(:q_x)
       assert_equal false, fu.respond_to?(:q)
-      assert_equal "fallback dyn_x 1", fc.send(:dyn_x, 3)
+      assert_equal "fallback dyn_x 1", (fc.send(:dyn_x, 3))
       assert_equal "fallback dyn_y 0", fc.public_send(:dyn_y)
-      assert_equal "fallback direct 1", fc.method_missing(:direct, 1)
+      assert_equal "fallback direct 1", (fc.method_missing(:direct, 1))
     end
 
     def test_a_module_method_calling_an_unknown_name_reaches
@@ -1313,7 +1308,7 @@ module DynamicTests
       assert_equal true, shu.respond_to?(:maybe)
       assert_equal false, shu.respond_to?(:nope)
       assert_equal "hi", shu.hi
-      assert_equal "shy dyn [3]", shu.send(["dyn"].first(1)[0] || "", 3)
+      assert_equal "shy dyn [3]", (shu.send(["dyn"].first(1)[0] || "", 3))
       assert_equal false, shy.respond_to?(:method_missing)
       assert_equal false, shy.respond_to?(:respond_to_missing?)
     end
@@ -1373,7 +1368,7 @@ module DynamicTests
     def tag = is_a?(MidCar) ? "car-named" : "named"
 
     #: () -> bool
-    def vehicle? = is_a?(MidVehicle)
+    def vehicle? = kind_of?(MidVehicle)
   end
 
   class MidVehicle
@@ -1478,7 +1473,7 @@ module DynamicTests
     end
 
     #: (untyped) -> bool
-    def ==(other) = other.is_a?(VecNe) && x == other.x
+    def ==(o) = o.is_a?(VecNe) && x == o.x
   end
 
   class DynamicMidTest < Minitest::Test
@@ -1587,7 +1582,7 @@ module DynamicTests
 
     def test_send_may_call_private_methods_unlike_public_send
       send_v = VaultSend.new
-      assert_equal(%w[open shh], %w[open secret].map { |meth| send_v.send(meth) })
+      assert_equal ["open", "shh"], ["open", "secret"].map { |meth| send_v.send(meth) }
       assert_equal "shh", ident_send(send_v).send(:secret)
     end
 
@@ -1601,7 +1596,7 @@ module DynamicTests
     end
 
     def test_not_equal_dispatches_through_a_user_equals_and_computed_send
-      ne_m = %i[!= ==][0] #: Symbol?
+      ne_m = [:!=, :==][0] #: Symbol?
       ne_a = [1, 2] #: Array[Integer]
       ne_v = VecNe.new(1) #: untyped
       assert_equal false, ne_a.send(ne_m || :x, [1, 2])
@@ -1614,7 +1609,7 @@ module DynamicTests
       ne_o = nil #: Integer?
       ne_o = 3 if ne_a.size > 1
       assert_equal false, ne_o != 3
-      assert_equal true, !ne_o.nil?
+      assert_equal true, ne_o != nil
     end
   end
 
@@ -1720,8 +1715,8 @@ module DynamicTests
 
     def test_is_a_and_kind_of_narrow_struct_classes
       shapes = [NCircle.new(2), NSquare.new(3), NShape.new("blob")] #: Array[NShape]
-      assert_equal(["circle: 12", "square: 9", "blob: ?"], shapes.map { |s| narrow_area_of(s) })
-      assert_equal([4, -1, -1], shapes.map { |s| diameter_guard(s) })
+      assert_equal ["circle: 12", "square: 9", "blob: ?"], shapes.map { |s| narrow_area_of(s) }
+      assert_equal [4, -1, -1], shapes.map { |s| diameter_guard(s) }
       assert_equal "opt circle 5", opt_shape(NCircle.new(5))
       assert_equal "opt square", opt_shape(NSquare.new(1))
       assert_equal "opt nil", opt_shape(nil)
@@ -1740,8 +1735,8 @@ module DynamicTests
 
     def test_is_a_narrows_untyped
       vals = ["héllo", 21, [1, 2, 3], { "k" => 1 }, 2.5, nil, :sym, true] #: Array[untyped]
-      assert_equal(["string of 5: HÉLLO", "integer doubled 42", "array of 3", "hash of 1", "float 5.0", "nil", "other", "other"],
-                   vals.map { |v| untyped_narrow(v) })
+      assert_equal ["string of 5: HÉLLO", "integer doubled 42", "array of 3", "hash of 1", "float 5.0", "nil", "other", "other"],
+                   vals.map { |v| untyped_narrow(v) }
     end
 
     def test_while_narrows_the_loop_variable
@@ -1788,13 +1783,15 @@ module DynamicTests
         got << w.size.to_s if w
         got << "none" unless w
       end
-      assert_equal %w[2 2 0 none], got
+      assert_equal ["2", "2", "0", "none"], got
     end
 
     def test_narrowing_holds_inside_a_block_in_the_branch
       got = [] #: Array[Integer]
       x = dynamic_word(2)
-      [1, 2].each { |i| got << x.size + i } if x
+      if x
+        [1, 2].each { |i| got << x.size + i }
+      end
       assert_equal [3, 4], got
     end
 
@@ -1805,7 +1802,7 @@ module DynamicTests
 
         got << w.upcase
       end
-      assert_equal %w[W WWW], got
+      assert_equal ["W", "WWW"], got
     end
 
     def test_guards_inside_blocks_and_and_chains
@@ -1838,7 +1835,7 @@ module DynamicTests
       got = [] #: Array[String]
       opt_words = [dynamic_word(1), nil, dynamic_word(3)] #: Array[String?]
       opt_words.each { |ow| got << strict_len(ow).to_s if ow }
-      assert_equal([1, 0, 3], opt_words.map { |ow| ow ? strict_len(ow) : 0 })
+      assert_equal [1, 0, 3], opt_words.map { |ow| ow ? strict_len(ow) : 0 }
       pairs = [["a", dynamic_word(2)], ["b", nil]] #: Array[[String, String?]]
       pairs.each do |k, pv|
         next unless pv
@@ -1923,9 +1920,9 @@ module DynamicTests
       assert_equal "3", some.inspect
       assert_equal "", none.to_s
       assert_equal "3", some.to_s
-      assert_equal true, none.nil?
-      assert_equal false, some.nil?
-      assert_equal false, !none.nil?
+      assert_equal true, none == nil
+      assert_equal false, some == nil
+      assert_equal false, none != nil
       assert_equal false, some != 3
       assert_equal true, some == 3
       assert_equal false, none == 3
@@ -1940,8 +1937,8 @@ module DynamicTests
       assert_equal "nil", nil.inspect
       assert_equal "", nil.to_s
       assert_equal true, nil.nil?
-      assert_equal true, nil.nil?
-      assert_equal "|", "|"
+      assert_equal true, nil == nil
+      assert_equal "|", "#{nil}|"
     end
 
     def test_safe_navigation_on_nil_and_present_values
@@ -1985,8 +1982,8 @@ module DynamicTests
       assert_equal true, dynamic_maybe(-1) == dynamic_maybe(-2)
       assert_equal false, dynamic_maybe(1) == dynamic_maybe(-1)
       assert_equal true, dynamic_maybe(2) != dynamic_maybe(3)
-      assert_equal false, !dynamic_maybe(-1).nil?
-      assert_equal true, dynamic_maybe(-1).nil?
+      assert_equal false, dynamic_maybe(-1) != nil
+      assert_equal true, nil == dynamic_maybe(-1)
       assert_equal true, dynamic_maybe(7) == 7
       assert_equal false, dynamic_maybe(7) != 7.0
     end
@@ -2056,11 +2053,11 @@ module DynamicTests
       assert_nil(nums.detect { |x| x == 9 })
       maybes = [dynamic_maybe(1), dynamic_maybe(-1), dynamic_maybe(2)] #: Array[Integer?]
       assert_equal 3, maybes.size
-      assert_equal 1, maybes.select(&:nil?).size
-      assert_equal([false, true, false], maybes.map(&:nil?))
-      assert_equal(%w[1 nil 2], maybes.map(&:inspect))
-      assert_equal(["1", "", "2"], maybes.map(&:to_s))
-      assert_equal([10, 0, 20], maybes.map { |m| (m || 0) * 10 })
+      assert_equal 1, maybes.select { |m| m.nil? }.size
+      assert_equal [false, true, false], maybes.map { |m| m.nil? }
+      assert_equal ["1", "nil", "2"], maybes.map { |m| m.inspect }
+      assert_equal ["1", "", "2"], maybes.map { |m| m.to_s }
+      assert_equal [10, 0, 20], maybes.map { |m| (m || 0) * 10 }
     end
 
     def test_ternary_on_nilable
@@ -2081,24 +2078,24 @@ module DynamicTests
       assert_equal "  apple  ", fruit["a"]&.center(9)
       assert_nil fruit["zz"]&.center(9)
       lists = { "a" => [1, 2, 3] } #: Hash[String, Array[Integer]]
-      assert_equal([2, 4, 6], lists["a"]&.map { |x| x * 2 })
+      assert_equal [2, 4, 6], lists["a"]&.map { |x| x * 2 }
       assert_nil(lists["b"]&.map { |x| x * 2 })
-      assert_equal 2, lists["a"]&.select(&:odd?)&.size
+      assert_equal 2, lists["a"]&.select { |x| x.odd? }&.size
       got = [] #: Array[String]
       w2 = nil #: Integer?
       [1, nil, 3].each do |x|
         w2 = x
         got << w2&.+(1).inspect
       end
-      assert_equal %w[2 nil 4], got
+      assert_equal ["2", "nil", "4"], got
     end
 
     def test_nilable_struct_equality_uses_the_class_equals
       assert_equal true, pt(1) == pt(1)
       assert_equal false, pt(1) == pt(2)
       assert_equal true, pt(0) == pt(-1)
-      assert_equal false, pt(1).nil?
-      assert_equal true, pt(0).nil?
+      assert_equal false, pt(1) == nil
+      assert_equal true, pt(0) == nil
       assert_equal 3, dynamic_ident(pt(3)).x
       assert_equal "nil", dynamic_ident(pt(0)).inspect
       assert_equal 4, pt(4)&.x || 0
@@ -2222,10 +2219,10 @@ module DynamicTests
 
   class Ghost
     #: (Symbol, *untyped) -> untyped
-    def method_missing(name, *args) = "ghost #{name}(#{args.map(&:inspect).join(", ")})"
+    def method_missing(name, *args) = "ghost #{name}(#{args.map { |a| a.inspect }.join(", ")})"
 
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, _include_private = false) = name.to_s.start_with?("g")
+    def respond_to_missing?(name, include_private = false) = name.to_s.start_with?("g")
   end
 
   class Robot
@@ -2316,7 +2313,7 @@ module DynamicTests
       assert_equal "true", g.flip(false).inspect
       assert_equal "-0.5:sym", g.mixed(-0.5, :sym)
       assert_equal "1.0e+20:a b", g.mixed(1e20, :"a b")
-      assert_equal 3, g.count_words(%w[a b c])
+      assert_equal 3, g.count_words(["a", "b", "c"])
       assert_equal 1, g.count_words(["ü"])
     end
 
@@ -2375,13 +2372,13 @@ module DynamicTests
       assert_equal "yo, ada", g.send(:greet, "yo")
       assert_equal "ada", g.public_send(:name)
       assert_equal "(m)", g.send(:wrap, "m", "(", ")")
-      assert_equal(["\"hello, ada\"", "\"\"", "\"ada\"", "nil"], %w[greet shout name lucky].map { |m| g.send(m).inspect })
-      assert_equal(["\"hello, ada\"", "\"ada\""], %i[greet name].map { |m| g.public_send(m).inspect })
+      assert_equal ["\"hello, ada\"", "\"\"", "\"ada\"", "nil"], ["greet", "shout", "name", "lucky"].map { |m| g.send(m).inspect }
+      assert_equal ["\"hello, ada\"", "\"ada\""], [:greet, :name].map { |m| g.public_send(m).inspect }
       assert_equal "3", g.send("sum", 1, 2).inspect
       assert_equal "\"ghost glide(1)\"", ghost.send("glide", 1).inspect
       assert_equal "\"ghost anything()\"", ghost.send(:anything).inspect
-      assert_equal([true, false, true, false, true, false], ["name", "fly", :greet, "secret", "to_s", "gone"].map { |m| g.respond_to?(m) })
-      assert_equal([true, false], %w[glow fly].map { |m| ghost.respond_to?(m) })
+      assert_equal [true, false, true, false, true, false], ["name", "fly", :greet, "secret", "to_s", "gone"].map { |m| g.respond_to?(m) }
+      assert_equal [true, false], ["glow", "fly"].map { |m| ghost.respond_to?(m) }
     end
 
     def test_method_missing_receives_unknown_names_and_their_arguments
@@ -2396,7 +2393,7 @@ module DynamicTests
       assert_equal "hey, bob", klass.new("bob").greet("hey")
       assert_equal "DynamicTests::Greeter", klass.name
       assert_equal "DynamicTests::Greeter", klass.inspect
-      assert_equal(["DynamicTests::Greeter", "DynamicTests::Robot"], [Greeter, Robot].map(&:name))
+      assert_equal ["DynamicTests::Greeter", "DynamicTests::Robot"], [Greeter, Robot].map { |k| k.name }
     end
 
     def test_arity_errors_use_mri_messages
@@ -2564,7 +2561,7 @@ module DynamicTests
     def test_respond_to_with_a_computed_name_on_a_typed_receiver
       robot = Robot.new
       names = ["greet", "fly", :greet] #: Array[untyped]
-      assert_equal([true, false, true], names.map { |m| robot.respond_to?(m) })
+      assert_equal [true, false, true], names.map { |m| robot.respond_to?(m) }
     end
 
     def test_an_unknown_method_on_an_untyped_value_raises
@@ -2728,7 +2725,7 @@ module DynamicTests
     end
 
     #: () -> String
-    def ivar_dyn = "#{@value}!"
+    def ivar_dyn = "#{@value.to_s}!"
   end
 
   class DynamicUntypedTest < Minitest::Test
@@ -2757,9 +2754,9 @@ module DynamicTests
         [":\"with space\"", "with space", "<with space>"],
         ["[\"n\", [1, [2]]]", "[\"n\", [1, [2]]]", "<[\"n\", [1, [2]]]>"],
         ["{\"k\" => \"v\", s: 1.0}", "{\"k\" => \"v\", s: 1.0}", "<{\"k\" => \"v\", s: 1.0}>"],
-        ["#<Temp 21>", "21°", "<21°>"]
+        ["#<Temp 21>", "21°", "<21°>"],
       ] #: Array[Array[String]]
-      assert_equal(expected, more.map { |v| [v.inspect, v.to_s, "<#{v}>"] })
+      assert_equal expected, more.map { |v| [v.inspect, v.to_s, "<#{v}>"] }
       assert_equal "[1099511627776, -0.5, 1.0e+20, 0.30000000000000004, \"tab\\there\", \"quote\\\"s\", \"uni ✓\", \"\", :\"with space\", [\"n\", [1, [2]]], {\"k\" => \"v\", s: 1.0}, #<Temp 21>]", more.inspect
       assert_equal "[nil, false, true, 0, 0.0, -1, \"\", \"0\", :a, [], {}, #<Temp -4>]", VALS.inspect
     end
@@ -2789,15 +2786,15 @@ module DynamicTests
       assert_equal true, dynamic_ident(1) == 1.0
       assert_equal true, dynamic_ident("a") == "a"
       assert_equal false, dynamic_ident(:a) == "a"
-      assert_equal true, dynamic_ident(nil).nil?
-      assert_equal false, dynamic_ident(false).nil?
+      assert_equal true, dynamic_ident(nil) == nil
+      assert_equal false, dynamic_ident(false) == nil
       assert_equal true, dynamic_ident([1, 2]) == [1, 2]
       assert_equal true, dynamic_ident(1) != 2
       assert_equal true, dynamic_ident(nil).nil?
       assert_equal false, dynamic_ident(false).nil?
       assert_equal false, dynamic_ident(0).nil?
-      assert_equal true, dynamic_ident(1) == 1
-      assert_equal false, dynamic_ident("a") == "b"
+      assert_equal true, 1 == dynamic_ident(1)
+      assert_equal false, "b" == dynamic_ident("a")
       assert_equal true, dynamic_ident(:a).equal?(:a)
       assert_equal true, dynamic_ident(1).equal?(1)
       assert_equal true, dynamic_ident(nil).equal?(nil)
@@ -2840,7 +2837,7 @@ module DynamicTests
       assert_equal 5, arr.size
       assert_equal "[1, \"two\"]", arr.first(2).inspect
       assert_equal "nil", arr.last.inspect
-      assert_equal(["1", "two", "three", "4.0", ""], arr.map(&:to_s))
+      assert_equal ["1", "two", "three", "4.0", ""], arr.map { |e| e.to_s }
       assert_equal 4, arr.compact.size
       arr << [5]
       assert_equal "[1, \"two\", :three, 4.0, nil, [5]]", arr.inspect
@@ -2852,7 +2849,7 @@ module DynamicTests
       assert_equal "nil", h["zz"].inspect
       assert_equal "\"bee\"", h.fetch("b", 0).inspect
       assert_equal "0", h.fetch("zz", 0).inspect
-      assert_equal %w[a b c], h.keys
+      assert_equal ["a", "b", "c"], h.keys
       got = [] #: Array[String]
       h.each { |k, v| got << "#{k}=#{v.inspect} #{truth(v)}" }
       assert_equal ["a=1 truthy", "b=\"bee\" truthy", "c=nil falsy"], got
@@ -2864,12 +2861,12 @@ module DynamicTests
 
     def test_untyped_attributes_narrow_like_locals
       holders = [Holder.new("abc"), Holder.new(41), Holder.new(nil), Holder.new([1, 2]), Holder.new(:s)]
-      assert_equal([["str ABC", "S3", "abc!"], ["int 42", "?", "41!"], ["nil", "?", "!"], ["other [1, 2]", "A2", "[1, 2]!"], ["other :s", "?", "s!"]],
-                   holders.map { |hd| [hd.describe, hd.via_case, hd.ivar_dyn] })
+      assert_equal [["str ABC", "S3", "abc!"], ["int 42", "?", "41!"], ["nil", "?", "!"], ["other [1, 2]", "A2", "[1, 2]!"], ["other :s", "?", "s!"]],
+                   holders.map { |hd| [hd.describe, hd.via_case, hd.ivar_dyn] }
     end
 
     def test_symbol_keyed_untyped_hash_as_configuration
-      cfg = { port: 8080, host: "localhost", tags: %w[a b] } #: Hash[Symbol, untyped]
+      cfg = { port: 8080, host: "localhost", tags: ["a", "b"] } #: Hash[Symbol, untyped]
       assert_equal 8081, (cfg[:port] || 80) + 1
       assert_equal "LOCALHOST", cfg[:host].upcase
       assert_equal 2, cfg[:tags].size
@@ -2937,7 +2934,7 @@ module DynamicTests
     def test_universal_block_on_untyped
       x = [1, 2] #: untyped
       seen = [] #: Array[untyped]
-      assert_same(x, x.tap { |v| seen << v })
+      assert_same x, x.tap { |v| seen << v }
       assert_equal [[1, 2]], seen
     end
   end
@@ -2946,7 +2943,7 @@ module DynamicTests
   class DynamicOverloadAndProcTest < Minitest::Test
     def test_arity_overload_on_untyped
       io = StringIO.new("abcdef") #: untyped
-      assert_equal %w[ab cdef], [io.read(2), io.read]
+      assert_equal ["ab", "cdef"], [io.read(2), io.read]
     end
 
     def test_proc_call_on_untyped
@@ -3002,16 +2999,16 @@ module DynamicTests
   class DynamicContainerTest < Minitest::Test
     def test_untyped_container_methods
       h = { "a" => 1, "b" => 2 } #: untyped
-      assert_equal [%w[a b], [1, 2], [["a", 1], ["b", 2]]], [h.keys, h.values, h.to_a]
+      assert_equal [["a", "b"], [1, 2], [["a", 1], ["b", 2]]], [h.keys, h.values, h.to_a]
     end
 
     # Kernel's methods on typed containers held untyped: one class-ID arm for every element type (#96).
     def test_kernel_methods_on_typed_containers
       xs = [[1, 2], { "a" => 1 }, Set[:a], (1..3)] #: Array[untyped]
       assert_equal [false, false, false, true], xs.map(&:frozen?)
-      assert_equal([true, true, true, true], xs.map { |x| x.itself.equal?(x) })
-      assert_equal([true, true, true, true], xs.map { |x| x.equal?(x) })
-      assert_equal([nil, nil, nil, nil], xs.map { |x| x.instance_variable_get(:@nope) })
+      assert_equal [true, true, true, true], xs.map { |x| x.itself.equal?(x) }
+      assert_equal [true, true, true, true], xs.map { |x| x.object_id == x.object_id }
+      assert_equal [nil, nil, nil, nil], xs.map { |x| x.instance_variable_get(:@nope) }
       assert_equal ["[1, 2]", "{\"a\" => 1}"], [xs[0].send(:format, "%s", xs[0]), xs[1].send(:format, "%s", xs[1])]
       assert_equal [true, true], [xs[0].nil? == false, xs[2].instance_of?(Set)]
     end
@@ -3028,7 +3025,7 @@ module DynamicTests
       assert_equal [1, 2, 3], a
       w = ["b", nil, "a"] #: Array[String?]
       y = w #: untyped
-      assert_equal [%w[b a], "ba"], [y.compact, y.compact.join]
+      assert_equal [["b", "a"], "ba"], [y.compact, y.compact.join]
       n = [[1, [2]], 3] #: Array[untyped]
       assert_equal "1,2,3", n.join(",")
       e = [] #: Array[Integer]
@@ -3124,7 +3121,7 @@ module DynamicTests
       o = { "c" => 3 } #: Hash[String, Integer]
       y = o #: untyped
       assert_equal [{ "a" => 1, "b" => 2, "c" => 3 }, { "b" => 2 }, { "a" => 1 }, ["a", 1, "b", 2], true, false, "b", nil],
-                   [x.merge(y), x.except("a"), x.slice("a", "z"), x.flatten, x.value?(2), x.value?(7), x.key(2), x.key(7)]
+                   [x.merge(y), x.except("a"), x.slice("a", "z"), x.flatten, x.value?(2), x.has_value?(7), x.key(2), x.key(7)]
       assert_equal({ "a" => 1, "b" => 2 }, h)
       c = x.to_h # self, as MRI's
       c.store("d", 4)
@@ -3174,13 +3171,13 @@ module DynamicTests
     #: (Symbol, *untyped) -> untyped
     def method_missing(name, *args) = "dog mm #{name}(#{args.size})"
     #: (Symbol, ?bool) -> bool
-    def respond_to_missing?(name, _include_private = false) = name.to_s.start_with?("x")
+    def respond_to_missing?(name, include_private = false) = name.to_s.start_with?("x")
   end
 
   class SendOnTypedReceiverTest < Minitest::Test
     def test_typed_receiver
       a = SendOnAnimal.new("cat")
-      assert_equal(["cat speaks", "shh"], %w[speak secret].map { |m| a.send(m) })
+      assert_equal ["cat speaks", "shh"], %w[speak secret].map { |m| a.send(m) }
       assert_equal 8, a.send(%w[twice].first, 4)
       assert_raises(NoMethodError) { a.public_send(%w[secret].first) }
       assert_raises(NoMethodError) { a.send(%w[nope].first) }
@@ -3207,7 +3204,7 @@ module DynamicTests
     # decision 319: a computed respond_to? on an untyped value answers over every name without any dispatcher
     def test_computed_respond_to_on_untyped
       u = dynamic_ident(SendOnDog.new("rex"))
-      assert_equal([true, true, false, true], %w[speak fetch nope xq].map { |m| u.respond_to?(m) })
+      assert_equal [true, true, false, true], %w[speak fetch nope xq].map { |m| u.respond_to?(m) }
       assert_equal true, u.respond_to?(%w[secret].first, true)
       assert_equal false, u.respond_to?(%w[secret].first)
     end
@@ -3324,14 +3321,10 @@ module DynamicTests
   class DynGenPrivateKeyTest < Minitest::Test
     def test_public_underscore_and_private_plain_name_on_generic_receiver
       x = [1] #: untyped
-      assert_equal %w[pub both], [x._dyngen_pub, x._dyngen_both]
+      assert_equal ["pub", "both"], [x._dyngen_pub, x._dyngen_both]
       assert_equal "priv", x.send(:dyngen_both)
       assert_equal "priv2", x.send(:dyngen_priv)
-      ok = begin
-        [x.dyngen_both, x.dyngen_priv].map { "no" }
-      rescue StandardError
-        :nomethod
-      end
+      ok = [x.dyngen_both, x.dyngen_priv].map { "no" } rescue :nomethod
       assert_equal :nomethod, ok
     end
   end

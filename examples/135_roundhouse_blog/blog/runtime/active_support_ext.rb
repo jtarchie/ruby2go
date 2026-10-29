@@ -148,16 +148,16 @@ module ActiveSupport
   # Elements go through `to_s`, as Rails' `join` does.
   def self.to_sentence(list)
     n = list.length
-    return "" if n.zero?
+    return "" if n == 0
     return list[0].to_s if n == 1
     return "#{list[0]} and #{list[1]}" if n == 2
 
     head = +""
     i = 0
     while i < n - 1
-      head += ", " if i.positive?
-      head += list[i].to_s
-      i += 1
+      head = head + ", " if i > 0
+      head = head + list[i].to_s
+      i = i + 1
     end
     "#{head}, and #{list[n - 1]}"
   end

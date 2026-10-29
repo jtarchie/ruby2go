@@ -4,15 +4,15 @@
 # order, as MRI's class body does (#87): here `%w(...).each` fills a constant.
 
 class Table
-  ROWS = {}.freeze
-  %w[one two three].each do |word|
+  ROWS = {}
+  %w(one two three).each do |word|
     ROWS[word] = word.upcase
   end
 end
 
 module Registry
-  NAMES = [].freeze
-  %w[alpha beta].each { |name| NAMES << name }
+  NAMES = []
+  %w(alpha beta).each { |name| NAMES << name }
 end
 
 puts Table::ROWS.inspect

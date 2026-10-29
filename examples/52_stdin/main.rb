@@ -31,7 +31,7 @@ end
 people.sort_by(&:age).each { |pr| puts "#{pr.name}: #{pr.age}" }
 puts "oldest: #{people.max_by(&:age)&.name}"
 
-separator = $stdin.gets&.chomp
+separator = STDIN.gets&.chomp
 puts "separator: #{separator.inspect}"
 
 counts = {} #: Hash[String, Integer]
@@ -45,5 +45,5 @@ counts.sort_by { |w, c| [-c, w] }.first(3).each { |w, c| puts "#{w} #{c}" }
 
 puts "eof? #{$stdin.eof?}"
 p $stdin.gets
-p $stdin.read
+p STDIN.read
 p gets

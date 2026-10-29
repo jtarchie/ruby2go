@@ -241,6 +241,9 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 		syms[i] = ":" + m
 		reads[i] = "self." + m
 		eqs[i] = "self." + m + " == __other." + m
+		if kind == valueStruct && !scalarMember(types[i]) { // a Struct can hold itself: a member that could lead back compares through StructEq.same (decision 407)
+			eqs[i] = "::StructEq.same(self." + m + ", __other." + m + ")"
+		}
 		insp[i] = m + "=#{self." + m + ".inspect}"
 		pairs[i] = m + ": self." + m
 	}
@@ -267,8 +270,12 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	if len(eqs) == 0 {
 		eqs = []string{"true"}
 	}
-	if kind == valueStruct { // a Struct can hold itself (x[:a] = x), so ==, eql? and hash stop at a pair or object already in progress, as MRI's
-		fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    return true if ::Struct.__rec_enter(0, self, __other)\n    begin\n      %s\n    ensure\n      ::Struct.__rec_leave\n    end\n  end\n", full, strings.Join(eqs, " && "))
+	loops := false // some member could lead back to the struct (a scalar-only struct cannot, and keeps the plain code)
+	for i := range members {
+		loops = loops || kind == valueStruct && !scalarMember(types[i])
+	}
+	if loops { // a Struct can hold itself (x[:a] = x), so ==, eql? and hash stop at a pair or object already in progress, as MRI's
+		fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
 		fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    return true if ::Struct.__rec_enter(1, self, __other)\n    begin\n      __to_h.eql?(__other.__to_h)\n    ensure\n      ::Struct.__rec_leave\n    end\n  end\n", full)
 		pub("hash", "  #: () -> Integer\n  def hash = ::Struct.__hash_rec(self) { __to_h.hash }\n")
 	} else {
@@ -406,4 +413,13 @@ func lastConstName(n parser.Node) string {
 // from its calls, as unannotated defs are (decision 358).
 func (c *Compiler) membersFromNew(f *File, n *parser.ConstantWriteNode, kind valueKind, kwInit string, members int) bool {
 	return kind == valueStruct && kwInit != "true" && !c.gemFile(f) && fullNews(f.Root, n.Name, members)
+}
+
+// scalarMember is a member type that cannot hold a Struct, Array or Hash, so comparing it cannot recurse into the struct that holds it.
+func scalarMember(t rbs.Type) bool {
+	switch strings.TrimSuffix(t.String(), "?") {
+	case "Integer", "Float", "String", "Symbol", "bool", "nil", "true", "false":
+		return true
+	}
+	return false
 }

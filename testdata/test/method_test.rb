@@ -74,7 +74,7 @@ module MethodTests
 
   class Shape
     #: (String, ?String) -> String
-    def label(s, suffix = "") = "shape #{s}#{suffix}"
+    def label(s, suffix = "") = "shape " + s + suffix
 
     #: (Integer, ?k: Integer) -> Integer
     def scale(n, k: 2) = n * k
@@ -82,7 +82,7 @@ module MethodTests
 
   class Square < Shape
     #: (String, ?String) -> String
-    def label(s, suffix = "") = "square #{s}#{suffix}"
+    def label(s, suffix = "") = "square " + s + suffix
   end
 
   class MethodTest < Minitest::Test
@@ -99,12 +99,12 @@ module MethodTests
       assert_equal 6, [[1, 2], [3]].sum { |xs| xs.sum(&method(:method_neg)) } * -1
       assert_equal [11, 12], [1, 2].map(&method(:method_opt))
       d = Dog.new
-      assert_equal ["woof a", "woof b"], %w[a b].map(&d.method(:greet))
+      assert_equal ["woof a", "woof b"], ["a", "b"].map(&d.method(:greet))
     end
 
     def test_block_argument_iterator
-      %w[x y].each(&method(:method_log))
-      assert_equal %w[x y], LOG.last(2)
+      ["x", "y"].each(&method(:method_log))
+      assert_equal ["x", "y"], LOG.last(2)
       c = Counter.new
       c.add_all([1, 2, 3])
       assert_equal 6, c.total
@@ -113,7 +113,7 @@ module MethodTests
     def test_call_forms
       m = method(:method_twice)
       assert_equal 10, m.call(5)
-      assert_equal 8, m.call(4)
+      assert_equal 8, m.(4)
       assert_equal 6, m[3]
       assert_equal 4, m === 2
       assert_equal 7, method(:method_seven).call
@@ -131,16 +131,16 @@ module MethodTests
     def test_reflection
       m = method(:method_twice)
       assert_equal 1, m.arity
-      assert_equal [%i[req n]], m.parameters
+      assert_equal [[:req, :n]], m.parameters
       assert_equal :method_twice, m.name
       assert_equal Object, m.owner
       assert m.receiver.equal?(self)
       assert_equal(-2, method(:method_opt).arity)
-      assert_equal [%i[req a], %i[opt b]], method(:method_opt).parameters
+      assert_equal [[:req, :a], [:opt, :b]], method(:method_opt).parameters
       assert_equal(-2, method(:method_join).arity)
-      assert_equal [%i[req head], %i[rest rest]], method(:method_join).parameters
+      assert_equal [[:req, :head], [:rest, :rest]], method(:method_join).parameters
       assert_equal(-2, method(:method_kw).arity)
-      assert_equal [%i[req a], %i[key k]], method(:method_kw).parameters
+      assert_equal [[:req, :a], [:key, :k]], method(:method_kw).parameters
       assert_equal 0, method(:method_seven).arity
       assert_equal [], method(:method_seven).parameters
     end
@@ -187,7 +187,7 @@ module MethodTests
       assert_equal 5, pr.call(2, 3)
       assert pr.lambda?
       assert_equal 2, pr.arity
-      assert_equal 6, method(:method_twice).to_proc.call(3)
+      assert_equal 6, method(:method_twice).to_proc.(3)
       assert_equal 3, method(:method_add).curry[1][2]
       assert_equal 6, method(:method_twice).curry[3]
       inc = method(:method_add).curry(2)[1]
@@ -218,7 +218,7 @@ module MethodTests
       assert_equal 3, len.bind_call("abc")
       g = Animal.instance_method(:greet)
       assert_equal 1, g.arity
-      assert_equal [%i[req who]], g.parameters
+      assert_equal [[:req, :who]], g.parameters
       assert_equal "woof you", g.bind_call(Dog.new, "you")
       # MRI binds this definition, not the subclass's override
       assert_equal "...", Animal.instance_method(:speak).bind_call(Dog.new)
@@ -255,9 +255,9 @@ module MethodTests
     def test_dispatch_tables
       ops = { add: method(:method_add), sub: method(:method_sub) }
       assert_equal 5, ops[:add]&.call(2, 3)
-      assert_equal([3, -1], ops.values.map { |m| m.call(1, 2) })
+      assert_equal [3, -1], ops.values.map { |m| m.call(1, 2) }
       list = [method(:method_twice), method(:method_neg)]
-      assert_equal([6, -3], list.map { |m| m.call(3) })
+      assert_equal [6, -3], list.map { |m| m.call(3) }
       mixed = { twice: method(:method_twice), add: method(:method_add) } #: Hash[Symbol, Method]
       assert_equal 8, mixed.fetch(:twice).call(4)
       assert_equal 9, mixed.fetch(:add).call(4, 5)
@@ -280,7 +280,7 @@ module MethodTests
       c = Counter.new
       m = c.adder
       m.call(4)
-      m.call(5)
+      m.(5)
       assert_equal 9, c.total
       assert m.receiver.equal?(c)
       assert_equal Counter, m.owner
@@ -402,16 +402,16 @@ module MethodTests
     end
 
     def test_reassigned_block_param
-      assert_equal(3, NoYield.new.ze { 3 })
+      assert_equal 3, NoYield.new.ze { 3 }
     end
 
     def test_proc_literal_info
-      assert_equal [%i[opt x], %i[opt y]], proc { |x, y| }.parameters
-      assert_equal [%i[req x], %i[opt y]], ->(x, y = 1) {}.parameters
-      assert_equal [%i[keyreq k], %i[key o], %i[keyrest kr], %i[block b]], proc { |k:, o: 1, **kr, &b| }.parameters
+      assert_equal [[:opt, :x], [:opt, :y]], proc { |x, y| }.parameters
+      assert_equal [[:req, :x], [:opt, :y]], ->(x, y = 1) {}.parameters
+      assert_equal [[:keyreq, :k], [:key, :o], [:keyrest, :kr], [:block, :b]], proc { |k:, o: 1, **kr, &b| }.parameters
       assert_equal [], proc {}.parameters
       assert_equal [0, -2, 2, -1, 0], [proc { |x = 1| }.arity, ->(x, y = 1) {}.arity, proc { _1 + _2 }.arity, ->(x: 1) {}.arity, proc { |x: 0| }.arity]
-      assert_equal [false, true, true], [proc {}.lambda?, -> {}.lambda?, -> {}.lambda?]
+      assert_equal [false, true, true], [proc {}.lambda?, -> {}.lambda?, lambda {}.lambda?]
     end
   end
 end
@@ -460,7 +460,7 @@ module MethodTests
       assert_equal [1, 2, 6, 3, 4], s.m([1, 2, 3, 4]) { |a, b = 5, c = 6, d, e| [a, b, c, d, e] }
       assert_equal [1, 2, [3, 4, 5], 6, 7], s.m([1, 2, 3, 4, 5, 6, 7]) { |a, b = 5, *c, d, e| [a, b, c, d, e] }
       assert_equal [1, [], 2, nil], proc { |a, *b, c, d| [a, b, c, d] }.call(1, 2)
-      assert_equal [%i[opt a], %i[rest b], %i[opt c]], proc { |a, *b, c| }.parameters
+      assert_equal [[:opt, :a], [:rest, :b], [:opt, :c]], proc { |a, *b, c| }.parameters
     end
   end
 end
@@ -481,7 +481,7 @@ module MethodTests
       assert_equal [1, [2, 3], 4, 5, 6], proc { |(a, *b, c), d, e| [a, b, c, d, e] }.call([1, 2, 3, 4], 5, 6)
       assert_equal [[1, 2], :b, :c], y.one([1, 2]) { |a, b: :b, c: :c| [a, b, c] }
       assert_equal [[1, 2], {}], y.one([1, 2]) { |a, **k| [a, k] }
-      assert_equal [[{ "a" => 10 }]], y.other([{ "a" => 10 }]) { |a = nil| [a] }
+      assert_equal [[{ "a" => 10 }]], y.other(["a" => 10]) { |a = nil| [a] }
     end
   end
 end

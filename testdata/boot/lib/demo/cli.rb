@@ -82,7 +82,7 @@ end
 
 # A T::Struct whose props a load-time loop declares under computed names: boot's props (decision 241).
 class DemoFormulaStruct < T::Struct
-  PREDICATES = %i[bottle head].freeze
+  PREDICATES = [:bottle, :head].freeze
 
   PREDICATES.each do |predicate_name|
     present_method_name = :"#{predicate_name}_present"
@@ -137,8 +137,8 @@ class DemoBottle
   def initialize(formula, name: nil)
     if formula
       name = formula.upcase
-    elsif name.nil?
-      raise ArgumentError, "Bottle name is required"
+    else
+      raise ArgumentError, "Bottle name is required" if name.nil?
     end
     @name = T.let(name, String)
   end
@@ -160,7 +160,7 @@ class DemoLineSource
   def each_line_from(sources, &_block)
     sources = {
       sources[0] => :stdout,
-      sources[1] => :stderr
+      sources[1] => :stderr,
     }
     until sources.empty?
       src = sources.keys.first
@@ -230,7 +230,7 @@ module DemoPackagesIndex
     data = {
       "version" => 2,
       **fingerprint,
-      **data
+      **data,
     }
     data.keys
   end
@@ -715,13 +715,11 @@ end
 module DemoHoistUnderscore
   def self.go(flag)
     if flag
-      _ = 1
-      b = 2
+      _, b = [1, 2]
     else
       b = 4
     end
-    _ = 5
-    c = 6
+    _, c = [5, 6]
     [b, c]
   end
 end
@@ -814,10 +812,10 @@ class DemoStanzaDSL
     @version = T.let(nil, T.nilable(DemoStanzaVersion))
   end
 
-  T::Sig::WithoutRuntime.sig do
+  T::Sig::WithoutRuntime.sig {
     type_parameters(:U).params(stanza: Symbol, should_return: T::Boolean, _block: T.proc.returns(T.type_parameter(:U)))
                        .returns(T.type_parameter(:U))
-  end
+  }
   def set_unique_stanza(stanza, should_return, &_block)
     return instance_variable_get(:"@#{stanza}") if should_return
 
@@ -874,7 +872,7 @@ class DemoOwnerDsl
   extend T::Sig
 
   sig { returns(T::Array[String]) }
-  def name = %w[a b]
+  def name = ["a", "b"]
 
   sig { returns(String) }
   def token = "tok"
@@ -949,11 +947,11 @@ end
 module DemoRead
   extend T::Sig
 
-  sig do
+  sig {
     type_parameters(:U)
       .params(cmd: String, block: T.nilable(T.proc.params(arg0: String).returns(T.type_parameter(:U))))
       .returns(T.any(T.type_parameter(:U), String))
-  end
+  }
   def self.read(cmd, &block)
     text = "out of #{cmd}"
     return yield(text) if block

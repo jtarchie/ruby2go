@@ -35,7 +35,7 @@ class Dog < Animal
   #: () -> Integer
   def trick_count = @tricks.size
 
-  def speak = "#{super}!"
+  def speak = super + "!"
 end
 
 class Bird < Animal
@@ -46,10 +46,8 @@ class Bird < Animal
 end
 
 zoo = [Dog.new("Rex"), Bird.new("Tweety"), Animal.new("Blob", 0)]
-zoo.each do |a|
-  puts a.speak
-  puts a
-end
+zoo.each { |a| puts a.speak }
+zoo.each { |a| puts a }
 
 rex = Dog.new("Rex")
 rex.learn("sit").learn("roll")
@@ -57,4 +55,4 @@ puts rex.trick_count
 rex.legs = 3
 puts rex
 puts rex == rex, rex == Dog.new("Rex"), rex.equal?(rex)
-puts zoo.map(&:legs).inspect
+puts zoo.map { |a| a.legs }.inspect

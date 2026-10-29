@@ -43,20 +43,28 @@ module SchematizedJson
     s = serialized.to_s
     n = s.length
     i = 0
-    i += 1 while i < n && s[i, 1].to_s != "{"
-    i += 1
+    while i < n && s[i, 1].to_s != "{"
+      i = i + 1
+    end
+    i = i + 1
     scanning = true
     while scanning
-      i += 1 while i < n && separator?(s[i, 1].to_s)
+      while i < n && separator?(s[i, 1].to_s)
+        i = i + 1
+      end
       if i >= n || s[i, 1].to_s != "\""
         scanning = false
       else
         key_end = scan_string(s, i)
         key = decode_string(s[i, key_end - i].to_s)
         i = key_end
-        i += 1 while i < n && s[i, 1].to_s != ":"
-        i += 1
-        i += 1 while i < n && separator?(s[i, 1].to_s)
+        while i < n && s[i, 1].to_s != ":"
+          i = i + 1
+        end
+        i = i + 1
+        while i < n && separator?(s[i, 1].to_s)
+          i = i + 1
+        end
         value_end = scan_value(s, i)
         if i >= n || value_end == i
           scanning = false
@@ -72,7 +80,7 @@ module SchematizedJson
   # Whitespace or a structural comma — everything that may sit between a
   # flat object's tokens.
   def self.separator?(c)
-    [" ", "\n", "\t", "\r", ","].include?(c)
+    c == " " || c == "\n" || c == "\t" || c == "\r" || c == ","
   end
 
   # Index just PAST the closing quote of the string starting at `start`
@@ -86,12 +94,12 @@ module SchematizedJson
     while i < n && !done
       c = s[i, 1].to_s
       if c == "\\"
-        i += 2
+        i = i + 2
       elsif c == "\""
-        i += 1
+        i = i + 1
         done = true
       else
-        i += 1
+        i = i + 1
       end
     end
     i
@@ -106,12 +114,12 @@ module SchematizedJson
     done = false
     while i < n && !done
       c = s[i, 1].to_s
-      if [",", "}", "{", "["].include?(c)
+      if c == "," || c == "}" || c == "{" || c == "["
         done = true
-      elsif [" ", "\n", "\t", "\r"].include?(c)
+      elsif c == " " || c == "\n" || c == "\t" || c == "\r"
         done = true
       else
-        i += 1
+        i = i + 1
       end
     end
     i
@@ -131,24 +139,23 @@ module SchematizedJson
       c = s[i, 1].to_s
       if c == "\\"
         e = s[i + 1, 1].to_s
-        out = case e
-              when "n"
-                "#{out}\n"
-              when "r"
-                "#{out}\r"
-              when "t"
-                "#{out}\t"
-              when "b"
-                "#{out}\b"
-              when "f"
-                "#{out}\f"
-              else
-                out + e
-              end
-        i += 2
+        if e == "n"
+          out = out + "\n"
+        elsif e == "r"
+          out = out + "\r"
+        elsif e == "t"
+          out = out + "\t"
+        elsif e == "b"
+          out = out + "\b"
+        elsif e == "f"
+          out = out + "\f"
+        else
+          out = out + e
+        end
+        i = i + 2
       else
-        out += c
-        i += 1
+        out = out + c
+        i = i + 1
       end
     end
     out
@@ -158,7 +165,7 @@ module SchematizedJson
   # such key. Empty is unambiguous: the shortest JSON value text is two
   # characters, so nothing valid renders as the empty string.
   def self.read_raw(data, key)
-    return "" unless data.key?(key)
+    return "" if !data.key?(key)
 
     data[key].to_s
   end
@@ -169,21 +176,21 @@ module SchematizedJson
   # default over missing data before anything reads it.
   def self.read_boolean(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
-    return fallback if ["", "null"].include?(raw)
+    return fallback if raw == "" || raw == "null"
 
     raw == "true"
   end
 
   def self.read_integer(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
-    return fallback if ["", "null"].include?(raw)
+    return fallback if raw == "" || raw == "null"
 
     raw.to_i
   end
 
   def self.read_string(serialized, key, fallback)
     raw = read_raw(parse_object(serialized), key)
-    return fallback if ["", "null"].include?(raw)
+    return fallback if raw == "" || raw == "null"
 
     decode_string(raw)
   end
@@ -200,7 +207,7 @@ module SchematizedJson
   end
 
   def self.write_string(serialized, key, value)
-    write_raw(serialized, key, "\"#{JsonBuilder.encode_string(value)}\"")
+    write_raw(serialized, key, "\"" + JsonBuilder.encode_string(value) + "\"")
   end
 
   # Rails' `<col>=` on a has_json column — `account.update!(settings: { … })`,
@@ -219,21 +226,20 @@ module SchematizedJson
   # the per-key writer already applies.
   def self.assign(serialized, value, schema)
     return nil if value.nil?
-    return value.to_s unless value.is_a?(Hash)
+    return value.to_s if !value.is_a?(Hash)
 
     out = serialized
     value.each do |k, v|
       key = k.to_s
       type = schema.key?(key) ? schema[key] : ""
-      case type
-      when "boolean"
+      if type == "boolean"
         out = write_boolean(out, key, v.to_s != "0" && v.to_s != "" && v.to_s != "false")
-      when "integer"
+      elsif type == "integer"
         out = write_integer(out, key, v.to_i)
-      when "string"
+      elsif type == "string"
         out = write_string(out, key, v.to_s)
       else
-        raise NoMethodError, "undefined method '#{key}=' for the json column's schema"
+        raise NoMethodError, "undefined method '" + key + "=' for the json column's schema"
       end
     end
     out
@@ -254,10 +260,11 @@ module SchematizedJson
     out = "{"
     i = 0
     while i < names.length
-      out += "," if i.positive?
-      out = "#{out}\"#{JsonBuilder.encode_string(names[i].to_s)}\":#{read_raw(data, names[i].to_s)}"
-      i += 1
+      out = out + "," if i > 0
+      out = out + "\"" + JsonBuilder.encode_string(names[i].to_s) + "\":" +
+            read_raw(data, names[i].to_s)
+      i = i + 1
     end
-    "#{out}}"
+    out + "}"
   end
 end

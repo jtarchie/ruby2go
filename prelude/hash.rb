@@ -48,7 +48,7 @@ class Hash < Object
       if x.is_a?(Array)
         x.each_with_index do |pair, i|
           raise ArgumentError, "wrong element type #{pair.class} at #{i} (expected array)" unless pair.is_a?(Array)
-          raise ArgumentError, "invalid number of elements (#{pair.size} for 1..2)" unless [1, 2].include?(pair.size)
+          raise ArgumentError, "invalid number of elements (#{pair.size} for 1..2)" unless pair.size == 1 || pair.size == 2
 
           h[pair[0]] = pair[1]
         end

@@ -9,7 +9,7 @@ module ClassMethodTests
     def self.find(id) = _find(id)
 
     #: (Integer) -> Model
-    def self._find(_id) = Model.new
+    def self._find(id) = Model.new
 
     #: () -> Array[Model]
     def self._all = []
@@ -20,7 +20,7 @@ module ClassMethodTests
 
   class Post < Model
     #: (Integer) -> Post
-    def self._find(_id) = Post.new
+    def self._find(id) = Post.new
 
     #: () -> Array[Post]
     def self._all = [Post.new, Post.new]
@@ -36,11 +36,11 @@ module ClassMethodTests
   def self.copy(h)
     out = {} #: Hash[String, untyped]
     h.each do |k, v|
-      out[k] = if v.is_a?(Hash)
-                 ClassMethodTests.copy(v)
-               else
-                 v
-               end
+      if v.is_a?(Hash)
+        out[k] = ClassMethodTests.copy(v)
+      else
+        out[k] = v
+      end
     end
     out
   end
@@ -49,11 +49,11 @@ module ClassMethodTests
   def self.copy_strings(h)
     out = {} #: Hash[String, String]
     h.each do |k, v|
-      out[k] = if v.is_a?(Integer)
-                 (v + 1).to_s
-               else
-                 v
-               end
+      if v.is_a?(Integer)
+        out[k] = (v + 1).to_s
+      else
+        out[k] = v
+      end
     end
     out
   end

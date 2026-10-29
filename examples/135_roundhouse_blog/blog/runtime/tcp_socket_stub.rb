@@ -65,7 +65,7 @@ module TcpSocketStub
   # mocha's unexpected invocation, raised here so the test that made it
   # fails at the call.
   def self.check(host, port)
-    return nil if EXPECT_PREDS.empty?
+    return nil if EXPECT_PREDS.length == 0
 
     i = EXPECT_PREDS.length - 1
     while i >= 0
@@ -73,7 +73,9 @@ module TcpSocketStub
         slot = i + 1
         throw EXPECT_THROWS[slot].to_sym if EXPECT_THROWS[slot] != ""
         EXPECT_CALLS[slot] += 1
-        raise "unexpected invocation: TCPSocket.open(#{host.inspect}, #{port}) — expected #{EXPECT_COUNTS[slot]} time(s)" if EXPECT_CALLS[slot] > EXPECT_COUNTS[slot]
+        if EXPECT_CALLS[slot] > EXPECT_COUNTS[slot]
+          raise "unexpected invocation: TCPSocket.open(#{host.inspect}, #{port}) — expected #{EXPECT_COUNTS[slot]} time(s)"
+        end
 
         return nil
       end
@@ -88,7 +90,9 @@ module TcpSocketStub
     i = 0
     while i < EXPECT_PREDS.length
       slot = i + 1
-      raise "not all expectations were satisfied: TCPSocket.open expected #{EXPECT_COUNTS[slot]} time(s), invoked #{EXPECT_CALLS[slot]}" if EXPECT_COUNTS[slot] >= 0 && EXPECT_CALLS[slot] < EXPECT_COUNTS[slot]
+      if EXPECT_COUNTS[slot] >= 0 && EXPECT_CALLS[slot] < EXPECT_COUNTS[slot]
+        raise "not all expectations were satisfied: TCPSocket.open expected #{EXPECT_COUNTS[slot]} time(s), invoked #{EXPECT_CALLS[slot]}"
+      end
 
       i += 1
     end

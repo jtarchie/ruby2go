@@ -5,7 +5,7 @@
 # The unmodified kramdown gem: Markdown in, HTML (and normalized kramdown) out.
 require "kramdown"
 
-SOURCE = <<~MD.freeze
+SOURCE = <<~MD
   # Release notes {#notes}
 
   rugaroo compiles *unmodified* gems. This page came from **kramdown**.

@@ -39,10 +39,10 @@ module Sqlite3Tests
       assert_equal [[2, "b"]], db.execute("select id, name from t where name = ?", "b")
       assert_equal [[3, "c"]], db.execute("select id, name from t where name = :n", { "n" => "c" })
       assert_equal [[3, "c"]], db.execute("select id, name from t where name = :n", { n: "c" })
-      assert_equal [[4_611_686_018_427_387_904, 1.0e300, "é"]], db.execute("select ?, ?, ?", [2**62, 1e300, "é"])
+      assert_equal [[4611686018427387904, 1.0e300, "é"]], db.execute("select ?, ?, ?", [2**62, 1e300, "é"])
       assert_equal [["a\0b"]], db.execute("select ?", ["a\0b"])
-      assert_equal [%w[blob text]], db.execute("select typeof(?), typeof(?)", [SQLite3::Blob.new("ab"), "ab"])
-      assert_equal [%w[blob text]], db.execute("select typeof(:b), typeof(:t)", { "b" => SQLite3::Blob.new("ab"), "t" => "ab" })
+      assert_equal [["blob", "text"]], db.execute("select typeof(?), typeof(?)", [SQLite3::Blob.new("ab"), "ab"])
+      assert_equal [["blob", "text"]], db.execute("select typeof(:b), typeof(:t)", { "b" => SQLite3::Blob.new("ab"), "t" => "ab" })
       assert_equal "ab", SQLite3::Blob.new("ab").to_s
       assert_equal 2, SQLite3::Blob.new("ab").bytesize
       assert_equal [["blob"]], db.execute("select typeof(?)", ["ab".to_blob])
@@ -54,7 +54,7 @@ module Sqlite3Tests
 
     def test_execute2_first_row_first_value
       db = seeded
-      assert_equal [%w[id name], [1, "a"], [2, "b"]], db.execute2("select id, name from t where id < 3")
+      assert_equal [["id", "name"], [1, "a"], [2, "b"]], db.execute2("select id, name from t where id < 3")
       seen = [] #: Array[untyped]
       db.execute2("select name from t where id < 3") { |r| seen << r }
       assert_equal [["name"], ["a"], ["b"]], seen
@@ -111,7 +111,7 @@ module Sqlite3Tests
       assert_equal " select 2", db.prepare("select 1; select 2").remainder
       assert_equal [[1]], db.execute("select 1; select 2")
       s = db.prepare("select 1 as n, 2")
-      assert_equal [%w[n 2], [nil, nil]], [s.columns, s.types]
+      assert_equal [["n", "2"], [nil, nil]], [s.columns, s.types]
       assert_equal "n", s.column_name(0)
       assert_nil s.column_decltype(0)
       s.close
@@ -176,16 +176,10 @@ module Sqlite3Tests
 
     def test_transactions
       db = seeded
-      assert_equal(7, db.transaction do |d|
-        d.execute("insert into t (name) values ('tx')")
-        7
-      end)
+      assert_equal 7, db.transaction { |d| d.execute("insert into t (name) values ('tx')"); 7 }
       refute db.transaction_active?
       e = assert_raises(RuntimeError) do
-        db.transaction do
-          db.execute("insert into t (name) values ('rb')")
-          raise "boom"
-        end
+        db.transaction { db.execute("insert into t (name) values ('rb')"); raise "boom" }
       end
       assert_equal "boom", e.message
       assert_equal 4, db.get_first_value("select count(*) from t")
@@ -214,7 +208,7 @@ module Sqlite3Tests
       assert_equal [[nil]], db.execute("select nada()")
       db.create_function("blobby", 1) { |fn, s| fn.result = SQLite3::Blob.new(s.to_s) }
       assert_equal [["blob"]], db.execute("select typeof(blobby('x'))")
-      db.create_function("boom", 0) { |_fn| raise "kaboom" }
+      db.create_function("boom", 0) { |fn| raise "kaboom" }
       e = assert_raises(RuntimeError) { db.execute("select boom()") }
       assert_equal "kaboom", e.message
       db.define_function("add3") { |a, b, c| a + b + c }
@@ -224,12 +218,12 @@ module Sqlite3Tests
     def test_pragmas_and_schema
       db = seeded
       info = db.table_info("t")
-      assert_equal(%w[id name score data], info.map { |c| c["name"] })
-      assert_equal(%w[integer text real blob], info.map { |c| c["type"] })
-      assert_equal([1, 0, 0, 0], info.map { |c| c["pk"] })
-      assert_equal([nil, nil, nil, nil], info.map { |c| c["dflt_value"] })
+      assert_equal %w[id name score data], info.map { |c| c["name"] }
+      assert_equal %w[integer text real blob], info.map { |c| c["type"] }
+      assert_equal [1, 0, 0, 0], info.map { |c| c["pk"] }
+      assert_equal [nil, nil, nil, nil], info.map { |c| c["dflt_value"] }
       db.execute("create table d (a text default 'x''y', b integer default null, c integer default 3)")
-      assert_equal(["x'y", nil, "3"], db.table_info("d").map { |c| c["dflt_value"] })
+      assert_equal ["x'y", nil, "3"], db.table_info("d").map { |c| c["dflt_value"] }
       assert_equal 0, db.user_version
       db.user_version = 3
       assert_equal 3, db.user_version

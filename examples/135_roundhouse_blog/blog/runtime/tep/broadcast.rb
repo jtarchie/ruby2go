@@ -63,7 +63,9 @@ module Tep
     def self.unsubscribe(sub_id)
       Tep::APP.broadcast_lock.synchronize do
         subs = Tep::APP.broadcast_subs
-        subs.delete_at(sub_id) if sub_id >= 0 && sub_id < subs.length
+        if sub_id >= 0 && sub_id < subs.length
+          subs.delete_at(sub_id)
+        end
       end
       0
     end
@@ -76,9 +78,11 @@ module Tep
         subs = Tep::APP.broadcast_subs
         i = subs.length - 1
         while i >= 0
-          if (subs[i].fd == fd) && (subs[i].topic == topic)
-            subs.delete_at(i)
-            dropped += 1
+          if subs[i].fd == fd
+            if subs[i].topic == topic
+              subs.delete_at(i)
+              dropped += 1
+            end
           end
           i -= 1
         end
@@ -133,7 +137,9 @@ module Tep
         subs = Tep::APP.broadcast_subs
         i = 0
         while i < subs.length
-          n += 1 if subs[i].topic == topic
+          if subs[i].topic == topic
+            n += 1
+          end
           i += 1
         end
       end
@@ -169,14 +175,16 @@ module Tep
         subs = Tep::APP.broadcast_subs
         i = 0
         while i < subs.length
-          matched.push(subs[i]) if subs[i].topic == topic
+          if subs[i].topic == topic
+            matched.push(subs[i])
+          end
           i += 1
         end
       end
       i = 0
       while i < matched.length
         sub = matched[i]
-        if sub.mode.zero?
+        if sub.mode == 0
           # write_bytes: write_str is strlen-terminated, and a raw
           # payload is not guaranteed NUL-free.
           Sock.sphttp_write_bytes(sub.fd, payload, payload.bytesize)

@@ -55,7 +55,7 @@ module Tep
       # Max bytes accepted from a single request's start-line + headers.
       # Bigger requests get 413; matches the blocking server's
       # SPHTTP_BUFSIZE cap (64 KiB).
-      MAX_REQUEST_BYTES = 65_535
+      MAX_REQUEST_BYTES = 65535
 
       # Idle keep-alive timeout between requests on the same connection.
       KEEPALIVE_TIMEOUT = 30
@@ -68,13 +68,18 @@ module Tep
 
       def run(port, workers, quiet)
         sfd = Sock.sphttp_listen(port, workers > 1 ? 1 : 0)
-        if sfd.negative?
-          warn "#{Tep.display_name}: cannot bind to port #{port} (already in use?)"
+        if sfd < 0
+          $stderr.puts Tep.display_name + ": cannot bind to port " +
+                       port.to_s + " (already in use?)"
           exit(1)
         end
-        unless quiet
-          puts "#{Tep.display_name} (#{RUBY_ENGINE}) listening on http://0.0.0.0:#{port}, pid #{Sock.sphttp_getpid}"
-          puts "  one green thread per connection; OS workers: #{Tep.os_workers_desc}; processes: #{Tep.processes_desc(workers)}"
+        if !quiet
+          puts Tep.display_name + " (" + RUBY_ENGINE +
+               ") listening on http://0.0.0.0:" + port.to_s +
+               ", pid " + Sock.sphttp_getpid.to_s
+          puts "  one green thread per connection; OS workers: " +
+               Tep.os_workers_desc + "; processes: " +
+               Tep.processes_desc(workers)
           $stdout.flush
         end
 
@@ -89,7 +94,7 @@ module Tep
           i = 0
           while i < workers
             pid = Sock.sphttp_fork
-            if pid.zero?
+            if pid == 0
               Tep::Server::Threaded.run_worker(sfd)
               Sock.sphttp_exit(0) # same reason as the single-process exit below
             end
@@ -97,12 +102,18 @@ module Tep
           end
           loop do
             gone = Sock.sphttp_wait_any
-            break if gone.negative?
+            if gone < 0
+              break
+            end
           end
-          Tep.on_shutdown if Sock.sphttp_shutdown_requested != 0
+          if Sock.sphttp_shutdown_requested != 0
+            Tep.on_shutdown
+          end
         else
           Tep::Server::Threaded.run_worker(sfd)
-          Tep.on_shutdown if Sock.sphttp_shutdown_requested != 0
+          if Sock.sphttp_shutdown_requested != 0
+            Tep.on_shutdown
+          end
           # Exit outright: spinel runs every remaining green thread to
           # completion when main returns, and the connection threads are
           # parked on sockets that may never speak again (a keep-alive
@@ -123,14 +134,20 @@ module Tep
       def self.run_worker(sfd)
         Sock.sphttp_set_nonblock(sfd)
         lio = IO.for_fd(sfd, autoclose: false)
-        loop do
-          break if Sock.sphttp_shutdown_requested != 0
+        while true
+          if Sock.sphttp_shutdown_requested != 0
+            break
+          end
 
           ready = lio.wait_readable(1)
-          next if ready.nil?
+          if ready.nil?
+            next
+          end
 
           client = Sock.sphttp_accept_nb(sfd)
-          next if client.negative?
+          if client < 0
+            next
+          end
 
           Sock.sphttp_set_nonblock(client)
           Thread.new(client) do |c|
@@ -148,7 +165,9 @@ module Tep
       def self.handle_connection(client)
         io = IO.for_fd(client, autoclose: false)
         keep_going = true
-        keep_going = Tep::Server::Threaded.handle_one(client, io) while keep_going
+        while keep_going
+          keep_going = Tep::Server::Threaded.handle_one(client, io)
+        end
         io.close
         Sock.sphttp_close(client)
         0
@@ -158,10 +177,12 @@ module Tep
       # connection open for the next keep-alive request, false to close.
       def self.handle_one(client, io)
         blob = Tep::Server::Threaded.read_request_blob(client, io, KEEPALIVE_TIMEOUT)
-        return false if blob.empty?
+        if blob.length == 0
+          return false
+        end
 
         req = Parser.parse(blob)
-        if req.nil?
+        if req == nil
           Tep::Server::Threaded.send_simple(client, 400, "bad request")
           return false
         end
@@ -198,16 +219,24 @@ module Tep
         deadline = Time.now.to_i + timeout_seconds
         while buf.length < MAX_REQUEST_BYTES
           remaining = deadline - Time.now.to_i
-          return "" if remaining <= 0
+          if remaining <= 0
+            return ""
+          end
 
           ready = io.wait_readable(remaining)
-          return "" if ready.nil?
+          if ready.nil?
+            return ""
+          end
 
           chunk = Sock.sphttp_recv_some(fd, 4096)
-          return "" if chunk.empty?
+          if chunk.length == 0
+            return ""
+          end
 
           buf << chunk
-          return buf if buf.length >= 4 && buf.include?("\r\n\r\n")
+          if buf.length >= 4 && buf.include?("\r\n\r\n")
+            return buf
+          end
         end
         ""
       end
@@ -238,14 +267,16 @@ module Tep
         # Streaming branch -- chunked, Connection: close.
         if res.streaming
           res.headers["Transfer-Encoding"] = "chunked"
-          res.headers["Content-Type"] = "text/event-stream" unless res.headers.key?("Content-Type")
+          if !res.headers.key?("Content-Type")
+            res.headers["Content-Type"] = "text/event-stream"
+          end
           reason = Tep.reason(res.status)
-          head = "#{req.http_version} #{res.status} #{reason}\r\n"
+          head = req.http_version + " " + res.status.to_s + " " + reason + "\r\n"
           res.headers.each do |k, v|
-            head << "#{k}: #{v}\r\n"
+            head << k + ": " + v + "\r\n"
           end
           res.set_cookies.each do |line|
-            head << "Set-Cookie: #{line}\r\n"
+            head << "Set-Cookie: " + line + "\r\n"
           end
           head << "Connection: close\r\n\r\n"
           Sock.sphttp_write_str(client, head)
@@ -256,39 +287,43 @@ module Tep
         end
 
         # Default Content-Type for inline-body responses.
-        res.headers["Content-Type"] = "text/html; charset=utf-8" if res.file_path.empty? && res.body.length.positive? && !res.headers.key?("Content-Type")
+        if res.file_path.length == 0 && res.body.length > 0 && !res.headers.key?("Content-Type")
+          res.headers["Content-Type"] = "text/html; charset=utf-8"
+        end
         reason = Tep.reason(res.status)
-        head = "#{req.http_version} #{res.status} #{reason}\r\n"
+        head = req.http_version + " " + res.status.to_s + " " + reason + "\r\n"
         res.headers.each do |k, v|
-          head << "#{k}: #{v}\r\n"
+          head << k + ": " + v + "\r\n"
         end
         res.set_cookies.each do |line|
-          head << "Set-Cookie: #{line}\r\n"
+          head << "Set-Cookie: " + line + "\r\n"
         end
-        head << if keep_alive
-                  "Connection: keep-alive\r\n"
-                else
-                  "Connection: close\r\n"
-                end
-        if res.file_path.length.positive?
+        if keep_alive
+          head << "Connection: keep-alive\r\n"
+        else
+          head << "Connection: close\r\n"
+        end
+        if res.file_path.length > 0
           fs = Sock.sphttp_filesize(res.file_path)
-          head << "Content-Length: #{fs}\r\n\r\n"
+          head << "Content-Length: " + fs.to_s + "\r\n\r\n"
           Sock.sphttp_write_str(client, head)
           Sock.sphttp_sendfile(client, res.file_path)
         else
           # BYTES, both times: `length` counts characters, and
           # `write_str` crosses the FFI as a NUL-terminated C string.
-          head << "Content-Length: #{res.body.bytesize}\r\n\r\n"
+          head << "Content-Length: " + res.body.bytesize.to_s + "\r\n\r\n"
           Sock.sphttp_write_str(client, head)
-          Sock.sphttp_write_bytes(client, res.body, res.body.bytesize) if res.body.bytesize.positive?
+          if res.body.bytesize > 0
+            Sock.sphttp_write_bytes(client, res.body, res.body.bytesize)
+          end
         end
         0
       end
 
       def self.send_simple(client, status, msg)
         reason = Tep.reason(status)
-        head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" \
-               "Content-Length: " + msg.length.to_s + "\r\n" \
+        head = "HTTP/1.0 " + status.to_s + " " + reason + "\r\n" +
+               "Content-Length: " + msg.length.to_s + "\r\n" +
                "Connection: close\r\n\r\n" + msg
         Sock.sphttp_write_str(client, head)
         0

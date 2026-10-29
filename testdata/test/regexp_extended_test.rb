@@ -1,6 +1,5 @@
 # rbs_inline: enabled
 
-require "English"
 require "minitest/autorun"
 require "strscan"
 
@@ -9,10 +8,10 @@ module RegexpTests
   class RegexpExtendedTest < Minitest::Test
     def test_scan_groups_ignore_x_comments
       assert_equal [["a"], ["a"]], "a b a".scan(/(a) # (note)/x)
-      assert_equal [%w[a b]], "ab".scan(/(a) # (note)
+      assert_equal [["a", "b"]], "ab".scan(/(a) # (note)
                                            (b)/x)
       assert_equal [], "a b a".scan(/(a) b # (note)/x)
-      assert_equal %w[a a], "a b a".scan(/a # (note)/x) # no groups: strings, not rows
+      assert_equal ["a", "a"], "a b a".scan(/a # (note)/x) # no groups: strings, not rows
     end
 
     def test_rooted_regexp_new_lookbehind
@@ -60,14 +59,14 @@ module RegexpTests
   # #102: grep/grep_v with a block set $~ for each test, as MRI's
   class RegexpGrepLastMatchTest < Minitest::Test
     def test_grep_block_last_match
-      assert_equal %w[b b], %w[aba aba].grep(/a(b)a/) { ::Regexp.last_match(1) }
+      assert_equal ["b", "b"], ["aba", "aba"].grep(/a(b)a/) { $1 }
       "z" =~ /z/
-      got = %w[abc def].grep(/b/) { |e| [e, ::Regexp.last_match(0)] }
-      assert_equal [[%w[abc b]], nil], [got, $LAST_MATCH_INFO]
+      got = ["abc", "def"].grep(/b/) { |e| [e, $&] }
+      assert_equal [[["abc", "b"]], nil], [got, $~]
       "z" =~ /z/
-      assert_equal [["abc"], "z"], [%w[abc def].grep(/b/), ::Regexp.last_match(0)]
-      inv = %w[abc def].grep_v(/e/) { |e| [e, $LAST_MATCH_INFO.nil?] }
-      assert_equal [[["abc", true]], "e"], [inv, ::Regexp.last_match(0)]
+      assert_equal [["abc"], "z"], [["abc", "def"].grep(/b/), $&]
+      inv = ["abc", "def"].grep_v(/e/) { |e| [e, $~.nil?] }
+      assert_equal [[["abc", true]], "e"], [inv, $&]
     end
 
     # `::Regexp.last_match(n)` reads the frame's $~ as `Regexp.last_match(n)` does (Homebrew's expand_elf_dst).
@@ -138,13 +137,15 @@ module RegexpTests
   class RegexpLargeSubjectTest < Minitest::Test
     def test_large_subject_validity_is_not_stale
       big = "abc def " * 100
-      bad = "#{big[0, big.size - 1]}\xFF"
+      bad = big[0, big.size - 1] + "\xFF"
       raised = [] #: Array[bool]
       [big, bad, big, bad].each do |s|
-        s.match?(/\Aabc/)
-        raised << false
-      rescue ArgumentError
-        raised << true
+        begin
+          s.match?(/\Aabc/)
+          raised << false
+        rescue ArgumentError
+          raised << true
+        end
       end
       assert_equal [false, true, false, true], raised
       assert_equal [true, 0, "abc"], [bad.b.match?(/\Aabc/n), big =~ /abc/, big.match(/\Aabc/)&.[](0)]
@@ -159,17 +160,17 @@ module RegexpTests
     def test_simple_patterns_everywhere
       s = "ab12 é日9 x=1/y?z"
       assert_equal "ab23 é日0 x=2/y?z", s.gsub(/\d/) { |d| ((d.to_i + 1) % 10).to_s }
-      assert_equal %w[12 9 1], s.scan(/\d+/)
-      assert_equal %w[ab12 é日9 x 1 y z], s.split(%r{[\s/?=]+})
+      assert_equal ["12", "9", "1"], s.scan(/\d+/)
+      assert_equal ["ab12", "é日9", "x", "1", "y", "z"], s.split(/[\s\/?=]+/)
       assert_equal 2, s =~ /\d/
       assert_equal 10, s =~ /=1/ # a character index, not a byte offset
       assert s.match?(/日9/)
       refute "".match?(/\d/)
       assert_nil "abc" =~ /\d+?x/
       assert_equal "a-b-c", "a b c".gsub(/ /, "-")
-      assert_equal %w[1 2], "1a2".scan(/\d/)
+      assert_equal ["1", "2"], "1a2".scan(/\d/)
       assert_equal 1, "aab".index(/ab/)
-      assert_equal %w[ab 12], "ab12".match(/\A[a-z]+/).to_a + [$LAST_MATCH_INFO.post_match]
+      assert_equal ["ab", "12"], "ab12".match(/\A[a-z]+/).to_a + [$~.post_match]
       assert_equal "X日X", "a日b".gsub(/[ab]/, "X")
     end
 
@@ -201,7 +202,7 @@ module RegexpTests
 
     def test_match_with_pos
       re = /(.).(.)/
-      assert_equal [%w[1 3], %w[1 3], %w[が う]], [re.match("01234", 1)&.captures, re.match("01234", -4)&.captures, re.match("ありがとう", 2)&.captures]
+      assert_equal [["1", "3"], ["1", "3"], ["が", "う"]], [re.match("01234", 1)&.captures, re.match("01234", -4)&.captures, re.match("ありがとう", 2)&.captures]
       assert_equal [nil, nil, nil], [re.match("01234", 4), re.match("01234", 10), re.match("01234", -10)]
       assert_equal [nil, nil, 1], [/\Ab/.match("ab", 1), /^b/.match("ab", 1), /(?<=a)b/.match("ab", 1)&.begin(0)]
     end
@@ -211,8 +212,8 @@ module RegexpTests
       assert m
       if m
         assert_equal({ f: "foo", b: "bar" }, m.deconstruct_keys(nil))
-        assert_equal({ f: "foo", b: "bar" }, m.deconstruct_keys(%i[f b]))
-        assert_equal [{}, {}, { f: "foo" }, { b: "bar" }], [m.deconstruct_keys(%i[f b c]), m.deconstruct_keys(%i[c f]), m.deconstruct_keys(%i[f c]), m.deconstruct_keys([:b])]
+        assert_equal({ f: "foo", b: "bar" }, m.deconstruct_keys([:f, :b]))
+        assert_equal [{}, {}, { f: "foo" }, { b: "bar" }], [m.deconstruct_keys([:f, :b, :c]), m.deconstruct_keys([:c, :f]), m.deconstruct_keys([:f, :c]), m.deconstruct_keys([:b])]
       end
       m2 = /(?<f>foo)(?<b>bar)?/.match("foo")
       assert_equal({ f: "foo", b: nil }, m2&.deconstruct_keys(nil))
@@ -225,13 +226,13 @@ module RegexpExtendedTests
   class LastMatchAssignTest < Minitest::Test
     def test_assign_last_match
       "cd" =~ /(c)/
-      m = $LAST_MATCH_INFO
+      m = $~
       "x" =~ /y/
-      assert_nil $LAST_MATCH_INFO
+      assert_nil $~
       $~ = m
-      assert_equal "c", ::Regexp.last_match(1)
+      assert_equal "c", $1
       $~ = nil
-      assert_nil ::Regexp.last_match(1)
+      assert_nil $1
     end
   end
 end
@@ -241,9 +242,9 @@ module RegexpExtendedTests
   class MatchPosLastMatchTest < Minitest::Test
     def test_match_pos_sets_last_match
       m = /(.).(.)/.match("01234", 1)
-      assert_equal %w[1 3], m&.captures
-      assert_equal "1", ::Regexp.last_match(1)
-      assert_equal "123", $LAST_MATCH_INFO&.[](0)
+      assert_equal ["1", "3"], m&.captures
+      assert_equal "1", $1
+      assert_equal "123", $~&.[](0)
     end
 
     def test_fixed_encoding_flag

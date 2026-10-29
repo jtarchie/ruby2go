@@ -14,7 +14,7 @@ module Handlers
 
   class Base
     #: (String) -> bool
-    def self.matches?(_path) = false
+    def self.matches?(path) = false
   end
 
   class Posts < Base
@@ -58,11 +58,11 @@ class Registry
 end
 
 puts Handlers.detect { |h| h.matches?("/users/1") }.inspect
-puts Handlers.map(&:name).inspect, Handlers.count
+puts Handlers.map { |h| h.name }.inspect, Handlers.count
 puts Handlers.select { |h| h.matches?("/posts/9") }.inspect
 puts "user_sessions".camelize, "posts".camelize
 
 registry = Registry.new.add("a").add("b")
 registry.each { |name| puts name }
-puts registry.transform(&:upcase).inspect
-puts(registry.first_transformed { |name| name * 3 })
+puts registry.transform { |name| name.upcase }.inspect
+puts registry.first_transformed { |name| name * 3 }

@@ -37,10 +37,10 @@ i = 0
 i += 1 until i * i > 50
 puts i
 
-if total.zero?
-  puts "zero"
-else
+unless total.zero?
   puts "non-zero"
+else
+  puts "zero"
 end
 
 x = 7

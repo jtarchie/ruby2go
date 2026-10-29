@@ -46,5 +46,5 @@ rescue NotFound => e
   puts "#{e.class}: #{e.message}"
 end
 
-shout = proc { "proc made with Proc.new" }
+shout = Proc.new { "proc made with Proc.new" }
 puts shout.call.upcase

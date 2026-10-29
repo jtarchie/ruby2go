@@ -5,11 +5,11 @@
 # symbol table, so this example sorts before printing.
 
 module Formats
-  VERSION = "2.0".freeze #: String
+  VERSION = "2.0" #: String
 
   class Base
     #: (String) -> bool
-    def self.matches?(_path) = false
+    def self.matches?(path) = false
   end
 
   class HTML < Base
@@ -42,7 +42,7 @@ end
 def kind_for(name) = Handlers.const_get(name).kind
 
 puts Formats.name, Formats::HTML.name, Formats.class, Formats::HTML.class
-puts String, String.class, Integer.name, 42.class, "s".instance_of?(String)
+puts String, String.class, Integer.name, 42.class, "s".class == String
 puts Formats.constants.sort.inspect, Handlers.constants.sort.inspect
 puts Formats.const_defined?(:HTML), Formats.const_defined?("XML")
 puts kind_for("Index"), kind_for("Show"), Handlers.const_get(:Base).kind

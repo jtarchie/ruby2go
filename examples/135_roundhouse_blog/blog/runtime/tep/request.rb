@@ -1,7 +1,7 @@
 # Tep::Request -- what the handler reads off the wire.
 module Tep
   class Request
-    attr_accessor :verb, :path, :raw_path, :http_version, :remote_host, :ivars, :passed, :uploads
+    attr_accessor :verb, :path, :raw_path, :http_version
     # `req_params` (not `params`): renamed to avoid sharing an ivar
     # slot with the controller's `@params`. Roundhouse assigns the
     # controller a nested poly hash (params["article"]["title"]); under
@@ -9,6 +9,8 @@ module Tep
     # plain `@params` here would be widened to that poly hash and break
     # this class's String->String reads. Same fix as req_headers.
     attr_accessor :req_params, :query, :req_headers, :raw_body, :cookies
+    attr_accessor :remote_host
+    attr_accessor :ivars
 
     def initialize
       @verb         = +""
@@ -43,7 +45,10 @@ module Tep
       @uploads      = {}
     end
 
-    def set_passed = @passed = true
+    attr_accessor :passed
+    attr_accessor :uploads
+
+    def set_passed; @passed = true; end
 
     # Sinatra-compat read aliases removed in the vendored copy.
     # `req.body` collides with controller#body via spinel poly dispatch
@@ -54,8 +59,12 @@ module Tep
     # We treat both as "use HTTP/1.1 default behaviour".
     def keep_alive?
       lc = @req_headers["connection"].downcase
-      return false if lc == "close"
-      return true if lc == "keep-alive"
+      if lc == "close"
+        return false
+      end
+      if lc == "keep-alive"
+        return true
+      end
 
       @http_version == "HTTP/1.1"
     end
@@ -82,13 +91,12 @@ module Tep
     # `.ip` would need a sphttp_accept_with_peer C helper before it
     # can land cleanly, so it's deferred.
 
-    def host = @req_headers.[]("host")
-    def user_agent = @req_headers.[]("user-agent")
-    def referer = @req_headers.[]("referer")
-    # spelling alias
-    def referrer = @req_headers.[]("referer")
-    def accept = @req_headers.[]("accept")
-    def content_type = @req_headers.[]("content-type")
+    def host; @req_headers["host"]; end
+    def user_agent; @req_headers["user-agent"]; end
+    def referer; @req_headers["referer"]; end
+    def referrer; @req_headers["referer"]; end # spelling alias
+    def accept; @req_headers["accept"]; end
+    def content_type; @req_headers["content-type"]; end
 
     # tep doesn't terminate TLS itself; both flags reflect "is this
     # connection encrypted from the client's view?" via the
@@ -96,7 +104,9 @@ module Tep
     # proxy sets.
     def scheme
       proto = @req_headers["x-forwarded-proto"]
-      return proto.downcase if proto.length.positive?
+      if proto.length > 0
+        return proto.downcase
+      end
 
       "http"
     end
@@ -123,7 +133,7 @@ module Tep
       already = @raw_body.bytesize
       if cl > already
         rest = Sock.sphttp_drain_body(client_fd, cl - already)
-        @raw_body += rest
+        @raw_body = @raw_body + rest
       end
       parse_body_params
       0
@@ -160,16 +170,16 @@ module Tep
       cl = content_length
       while @raw_body.bytesize < cl
         ready = Tep::Scheduler.io_wait(client_fd, Tep::Scheduler::READ, 5)
-        if ready.zero?
+        if ready == 0
           break   # timeout -- client never finished sending
         end
 
         chunk = Sock.sphttp_recv_some(client_fd, cl - @raw_body.bytesize)
-        if chunk.bytesize.zero?
+        if chunk.bytesize == 0
           break   # peer closed mid-body
         end
 
-        @raw_body += chunk
+        @raw_body = @raw_body + chunk
       end
       parse_body_params
       0
@@ -192,11 +202,11 @@ module Tep
         end
 
         chunk = Sock.sphttp_recv_some(client_fd, cl - @raw_body.bytesize)
-        if chunk.bytesize.zero?
+        if chunk.bytesize == 0
           break   # peer closed mid-body
         end
 
-        @raw_body += chunk
+        @raw_body = @raw_body + chunk
       end
       parse_body_params
       0

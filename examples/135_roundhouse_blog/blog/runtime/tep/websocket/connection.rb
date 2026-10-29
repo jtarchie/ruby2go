@@ -57,7 +57,7 @@ module Tep
         # frame forward via byteslice. Replaces the old static recv buffer
         # + per-byte C accessor (sphttp.c is retired — matz/spinel#1466).
         inbuf = +""
-        loop do
+        while true
           ready = @io.wait_readable(@idle_timeout_seconds)
           if ready.nil?
             # Timeout: close 1001 going-away.
@@ -66,23 +66,25 @@ module Tep
             return 0
           end
 
-          chunk = Sock.sp_net_recv_some(@fd, 65_536)
-          if chunk.bytesize.zero?
+          chunk = Sock.sp_net_recv_some(@fd, 65536)
+          if chunk.bytesize == 0
             # EOF / peer gone: dispatch close without sending one back.
             Connection.dispatch_close(@driver, Tep::WebSocket::CLOSE_GOING_AWAY, "")
             return 0
           end
-          inbuf += chunk
+          inbuf = inbuf + chunk
 
           # Parse + dispatch every complete frame the buffer now holds.
-          loop do
+          while true
             # bytesize, not length: inbuf is masked binary, and char-count
             # arithmetic under-reports avail (complete frames report "need")
             # and truncates the carried tail after a parse (stream
             # misalignment) whenever XOR'd bytes form multi-byte UTF-8
             # sequences — mask-dependent, so it flakes per connection.
             r = Tep::WebSocket::Frame.parse_from_buf(inbuf, 0, inbuf.bytesize)
-            break if r.outcome == "need"
+            if r.outcome == "need"
+              break
+            end
 
             if r.outcome == "close"
               @driver.close(r.close_code, "protocol error")
@@ -103,18 +105,17 @@ module Tep
       # Route a parsed frame to the right handler.
       def self.dispatch_frame(driver, frame)
         op = frame.opcode
-        case op
-        when Tep::WebSocket::OPCODE_TEXT
+        if op == Tep::WebSocket::OPCODE_TEXT
           Connection.dispatch_message(driver, frame.payload, true)
-        when Tep::WebSocket::OPCODE_BINARY
+        elsif op == Tep::WebSocket::OPCODE_BINARY
           Connection.dispatch_message(driver, frame.payload, false)
-        when Tep::WebSocket::OPCODE_PING
+        elsif op == Tep::WebSocket::OPCODE_PING
           # Auto-pong with the ping's payload (§5.5.3).
           driver.pong(frame.payload)
           Connection.dispatch_ping(driver, frame.payload)
-        when Tep::WebSocket::OPCODE_PONG
+        elsif op == Tep::WebSocket::OPCODE_PONG
           Connection.dispatch_pong(driver, frame.payload)
-        when Tep::WebSocket::OPCODE_CLOSE
+        elsif op == Tep::WebSocket::OPCODE_CLOSE
           code = 0
           reason = +""
           # bytesize/getbyte/byteslice: the close payload is binary (2-byte
@@ -122,10 +123,12 @@ module Tep
           # reason opens with a multi-byte character.
           if frame.payload.bytesize >= 2
             code = (frame.payload.getbyte(0) << 8) | frame.payload.getbyte(1)
-            reason = frame.payload.byteslice(2, frame.payload.bytesize - 2) if frame.payload.bytesize > 2
+            if frame.payload.bytesize > 2
+              reason = frame.payload.byteslice(2, frame.payload.bytesize - 2)
+            end
           end
           # Echo the close back (§5.5.1) then dispatch.
-          driver.close(code.zero? ? Tep::WebSocket::CLOSE_NORMAL : code, reason)
+          driver.close(code == 0 ? Tep::WebSocket::CLOSE_NORMAL : code, reason)
           Connection.dispatch_close(driver, code, reason)
         end
         0
@@ -137,7 +140,7 @@ module Tep
         0
       end
 
-      def self.dispatch_message(driver, data, _text)
+      def self.dispatch_message(driver, data, text)
         evt = Tep::WebSocket::Event.new
         evt.data = data
         driver.h_message.handle_event(evt)

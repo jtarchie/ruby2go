@@ -64,7 +64,11 @@ module ActionDispatch
       # String, not a file).
       def self.from_params(sub, key)
         value = sub[key]
-        value if value.is_a?(ActionDispatch::Http::UploadedFile)
+        if value.is_a?(ActionDispatch::Http::UploadedFile)
+          value
+        else
+          nil
+        end
       end
 
       # Did the request carry a file under `key`? The file twin of
@@ -112,14 +116,16 @@ module ActionDispatch
         semi = rest.index(";")
         rest = rest[0, semi].to_s unless semi.nil?
         rest = rest.strip
-        rest = rest[1, rest.length - 2].to_s if rest.length >= 2 && rest[0, 1] == "\"" && rest[rest.length - 1, 1] == "\""
+        if rest.length >= 2 && rest[0, 1] == "\"" && rest[rest.length - 1, 1] == "\""
+          rest = rest[1, rest.length - 2].to_s
+        end
         rest
       end
 
       # The value of `<attr>="…"` inside a Content-Disposition header,
       # or "" when absent.
       def self.disposition_param(header, attr)
-        needle = "#{attr}=\""
+        needle = attr + "=\""
         at = header.index(needle)
         return "" if at.nil?
 
@@ -133,9 +139,9 @@ module ActionDispatch
       def self.parse(body, content_type)
         form = Form.new
         b = boundary(content_type)
-        return form if b.empty?
+        return form if b.length == 0
 
-        delimiter = "--#{b}"
+        delimiter = "--" + b
         n = body.bytesize
         pos = body.byteindex(delimiter)
         return form if pos.nil?
@@ -152,7 +158,7 @@ module ActionDispatch
 
           headers = body.byteslice(pos, header_end - pos).to_s
           content_start = header_end + 4
-          next_delim = body.byteindex("\r\n#{delimiter}", content_start)
+          next_delim = body.byteindex("\r\n" + delimiter, content_start)
           return form if next_delim.nil?
 
           content = body.byteslice(content_start, next_delim - content_start).to_s
@@ -181,11 +187,11 @@ module ActionDispatch
           end
         end
         name = disposition_param(disposition, "name")
-        return nil if name.empty?
+        return nil if name.length == 0
 
         if disposition.include?("filename=")
           filename = disposition_param(disposition, "filename")
-          return nil if filename.empty?
+          return nil if filename.length == 0
 
           # A browser sends the basename; a client that sends a path
           # gets the same treatment Rack gives it.

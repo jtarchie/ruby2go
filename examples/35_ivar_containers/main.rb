@@ -32,7 +32,7 @@ class Router
 end
 
 class TracingRouter < Router
-  def trace = @log.map(&:upcase)
+  def trace = @log.map { |l| l.upcase }
 end
 
 #: (Array[untyped]) -> void
@@ -51,7 +51,7 @@ class Shelf
     @books << "Dune"
     @notes << "n"
     tag(@notes) # typed, @notes would be copied into Array[untyped]: it stays untyped
-    puts @books.map(&:upcase).inspect, @notes.inspect
+    puts @books.map { |b| b.upcase }.inspect, @notes.inspect
   end
 end
 

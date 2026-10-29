@@ -247,8 +247,7 @@ module Minitest
     end
 
     #: (Regexp) -> Array[String]
-    # port: not grep, whose untyped `pattern === x` keeps === on every class
-    def self.methods_matching(re) = public_instance_methods(true).map(&:to_s).select { |m| re.match?(m) }
+    def self.methods_matching(re) = public_instance_methods(true).map(&:to_s).select { |m| re.match?(m) } # port: not grep, whose untyped `pattern === x` keeps === on every class
 
     #: (Options) -> Array[String]
     def self.filter_runnable_methods(options)
@@ -518,7 +517,9 @@ module Minitest
     #: () -> String
     def summary
       extra = ""
-      extra = "\n\nYou have skipped tests. Run with --verbose for details." if results.any?(&:skipped?) && !(options.verbose || options.show_skips || ENV["MT_NO_SKIP_MSG"])
+      if results.any?(&:skipped?) && !(options.verbose || options.show_skips || ENV["MT_NO_SKIP_MSG"])
+        extra = "\n\nYou have skipped tests. Run with --verbose for details."
+      end
       "%d runs, %d assertions, %d failures, %d errors, %d skips%s" % [count, assertions, failures, errors, skips, extra]
     end
   end
@@ -644,7 +645,7 @@ module Minitest
           "No visible difference in the #{klass}#inspect output.\n",
           "You should look at the implementation of #== on ",
           "#{klass} or its members.\n",
-          expect
+          expect,
         ].join
       end
       result
@@ -772,7 +773,7 @@ module Minitest
     def assert_kind_of(cls, obj, msg = nil)
       __mt_trace("assert_kind_of", cls, obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to be a kind of #{__s(cls)}, not #{__mt_class_name(obj)}" })
-      __assert(obj.is_a?(cls), m)
+      __assert(obj.kind_of?(cls), m)
     end
 
     #: (untyped, untyped, ?untyped) -> MatchData?
@@ -911,7 +912,7 @@ module Minitest
     rescue Minitest::Assertion => e
       raise e
     rescue StandardError => e
-      raise UnexpectedError, e
+      raise UnexpectedError.new(e)
     end
 
     #: () { () -> void } -> bool
@@ -943,7 +944,7 @@ module Minitest
         "Message: <#{e.message.inspect}>",
         "---Backtrace---",
         Minitest.filter_backtrace(e.backtrace).join("\n"),
-        "---------------"
+        "---------------",
       ].join("\n")
     end
 
@@ -1031,7 +1032,7 @@ module Minitest
     def refute_kind_of(cls, obj, msg = nil)
       __mt_trace("refute_kind_of", cls, obj)
       m = message(msg, ".", -> { "Expected #{mu_pp(obj)} to not be a kind of #{__s(cls)}" })
-      __assert(!obj.is_a?(cls), m)
+      __assert(!obj.kind_of?(cls), m)
     end
 
     #: (untyped, untyped, ?untyped) -> bool

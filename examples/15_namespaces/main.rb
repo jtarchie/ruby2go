@@ -3,7 +3,7 @@
 # Nested modules and classes, `A::B` paths, constants, lexical lookup.
 
 module Geometry
-  VERSION = "1.2.0".freeze #: String
+  VERSION = "1.2.0" #: String
 
   module Units
     SCALE = 100
@@ -44,18 +44,16 @@ module Geometry
 end
 
 # Compact form: only Geometry::Circle is in the lexical scope here.
-module Geometry
-  class Circle < Geometry::Point
-    attr_reader :r #: Integer
+class Geometry::Circle < Geometry::Point
+  attr_reader :r #: Integer
 
-    #: (Integer, Integer, Integer) -> void
-    def initialize(x, y, r)
-      super(x, y)
-      @r = r
-    end
-
-    def to_s = "circle #{super} r=#{r}"
+  #: (Integer, Integer, Integer) -> void
+  def initialize(x, y, r)
+    super(x, y)
+    @r = r
   end
+
+  def to_s = "circle #{super} r=#{r}"
 end
 
 module Geometry

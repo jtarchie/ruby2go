@@ -31,16 +31,18 @@ module TypedStore
     while i < lines.length
       line = lines[i].to_s
       i += 1
-      next if ["---", ""].include?(line)
+      next if line == "---" || line == ""
 
       # Indented / list / comment lines: structured values, skipped.
       c0 = line[0, 1].to_s
-      next if [" ", "-", "#"].include?(c0)
+      next if c0 == " " || c0 == "-" || c0 == "#"
 
       sep = line.index(": ")
       if sep.nil?
         # `key:` with no value — an explicit empty scalar (nil).
-        h[line[0, line.length - 1].to_s] = nil if line.end_with?(":")
+        if line.end_with?(":")
+          h[line[0, line.length - 1].to_s] = nil
+        end
         next
       end
       key = line[0, sep].to_s
@@ -81,7 +83,7 @@ module TypedStore
     @cache_key = nil
     out = "---\n"
     h.each do |k, v|
-      out += "#{k}: #{v.nil? ? "" : v.to_s}\n"
+      out += k.to_s + ": " + (v.nil? ? "" : v.to_s) + "\n"
     end
     out
   end

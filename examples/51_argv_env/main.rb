@@ -32,7 +32,7 @@ class Options
   end
 end
 
-puts "program: #{$PROGRAM_NAME}"
+puts "program: #{$0}"
 puts "same file: #{__FILE__ == $PROGRAM_NAME}"
 puts "argc: #{ARGV.size}"
 p ARGV
@@ -59,9 +59,9 @@ rescue KeyError => e
 end
 
 $stdout.puts "via $stdout"
-$stdout.print "via ", "STDOUT\n"
-warn "to stderr"
-$stderr.print "also ", "stderr\n"
+STDOUT.print "via ", "STDOUT\n"
+$stderr.puts "to stderr"
+STDERR.print "also ", "stderr\n"
 warn "warned", "twice"
 $stdout << "chained" << " <<\n"
 puts "tty? #{$stdout.tty?}"

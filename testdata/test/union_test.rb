@@ -45,7 +45,7 @@ end
 
 #: (Integer | String) -> String
 def union_guard_not(x)
-  return "int" unless x.is_a?(String)
+  return "int" if !x.is_a?(String)
 
   x.upcase
 end
@@ -192,10 +192,10 @@ module UnionTests
 
     #: (Integer | String | Symbol) -> String
     def unless_else(x)
-      if x.is_a?(Integer)
-        (x * 3).to_s
-      else
+      unless x.is_a?(Integer)
         x.to_s
+      else
+        (x * 3).to_s
       end
     end
 
@@ -249,7 +249,7 @@ module UnionTests
 
     def test_struct_members
       pets = [Dog.new, Robot.new] #: Array[Dog | Robot]
-      assert_equal(%w[woof beep], pets.map(&:speak))
+      assert_equal %w[woof beep], pets.map { |p| p.speak }
     end
 
     def test_containers
@@ -258,7 +258,7 @@ module UnionTests
       items << "two"
       items.push(3)
       assert_equal [1, "two", 3], items
-      assert_equal(%w[1 two 3], items.map(&:to_s))
+      assert_equal %w[1 two 3], items.map { |i| i.to_s }
       assert_includes items, "two"
       h = {} #: Hash[Symbol, Integer | String]
       h[:a] = 1
@@ -369,11 +369,7 @@ module UnionTests
     end
 
     #: (Integer) -> (Integer | String | nil)
-    def maybe(i) = if i > 1
-                     i
-                   else
-                     (i.zero? ? nil : "s")
-                   end
+    def maybe(i) = i > 1 ? i : (i.zero? ? nil : "s")
 
     def test_or_and_on_unions
       y = maybe(0)
@@ -397,10 +393,7 @@ module UnionTests
       assert_in_delta 5.0, 10 * union_num(false)
       assert_in_delta 5.0, 10.0 / union_num(true)
       order = [] #: Array[String]
-      pick = lambda { |s|
-        order << s
-        s
-      }
+      pick = ->(s) { order << s; s }
       assert_equal "xy", pick.call("x") + pick.call("y")
       assert_equal %w[x y], order
     end
@@ -434,7 +427,7 @@ module UnionTests
     end
 
     def test_patterns
-      assert_equal(["nil", "int 6", "str FIVE", "pair 1 2"], (0..3).map { |i| matched(varied(i)) })
+      assert_equal ["nil", "int 6", "str FIVE", "pair 1 2"], (0..3).map { |i| matched(varied(i)) }
       assert varied(0).is_a?(NilClass)
       refute varied(1).is_a?(NilClass)
       assert varied(0).nil?
@@ -520,7 +513,7 @@ module UnionTests
 
     def test_assignment_narrows
       assert_equal ["b", "d", 2, 1], [union_rebase("a/b"), union_rebase(Pathname("d")), union_resize(12), union_resize("x")]
-      assert_equal %w[s1 1], [union_branch(1, true), union_branch(1, false)]
+      assert_equal ["s1", "1"], [union_branch(1, true), union_branch(1, false)]
     end
 
     #: (String | Symbol | nil v) -> String?

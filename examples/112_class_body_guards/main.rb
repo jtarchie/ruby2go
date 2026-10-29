@@ -39,6 +39,6 @@ puts f.two_five
 puts f.three_oh
 puts f.respond_to?(:impossible)
 puts f.respond_to?(:gone)
-puts f.now.positive?
+puts f.now > 0
 puts f.respond_to?(:coarse_now)
 puts f.clock

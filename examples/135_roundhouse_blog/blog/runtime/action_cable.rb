@@ -128,16 +128,16 @@ module ActionCable
       Broadcasts.log.each do |entry|
         next if entry[:stream] != stream
 
-        out << if entry[:action] == :message
-                 entry[:payload].to_s
-               else
-                 JSON.generate(Broadcasts.render_fragment(
+        if entry[:action] == :message
+          out << entry[:payload].to_s
+        else
+          out << JSON.generate(Broadcasts.render_fragment(
                                  action: entry[:action],
                                  target: entry[:target],
                                  html: entry[:html],
-                                 attributes: entry[:attributes].to_s
+                                 attributes: entry[:attributes].to_s,
                                ))
-               end
+        end
       end
       out
     end
@@ -180,11 +180,13 @@ module ActionCable
     out = "{"
     first = true
     payload.each do |key, value|
-      out += "," unless first
+      if !first
+        out = out + ","
+      end
       first = false
-      out = "#{out}#{JSON.generate(key.to_s)}:#{value}"
+      out = out + JSON.generate(key.to_s) + ":" + value.to_s
     end
-    "#{out}}"
+    out + "}"
   end
 
   module Channel
@@ -297,7 +299,9 @@ module ActionCable
       # identify one has a hole, and swallowing it here would hide the
       # hole rather than the error.
       def current_user
-        return nil if @connection.nil?
+        if @connection.nil?
+          return nil
+        end
 
         @connection.current_user
       end
@@ -361,7 +365,9 @@ module ActionCable
       end
 
       def self.strip_channel_suffix(text)
-        return text[0, text.length - 7] if text.length > 7 && text[text.length - 7, 7] == "Channel"
+        if text.length > 7 && text[text.length - 7, 7] == "Channel"
+          return text[0, text.length - 7]
+        end
 
         text
       end
@@ -371,7 +377,7 @@ module ActionCable
       # is given a `to_gid_param` (see `lower::broadcasts`), so there is
       # nothing to fall back FROM and no `respond_to?` here.
       def self.broadcasting_for(record)
-        "#{channel_name}:#{record.to_gid_param}"
+        channel_name + ":" + record.to_gid_param
       end
 
       # Class names only — `RoomsChannel` shapes, never a path or a word
@@ -385,12 +391,14 @@ module ActionCable
         while i < text.length
           c = text[i]
           if c >= "A" && c <= "Z"
-            out << "_" if i != 0 && out[out.length - 1] != "_" && out[out.length - 1] != ":"
+            if i != 0 && out[out.length - 1] != "_" && out[out.length - 1] != ":"
+              out << "_"
+            end
             out << c.downcase
           else
             out << c
           end
-          i += 1
+          i = i + 1
         end
         out
       end
@@ -445,7 +453,9 @@ module ActionCable
       # cable glue reads subscribe frames through this too.
       def self.read(text, name)
         h = Parameters.object(text)
-        return "" if h.nil?
+        if h.nil?
+          return ""
+        end
 
         v = h[name]
         v.nil? ? "" : v.to_s

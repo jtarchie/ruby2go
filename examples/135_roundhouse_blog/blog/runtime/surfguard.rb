@@ -117,11 +117,13 @@ module Surfguard
   # so the caller can tell a refusal from a lookup failure.
   def self.resolve_public_ips(host)
     addresses = resolve(host)
-    raise Unresolvable, "No address for #{host}" if addresses.empty?
+    raise Unresolvable.new("No address for #{host}") if addresses.empty?
 
     out = []
     addresses.each do |ip|
       out << ip.to_s if ip.ipv4? && !blocked_ipaddr?(ip)
+    end
+    addresses.each do |ip|
       out << ip.to_s if !ip.ipv4? && !blocked_ipaddr?(ip)
     end
     out
@@ -130,9 +132,11 @@ module Surfguard
   # The classification core, over the spelling a caller has: a String.
   # Errs closed — an address it cannot parse is blocked.
   def self.blocked_address?(ip)
-    blocked_ipaddr?(IPAddr.new(ip))
-  rescue IPAddr::InvalidAddressError
-    true
+    begin
+      blocked_ipaddr?(IPAddr.new(ip))
+    rescue IPAddr::InvalidAddressError
+      true
+    end
   end
 
   # The same question over a parsed address. Branch order is the gem's:
@@ -173,9 +177,11 @@ module Surfguard
   # the DNS call above sits in a method body where its own rescue can
   # reach it.
   def self.ip_literal(host)
-    IPAddr.new(host)
-  rescue IPAddr::InvalidAddressError
-    nil
+    begin
+      IPAddr.new(host)
+    rescue IPAddr::InvalidAddressError
+      nil
+    end
   end
 
   def self.disallowed_ipv4?(ipaddr)

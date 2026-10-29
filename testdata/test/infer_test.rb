@@ -109,8 +109,7 @@ module InferTests
   end
 
   class BlockWalker < Walker
-    # an unannotated override with a &block takes Walker#walk's signature
-    def walk(&blk)
+    def walk(&blk) # an unannotated override with a &block takes Walker#walk's signature
       blk.call(2)
     end
   end
@@ -140,17 +139,17 @@ module InferTests
 
     def test_lambda_params
       add = ->(a, b) { a + b }
-      shout = ->(s) { s.upcase }
+      shout = lambda { |s| s.upcase }
       double = proc { |x| x * 2 }
-      assert_equal [3, 7, 11, "HI", [2, 4]], [add.call(1, 2), add.call(3, 4), add[5, 6], shout.call("hi"), [1, 2].map(&double)]
+      assert_equal [3, 7, 11, "HI", [2, 4]], [add.call(1, 2), add.(3, 4), add[5, 6], shout.call("hi"), [1, 2].map(&double)]
     end
 
     # A *rest lambda is a Go variadic func: each call passes any count past
     # the leading params, and the rest's element joins them (decision 152).
     def test_variadic_lambda
-      fmt = ->(f, *args) { f % args }
-      assert_equal ["1", "1 2", "1.5 x"], [fmt.call("%d", 1), fmt.call("%d %d", 1, 2), fmt["%.1f %s", 1.5, "x"]]
-      assert_equal "3-a", ->(f, *args) { f % args }.call("%d-%s", 3, "a")
+      fmt = ->f, *args { f % args }
+      assert_equal ["1", "1 2", "1.5 x"], [fmt.call("%d", 1), fmt.("%d %d", 1, 2), fmt["%.1f %s", 1.5, "x"]]
+      assert_equal "3-a", ->f, *args { f % args }.call("%d-%s", 3, "a")
       total = ->(*xs) { xs.sum }
       assert_equal [6, 0, -1, -2], [total.call(1, 2, 3), total.call, total.arity, fmt.arity]
       first = ->(a, *) { a }
@@ -158,14 +157,14 @@ module InferTests
     end
 
     def test_block_on_a_parameter_its_call_types
-      take = ->(e) { e.reject { |x| x > 1 } }
+      take = ->e { e.reject { |x| x > 1 } }
       assert_equal [[2, 3], [1]], [infer_bigger([1, 2, 3]), take.call([1, 2, 3])]
     end
 
     def test_untyped_fallbacks
       r = InferTests::FallbackBlock.new
       sorted = [3, 1, 2].map { |i| InferTests::FallbackCmp.send(:new, i) }.sort.map(&:n)
-      assert_equal(%w[a a], InferTests::FallbackFeed.new.each { "a" })
+      assert_equal ["a", "a"], InferTests::FallbackFeed.new.each { "a" }
       assert_equal [3, 10, :none, [2, 4], [1, 2, 3]], [r.run { |a, b| a + b }, r.maybe { |x| x * 2 }, r.maybe, InferTests::FallbackKid.new.map { |x| x * 2 }, sorted]
     end
 
@@ -208,6 +207,9 @@ module InferTests
   end
 
   class InitPass < InitBase
+    def initialize(ev)
+      super(ev)
+    end
   end
 
   class InitInheritTest < Minitest::Test
@@ -368,7 +370,7 @@ module InferTests
         @root = RecNode.new(key, nil, nil)
       else
         t = @root
-        loop do
+        while true
           if key < t.key
             l = t.left
             if l.nil?
@@ -393,7 +395,7 @@ module InferTests
       t = @root
       return nil if t.nil?
 
-      loop do
+      while true
         l = t.left
         break if l.nil?
 
@@ -460,13 +462,13 @@ end
 def infer_fact(n) = n <= 1 ? 1 : n * infer_fact(n - 1)
 
 def infer_even(n)
-  return true if n.zero?
+  return true if n == 0
 
   infer_odd(n - 1)
 end
 
 def infer_odd(n)
-  return false if n.zero?
+  return false if n == 0
 
   infer_even(n - 1)
 end
@@ -479,7 +481,7 @@ def infer_first_over(xs, i)
 end
 
 def infer_make_tree(depth)
-  return InferTests::RecNode.new(depth, nil, nil) if depth.zero?
+  return InferTests::RecNode.new(depth, nil, nil) if depth == 0
 
   InferTests::RecNode.new(depth, infer_make_tree(depth - 1), infer_make_tree(depth - 1))
 end

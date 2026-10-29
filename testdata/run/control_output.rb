@@ -36,34 +36,22 @@ ok_skip or puts "or skipped"
 
 #: (Integer) -> Integer
 def risky(n)
-  raise ArgumentError, "neg" if n.negative?
+  raise ArgumentError, "neg" if n < 0
 
   n
 end
 
-begin
-  risky(-1)
-rescue StandardError
-  puts("statement fallback")
-end
-begin
-  risky(1)
-rescue StandardError
-  puts("not printed")
-end
+risky(-1) rescue puts("statement fallback")
+risky(1) rescue puts("not printed")
 log_void = [] #: Array[String]
-begin
-  risky(-2)
-rescue StandardError
-  log_void.clear
-end
+risky(-2) rescue log_void.clear
 puts "done"
 
 # exceptions print their message through puts, print and untyped
 class AppError < StandardError; end
 begin
   raise AppError, "boom"
-rescue StandardError => e
+rescue => e
   puts e
   print e, "\n"
 end
@@ -115,7 +103,7 @@ puts [type, range, default, len, string, error.message, new, copy, max, min, fun
       main, init, stdout, any, bool, int, append.inspect, panic, recover, real, iota, byte, rune, float64].inspect
 begin
   raise "x"
-rescue StandardError => error
+rescue => error
   puts error.message
 end
 [1].each { |type| puts type }
@@ -138,14 +126,13 @@ puts
 # modifiers on a return at top level end the program quietly (keep last)
 # main's own ivars: top-level statements and their blocks share them, a def's self is another object (decision 362)
 @main_arr = [0, 4, 7, 10, 12]
-puts(@main_arr.bsearch_index { |x| x >= 4 })
+puts @main_arr.bsearch_index { |x| x >= 4 }
 @main_h = { a: 1 }
 [1, 2].each { |i| @main_h[:"k#{i}"] = i }
 p @main_h
 @main_n ||= 5
 @main_n += 1
-main_a = 1
-@main_b = 2
+main_a, @main_b = 1, 2
 p [main_a, @main_b, @main_n]
 p [defined?(@main_arr), defined?(@main_never), @main_never]
 
@@ -159,8 +146,7 @@ begin
 rescue NameError => e
   puts e.message
 end
-# inside a literal too: it raises where it is read
-def ctrl_dead_lit = [CtrlMissing2, 1]
+def ctrl_dead_lit = [CtrlMissing2, 1] # inside a literal too: it raises where it is read
 begin
   ctrl_dead_lit
 rescue NameError => e
@@ -171,17 +157,21 @@ def test(i) = "mine #{i}"
 puts test(3)
 
 # main's public/private, `(a; b)`, loops as values, `a, b = 1`, `def obj.m` on a fresh object, `case nil` (decision 364)
+public
+
 def ctrl_pub = 1
+
+private
+
 p ctrl_pub
-p((ctrl_a = 1
-   ctrl_a + 1))
+p((ctrl_a = 1; ctrl_a + 1))
 p(())
-ctrl_w = (break 7 while true)
+ctrl_w = while true; break 7; end
 p ctrl_w
-ctrl_wa = (break *[1, 2] while true)
+ctrl_wa = while true; break *[1, 2]; end
 p ctrl_wa
 ctrl_i = 0
-p((ctrl_i += 1 until ctrl_i > 2))
+p(until ctrl_i > 2; ctrl_i += 1; end)
 ctrl_m, ctrl_n = 1
 p [ctrl_m, ctrl_n]
 ctrl_o = Object.new

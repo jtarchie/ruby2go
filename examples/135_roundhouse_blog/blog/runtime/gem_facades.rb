@@ -517,7 +517,7 @@ module WebPush
 
   def self.verify_payload_send_expectations
     expected = EXPECTED[0]
-    return nil if expected.negative?
+    return nil if expected < 0
 
     got = CALLS[0]
     EXPECTED[0] = -1
@@ -580,7 +580,7 @@ end
 # Ledgered in docs/pipeline/runtime.md: exceptions are reported to
 # stderr, not to an error-tracking service.
 module Sentry
-  def self.capture_exception(_exception, extra: nil)
+  def self.capture_exception(exception, extra: nil)
     # NO INTROSPECTION OF THE EXCEPTION, and that is a recorded gap
     # rather than a preference. Both `exception.message` and
     # `exception.class` 500 the emitted campfire tree with `undefined

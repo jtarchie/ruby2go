@@ -130,21 +130,15 @@ module AssertionTests
     # $stdout/$stderr assignment, capture_io, assert_output and assert_silent (decision 109).
     def test_output
       assert_output("hi\n") { puts "hi" }
-      assert_output(nil, "e\n") { warn "e" }
-      assert_output(/h.+!/, "\n") do
-        print "hello!"
-        warn ""
-      end
-      assert_output("\"a 1\"\n", /^w/) do
-        p "a 1"
-        warn "warned"
-      end
+      assert_output(nil, "e\n") { $stderr.puts "e" }
+      assert_output(/h.+!/, "\n") { print "hello!"; warn "" }
+      assert_output("\"a 1\"\n", /^w/) { p "a 1"; warn "warned" }
       assert_silent { nil }
       out, err = capture_io do
         puts "out"
         $stderr.print "err"
       end
-      assert_equal %W[out\n err], [out, err]
+      assert_equal ["out\n", "err"], [out, err]
       assert_equal "In stdout.\nExpected: \"x\"\n  Actual: \"y\"", failure(-> { assert_output("x") { print "y" } })
       assert_equal "In stderr.\nExpected /z/ to match \"\".", failure(-> { assert_output(nil, /z/) { nil } })
       assert_equal 2, counted(-> { assert_output("", "") { nil } })

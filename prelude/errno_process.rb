@@ -6,7 +6,6 @@ module Errno
   class ESRCH < SystemCallError
     Errno = ::Errno::ESRCH.new.errno.to_i #: Integer
   end
-
   class EPERM < SystemCallError
     Errno = ::Errno::EPERM.new.errno.to_i #: Integer
   end
@@ -14,12 +13,12 @@ end
 
 %x{
 var _ = func() bool {
-  rbKillErrnoHook = func(err error, loc string) any {
-    if errors.Is(err, syscall.ESRCH) {
-      return NewErrno_ESRCH(Ref(String("No such process" + loc)))
-    }
-    return NewErrno_EPERM(Ref(String("Operation not permitted" + loc)))
-  }
-  return true
+	rbKillErrnoHook = func(err error, loc string) any {
+		if errors.Is(err, syscall.ESRCH) {
+			return NewErrno_ESRCH(Ref(String("No such process" + loc)))
+		}
+		return NewErrno_EPERM(Ref(String("Operation not permitted" + loc)))
+	}
+	return true
 }()
 }

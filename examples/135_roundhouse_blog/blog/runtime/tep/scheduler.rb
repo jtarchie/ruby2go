@@ -89,7 +89,9 @@ module Tep
       end
 
       ms = poll_timeout_ms
-      ms = 0 if Scheduler.any_time_ready
+      if Scheduler.any_time_ready
+        ms = 0
+      end
       Scheduler.poll_round(ms)
 
       now  = Sock.sphttp_now_us
@@ -97,10 +99,16 @@ module Tep
       i = 0
       n = Tep::APP.sched_fibers.length
       while i < n
-        best = i if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now && (best.negative? || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best])
+        if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now
+          if best < 0 || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best]
+            best = i
+          end
+        end
         i += 1
       end
-      return false if best.negative?
+      if best < 0
+        return false
+      end
 
       Tep::APP.sched_current = best
       Tep::APP.sched_wake_at[best] = -1
@@ -124,7 +132,7 @@ module Tep
         slot = -1
         if Tep::APP.sched_fibers[i].f.alive? &&
            Tep::APP.sched_io_fd[i] >= 0 &&
-           Tep::APP.sched_io_ready[i].zero?
+           Tep::APP.sched_io_ready[i] == 0
           slot = Sock.sphttp_poll_add(Tep::APP.sched_io_fd[i],
                                       Tep::APP.sched_io_mode[i])
           added += 1
@@ -132,7 +140,9 @@ module Tep
         slots.push(slot)
         i += 1
       end
-      return 0 if added.zero?
+      if added == 0
+        return 0
+      end
 
       Sock.sphttp_poll_run(timeout_ms)
       now = Sock.sphttp_now_us
@@ -140,7 +150,7 @@ module Tep
       while i < n
         if slots[i] >= 0
           ready = Sock.sphttp_poll_ready(slots[i])
-          if ready.positive?
+          if ready > 0
             Tep::APP.sched_io_ready[i] = ready
             Tep::APP.sched_wake_at[i]  = now
           end
@@ -156,7 +166,9 @@ module Tep
     # Pure non-blocking; no poll() wait between passes.
     def self.run_until_empty
       n = 0
-      n += 1 while Scheduler.tick(0)
+      while Scheduler.tick(0)
+        n += 1
+      end
       n
     end
 
@@ -167,28 +179,32 @@ module Tep
       # All bookkeeping is in microseconds (Sock.sphttp_now_us), matching
       # wake_at; poll() and sleep take ms / s respectively, so convert at
       # the call sites.
-      deadline = Sock.sphttp_now_us + (seconds * 1_000_000).to_i
+      deadline = Sock.sphttp_now_us + (seconds * 1000000).to_i
       while Sock.sphttp_now_us < deadline
-        next if Scheduler.tick(0)
-
-        # Nothing ready this pass. Compute the next deadline:
-        # min(next_wake, overall_deadline). If any fiber is
-        # parked on I/O, block in poll() until that or the
-        # timer hits.
-        next_at = Scheduler.next_wake
-        gap = deadline - Sock.sphttp_now_us
-        if next_at >= 0
-          tgap = next_at - Sock.sphttp_now_us
-          gap = tgap if tgap < gap
-        end
-        gap = 0 if gap.negative?
-        if Scheduler.any_io_waiter
-          # Park in poll for up to `gap` microseconds (poll wants ms).
-          Scheduler.poll_round(gap / 1000)
-        elsif next_at.negative?
-          return 0
-        elsif gap.positive?
-          sleep(gap / 1_000_000.0)
+        if !Scheduler.tick(0)
+          # Nothing ready this pass. Compute the next deadline:
+          # min(next_wake, overall_deadline). If any fiber is
+          # parked on I/O, block in poll() until that or the
+          # timer hits.
+          next_at = Scheduler.next_wake
+          gap = deadline - Sock.sphttp_now_us
+          if next_at >= 0
+            tgap = next_at - Sock.sphttp_now_us
+            if tgap < gap
+              gap = tgap
+            end
+          end
+          if gap < 0
+            gap = 0
+          end
+          if Scheduler.any_io_waiter
+            # Park in poll for up to `gap` microseconds (poll wants ms).
+            Scheduler.poll_round(gap / 1000)
+          elsif next_at < 0
+            return 0
+          elsif gap > 0
+            sleep(gap / 1000000.0)
+          end
         end
       end
       0
@@ -199,10 +215,16 @@ module Tep
       i = 0
       n = Tep::APP.sched_fibers.length
       while i < n
-        best = i if Tep::APP.sched_fibers[i].f.alive? && (best.negative? || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best])
+        if Tep::APP.sched_fibers[i].f.alive?
+          if best < 0 || Tep::APP.sched_wake_at[i] < Tep::APP.sched_wake_at[best]
+            best = i
+          end
+        end
         i += 1
       end
-      return -1 if best.negative?
+      if best < 0
+        return -1
+      end
 
       Tep::APP.sched_wake_at[best]
     end
@@ -213,7 +235,7 @@ module Tep
       while i < n
         if Tep::APP.sched_fibers[i].f.alive? &&
            Tep::APP.sched_io_fd[i] >= 0 &&
-           Tep::APP.sched_io_ready[i].zero?
+           Tep::APP.sched_io_ready[i] == 0
           return true
         end
 
@@ -231,7 +253,9 @@ module Tep
       i = 0
       n = Tep::APP.sched_fibers.length
       while i < n
-        return true if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now
+        if Tep::APP.sched_fibers[i].f.alive? && Tep::APP.sched_wake_at[i] <= now
+          return true
+        end
 
         i += 1
       end
@@ -246,12 +270,12 @@ module Tep
     # falls through to bare `sleep(seconds)`.
     def self.pause(seconds)
       idx = Tep::APP.sched_current
-      if idx.negative?
+      if idx < 0
         # Called from outside any fiber -- fall back to POSIX sleep.
         sleep(seconds)
         return 0
       end
-      Tep::APP.sched_wake_at[idx] = Sock.sphttp_now_us + (seconds * 1_000_000).to_i
+      Tep::APP.sched_wake_at[idx] = Sock.sphttp_now_us + (seconds * 1000000).to_i
       Fiber.yield
       0
     end
@@ -263,7 +287,7 @@ module Tep
     # poll() call so the same code works at top level.
     def self.io_wait(fd, mode, timeout_seconds)
       idx = Tep::APP.sched_current
-      if idx.negative?
+      if idx < 0
         # No fiber context -- single-shot poll inline.
         Sock.sphttp_poll_reset
         slot = Sock.sphttp_poll_add(fd, mode)
@@ -273,13 +297,13 @@ module Tep
       Tep::APP.sched_io_fd[idx]    = fd
       Tep::APP.sched_io_mode[idx]  = mode
       Tep::APP.sched_io_ready[idx] = 0
-      Tep::APP.sched_wake_at[idx] = if timeout_seconds.negative?
-                                      # "Wait forever for I/O": -1 would mean "ready now" to the
-                                      # tick picker, so use a far-future wake_at as the sentinel.
-                                      Sock.sphttp_now_us + 86_400 * 1_000_000
-                                    else
-                                      Sock.sphttp_now_us + (timeout_seconds * 1_000_000).to_i
-                                    end
+      if timeout_seconds < 0
+        # "Wait forever for I/O": -1 would mean "ready now" to the
+        # tick picker, so use a far-future wake_at as the sentinel.
+        Tep::APP.sched_wake_at[idx] = Sock.sphttp_now_us + 86400 * 1000000
+      else
+        Tep::APP.sched_wake_at[idx] = Sock.sphttp_now_us + (timeout_seconds * 1000000).to_i
+      end
       Fiber.yield
       ready = Tep::APP.sched_io_ready[idx]
       Tep::APP.sched_io_fd[idx]    = -1
@@ -291,7 +315,7 @@ module Tep
     # Reset the schedulable set. Useful between worker-loop
     # iterations or between tests.
     def self.clear
-      while Tep::APP.sched_fibers.length.positive?
+      while Tep::APP.sched_fibers.length > 0
         Tep::APP.sched_fibers.delete_at(0)
         Tep::APP.sched_wake_at.delete_at(0)
         Tep::APP.sched_io_fd.delete_at(0)
@@ -306,7 +330,9 @@ module Tep
       i = 0
       total = Tep::APP.sched_fibers.length
       while i < total
-        n += 1 if Tep::APP.sched_fibers[i].f.alive?
+        if Tep::APP.sched_fibers[i].f.alive?
+          n += 1
+        end
         i += 1
       end
       n

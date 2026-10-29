@@ -56,7 +56,7 @@ end
 # ---- lib/resty/version.rb ----
 
 module Resty
-  VERSION = "0.0.1".freeze
+  VERSION = "0.0.1"
 end
 
 # ---- lib/resty/controller.rb ----
@@ -65,7 +65,7 @@ module Resty
   module NullController
     NullAction = Struct.new(:params) do
       #: (*untyped) -> untyped
-      def method_missing(*_args) = nil
+      def method_missing(*args); nil; end
     end #: [Hash[String, untyped]]
     Index   = NullAction
     Show    = NullAction
@@ -83,14 +83,12 @@ module Resty
 
     #: (Request) -> String?
     def self.exists_on_request?(request)
-      request.path.match(%r{^/(\w+)(\.\w+)?/?$})[1]
-    rescue StandardError
-      nil
+      request.path.match(%r{^/(\w+)(\.\w+)?/?$})[1] rescue nil
     end
 
     #: () -> untyped
     def constant
-      @constant ||= begin
+      @class ||= begin
         "#{namespace}::#{controller_path.camelize}Controller".constantize
       rescue NameError => e
         NullController
@@ -110,12 +108,8 @@ module Resty
   Resource = Struct.new(:id) do
     #: (Request) -> Resource
     def self.find_by_request(request)
-      id = begin
-        request.path.dup.match(%r{^/\w+/([\w-]+)/?})[1]
-      rescue StandardError
-        nil
-      end
-      id = nil if %w[edit new].include?(id) # rugaroo: was ["edit", "new"].include?(id)
+      id = request.path.dup.match(%r{^/\w+/([\w-]+)/?})[1] rescue nil
+      id = nil if id == "edit" || id == "new" # rugaroo: was ["edit", "new"].include?(id)
       new(id)
     end
   end #: [String?]
@@ -127,7 +121,7 @@ module Resty
   module Formats
     Base = Struct.new(:resource) do
       #: (Request) -> untyped
-      def self.matches?(_request)
+      def self.matches?(request)
         false
       end
 
@@ -147,12 +141,12 @@ end
 module Resty
   module Formats
     class UnknownContentType < Base
-      def self.matches?(_request)
+      def self.matches?(request)
         false
       end
 
       def body
-        ""
+        ''
       end
 
       def headers
@@ -168,7 +162,7 @@ module Resty
 
     #: () { (singleton(Base)) -> void } -> void
     def self.each(&block)
-      constants.map { |c| const_get(c) }.each(&block)
+      constants.map { |c| self.const_get(c) }.each(&block)
     end
   end
 end
@@ -188,7 +182,7 @@ module Resty
         if resource.is_a?(Array)
           resource.map { |r| self.class.new(r).body }.join
         else
-          "<h1>#{resource}</h1>"
+          "<h1>#{resource.to_s}</h1>"
         end
       end
     end
@@ -219,7 +213,7 @@ module Resty
   module Actions
     Base = Struct.new(:controller, :request) do
       #: (Request) -> untyped
-      def self.matches?(_request)
+      def self.matches?(request)
         false
       end
 
@@ -232,7 +226,7 @@ module Resty
 
       #: () -> untyped
       def action
-        action_class = self.class.name.split("::").last
+        action_class = self.class.name.split('::').last
         controller.constant.const_get(action_class)
       end
     end #: [Controller, Request]
@@ -242,7 +236,7 @@ end
 module Resty
   module Actions
     class ServiceUnavailable < Base
-      def self.matches?(_request)
+      def self.matches?(request)
         false
       end
 
@@ -265,7 +259,7 @@ module Resty
 
     #: () { (singleton(Base)) -> void } -> void
     def self.each(&block)
-      constants.map { |c| const_get(c) }.each(&block)
+      constants.map { |c| self.const_get(c) }.each(&block)
     end
   end
 end
@@ -291,7 +285,7 @@ module Resty
         return {} unless resource
 
         {
-          "Location" => "/#{controller_name}/#{resource.id}#{format}"
+          'Location' => "/#{controller_name}/#{resource.id}#{format}"
         }
       end
 
@@ -342,7 +336,7 @@ module Resty
       #: () -> Hash[String, untyped]
       def params
         @params ||= request.params.merge(
-          "id" => resource_id
+          'id' => resource_id
         )
       end
 
@@ -359,7 +353,7 @@ module Resty
     class Edit < Base
       def self.matches?(request)
         request.get? &&
-          request.path =~ %r{/edit(\.\w+)?/?$} &&
+          request.path =~ %r{\/edit(\.\w+)?/?$} &&
           !Resource.find_by_request(request).id.nil?
       end
 
@@ -370,7 +364,7 @@ module Resty
 
       #: () -> untyped
       def resource
-        @resource ||= action.new(params).resource
+        @resources ||= action.new(params).resource
       end
 
       private
@@ -378,7 +372,7 @@ module Resty
       #: () -> Hash[String, untyped]
       def params
         @params ||= request.params.merge(
-          "id" => resource_id
+          'id' => resource_id
         )
       end
 
@@ -406,7 +400,7 @@ module Resty
 
       #: () -> untyped
       def resource
-        @resource ||= action.new(params).resource
+        @resources ||= action.new(params).resource
       end
 
       private
@@ -433,7 +427,7 @@ module Resty
 
       #: () -> untyped
       def resource
-        @resource ||= action.new(params).resource
+        @resources ||= action.new(params).resource
       end
 
       private
@@ -471,7 +465,7 @@ module Resty
       #: () -> Hash[String, untyped]
       def params
         @params ||= request.params.merge(
-          "id" => resource_id
+          'id' => resource_id
         )
       end
 
@@ -504,7 +498,7 @@ module Resty
         return {} unless resource
 
         {
-          "Location" => "/#{controller_name}/#{resource.id}#{format}"
+          'Location' => "/#{controller_name}/#{resource.id}#{format}"
         }
       end
 
@@ -518,7 +512,7 @@ module Resty
       #: () -> Hash[String, untyped]
       def params
         @params ||= request.params.merge(
-          "id" => resource_id
+          'id' => resource_id
         )
       end
 
@@ -590,7 +584,7 @@ module ExampleApp
     attr_accessor :title #: String?
     attr_accessor :body #: String?
 
-    RECORDS = {}.freeze #: Hash[Integer, Post]
+    RECORDS = {} #: Hash[Integer, Post]
 
     #: (?Integer?, ?String?, ?String?) -> void
     def initialize(id = nil, title = nil, body = nil)
@@ -669,7 +663,7 @@ module ExampleApp
     class Show < Action
       #: () -> untyped
       def resource
-        Post.find(params["id"])
+        Post.find(params['id'])
       end
     end
 
@@ -690,14 +684,14 @@ module ExampleApp
     class Edit < Action
       #: () -> untyped
       def resource
-        Post.find(params["id"])
+        Post.find(params['id'])
       end
     end
 
     class Create < Action
       #: () -> untyped
       def resource
-        post = Post.create(params["post"])
+        post = Post.create(params['post'])
         post.persisted? ? post : nil
       end
     end
@@ -705,10 +699,10 @@ module ExampleApp
     class Update < Action
       #: () -> untyped
       def resource
-        post = Post.find(params["id"])
+        post = Post.find(params['id'])
         return nil unless post
 
-        post.attributes = params["post"]
+        post.attributes = params['post']
         post.save
         post
       end
@@ -717,7 +711,7 @@ module ExampleApp
     class Destroy < Action
       #: () -> untyped
       def resource
-        Post.find(params["id"])&.destroy
+        Post.find(params['id'])&.destroy
       end
     end
   end
@@ -757,7 +751,7 @@ def seed
   ExampleApp::Post.create({ "id" => "3", "title" => "Title" })
 end
 
-FORM = { "Content-Type" => "application/x-www-form-urlencoded" }.freeze #: Hash[String, String]
+FORM = { "Content-Type" => "application/x-www-form-urlencoded" } #: Hash[String, String]
 
 #: (Net::HTTP, String, String, ?Hash[String, String]) -> void
 def call(http, verb, path, form = {})

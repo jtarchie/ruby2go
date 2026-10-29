@@ -728,7 +728,7 @@ class String < Object
   #: (Regexp) -> Integer?
   def __byteindex_regexp(re)
     m = re.match(self)
-    m&.pre_match&.bytesize
+    m ? m.pre_match.bytesize : nil
   end
 
   #: (Regexp) -> Integer?

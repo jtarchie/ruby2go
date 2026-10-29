@@ -115,7 +115,9 @@ module Cable
       # genuinely broke still reaches the caller as an error.
       refused = true
     end
-    return nil if refused
+    if refused
+      return nil
+    end
 
     conn
   end
@@ -176,10 +178,14 @@ module Cable
   # it never heard back about, so a dropped frame is a reconnect loop.
   def self.subscribe(ws, connection, identifier, holder)
     name = ActionCable::Channel::Parameters.read(identifier, "channel")
-    return Cable.reject(ws, identifier) if name.empty?
+    if name.length == 0
+      return Cable.reject(ws, identifier)
+    end
 
     channel = Cable.build_channel(name, connection, identifier)
-    return Cable.reject(ws, identifier) if channel.nil?
+    if channel.nil?
+      return Cable.reject(ws, identifier)
+    end
 
     # A RAISE IS AN OUTCOME, NOT AN ESCAPE, and on this lane that is
     # load-bearing rather than tidy: tep has no per-request rescue, so
@@ -200,10 +206,12 @@ module Cable
       # row here — the whole reason a connect storm costs a database.
       channel.after_subscribe
     rescue StandardError => e
-      warn "[cable] #{name}#subscribed raised: #{e.message}"
+      warn "[cable] " + name + "#subscribed raised: " + e.message
       return Cable.reject(ws, identifier)
     end
-    return Cable.reject(ws, identifier) if channel.subscription_rejected?
+    if channel.subscription_rejected?
+      return Cable.reject(ws, identifier)
+    end
 
     channel.streams.each do |stream|
       Tep::APP.cable_lock.synchronize do
@@ -218,12 +226,14 @@ module Cable
     # object that outlives the frame that built it. A rejected or
     # crashed subscribe returns above and is never held.
     holder.remember(channel)
-    ws.text("{\"identifier\":#{JSON.generate(identifier)},\"type\":\"confirm_subscription\"}")
+    ws.text("{\"identifier\":" + JSON.generate(identifier) +
+            ",\"type\":\"confirm_subscription\"}")
     0
   end
 
   def self.reject(ws, identifier)
-    ws.text("{\"identifier\":#{JSON.generate(identifier)},\"type\":\"reject_subscription\"}")
+    ws.text("{\"identifier\":" + JSON.generate(identifier) +
+            ",\"type\":\"reject_subscription\"}")
     0
   end
 
@@ -237,11 +247,17 @@ module Cable
   # adds: identity existed and nothing consulted it.
   def self.handle_message(ws, connection, data, holder)
     frame = ActionCable::Channel::Parameters.object(data)
-    return 0 if frame.nil?
-    return 0 if frame["command"].to_s != "subscribe"
+    if frame.nil?
+      return 0
+    end
+    if frame["command"].to_s != "subscribe"
+      return 0
+    end
 
     identifier = frame["identifier"].to_s
-    return 0 if identifier.empty?
+    if identifier.length == 0
+      return 0
+    end
 
     Cable.subscribe(ws, connection, identifier, holder)
   end
@@ -267,7 +283,7 @@ module Cable
     start = false
     Tep::APP.cable_conns_lock.synchronize do
       Tep::APP.cable_conns.push(ws)
-      if Tep::APP.cable_heartbeat.zero?
+      if Tep::APP.cable_heartbeat == 0
         Tep::APP.cable_heartbeat = 1
         start = true
       end
@@ -275,7 +291,9 @@ module Cable
     # Outside the lock: nothing else should wait on the registry while a
     # thread is being born. The flag is already set, so a second opener
     # racing here cannot start a second beat.
-    Cable.spawn_heartbeat if start
+    if start
+      Cable.spawn_heartbeat
+    end
     0
   end
 
@@ -313,7 +331,9 @@ module Cable
   # whoever opens the next socket, under the same lock, which is a race
   # for nothing.
   def self.heartbeat_loop
-    loop { Cable.beat_cycle }
+    while true
+      Cable.beat_cycle
+    end
     0
   end
 
@@ -337,18 +357,20 @@ module Cable
   def self.beat_cycle
     live = Cable.registry_snapshot
     n = live.length
-    if n.zero?
+    if n == 0
       Cable.beat_pause(PING_INTERVAL.to_f)
       return 0
     end
     per = (n + BEAT_SLICES - 1) / BEAT_SLICES
-    pause = PING_INTERVAL.to_f / BEAT_SLICES
+    pause = PING_INTERVAL.to_f / BEAT_SLICES.to_f
     i = 0
     slice = 0
     while slice < BEAT_SLICES
       Cable.beat_pause(pause)
       stop = i + per
-      stop = n if stop > n
+      if stop > n
+        stop = n
+      end
       # A timestamp per slice, not per cycle: the frame says when it was
       # sent, and the slices are up to an interval apart.
       payload = Cable.ping_payload
@@ -369,7 +391,7 @@ module Cable
   end
 
   def self.ping_payload
-    "{\"type\":\"ping\",\"message\":#{Time.now.to_i}}"
+    "{\"type\":\"ping\",\"message\":" + Time.now.to_i.to_s + "}"
   end
 
   # The registry, copied out under its lock. The writes then happen
@@ -420,7 +442,7 @@ module Cable
       @ws = Tep::WebSocket::Driver.new(0)
     end
 
-    def handle_event(_evt)
+    def handle_event(evt)
       @ws.text("{\"type\":\"welcome\"}")
       Cable.register(@ws)
       0
@@ -497,10 +519,12 @@ module Cable
     # tell. Same posture as the overlay's `Cable::Dispatch.unsubscribe`.
     def unsubscribe_all
       @channels.each do |channel|
-        channel.unsubscribed
-        channel.after_unsubscribe
-      rescue StandardError => e
-        warn "[cable] unsubscribe raised: #{e.message}"
+        begin
+          channel.unsubscribed
+          channel.after_unsubscribe
+        rescue StandardError => e
+          warn "[cable] unsubscribe raised: " + e.message
+        end
       end
       @channels = []
       0
@@ -526,7 +550,7 @@ module Cable
       @msg = Cable::WsMessage.new
     end
 
-    def handle_event(_evt)
+    def handle_event(evt)
       Cable.unregister(@msg.ws)
       Db.with_connection do
         @msg.unsubscribe_all
@@ -544,7 +568,7 @@ module Cable
   # valid WS upgrade.
   def self.upgrade(req, res)
     hs = Tep::WebSocket::Handshake.check(req)
-    unless hs.valid
+    if !hs.valid
       res.status = 400
       res.body = "invalid websocket upgrade"
       return true
@@ -574,7 +598,9 @@ module Cable
     # updates arrive. Select it only when offered (a raw ws client that
     # offers none leaves it "" and the header is omitted, per RFC 6455).
     hs.protocols.each do |proto|
-      drv.set_subprotocol("actioncable-v1-json") if proto == "actioncable-v1-json"
+      if proto == "actioncable-v1-json"
+        drv.set_subprotocol("actioncable-v1-json")
+      end
     end
 
     cb_open = Cable::WsOpen.new
@@ -622,9 +648,12 @@ module Cable
 
   def self.publish_raw(stream, message_json)
     id = Cable.identifier_for(stream)
-    return nil if id.empty?
+    if id.length == 0
+      return nil
+    end
 
-    envelope = "{\"identifier\":#{JSON.generate(id)},\"message\":#{message_json}}"
+    envelope = "{\"identifier\":" + JSON.generate(id) +
+               ",\"message\":" + message_json + "}"
     Tep::Broadcast.publish(stream, envelope)
     nil
   end
@@ -636,11 +665,12 @@ module Cable
   class Transport
     def broadcast(stream, fragment)
       id = Cable.identifier_for(stream)
-      if id.empty?
+      if id.length == 0
         return nil # no subscriber has named this stream yet
       end
 
-      envelope = "{\"identifier\":#{JSON.generate(id)},\"message\":#{JSON.generate(fragment)}}"
+      envelope = "{\"identifier\":" + JSON.generate(id) +
+                 ",\"message\":" + JSON.generate(fragment) + "}"
       Tep::Broadcast.publish(stream, envelope)
       nil
     end

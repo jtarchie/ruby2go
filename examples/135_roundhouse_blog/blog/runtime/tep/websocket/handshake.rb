@@ -49,7 +49,7 @@ module Tep
 
         # Sec-WebSocket-Key: 24-char base64 (16-byte nonce).
         key = req.req_headers["sec-websocket-key"]
-        if key.empty?
+        if key.length == 0
           out.valid = false
           out.reason = "missing Sec-WebSocket-Key"
           return out
@@ -69,12 +69,14 @@ module Tep
       # RFC 6455 §4.2.2; better than echoing a protocol the server
       # doesn't actually implement).
       def self.build_response(accept_key, protocol)
-        out = "HTTP/1.1 101 Switching Protocols\r\n" \
-              "Upgrade: websocket\r\n" \
-              "Connection: Upgrade\r\n" \
+        out = "HTTP/1.1 101 Switching Protocols\r\n" +
+              "Upgrade: websocket\r\n" +
+              "Connection: Upgrade\r\n" +
               "Sec-WebSocket-Accept: " + accept_key + "\r\n"
-        out << "Sec-WebSocket-Protocol: #{protocol}\r\n" if protocol.length.positive?
-        "#{out}\r\n"
+        if protocol.length > 0
+          out << "Sec-WebSocket-Protocol: " + protocol + "\r\n"
+        end
+        out + "\r\n"
       end
 
       # Case-insensitive substring contains. Hand-rolled because
@@ -82,7 +84,9 @@ module Tep
       # leaves values as-is, and clients sometimes send
       # `Connection: keep-alive, Upgrade` capitalised.
       def self.icontains(hay, needle)
-        return false if hay.empty? || needle.empty?
+        if hay.length == 0 || needle.length == 0
+          return false
+        end
 
         hl = Handshake.downcase(hay)
         nl = Handshake.downcase(needle)
@@ -94,11 +98,11 @@ module Tep
         i = 0
         while i < s.length
           c = s[i]
-          out << if c >= "A" && c <= "Z"
-                   (c.ord + 32).chr
-                 else
-                   c
-                 end
+          if c >= "A" && c <= "Z"
+            out << (c.ord + 32).chr
+          else
+            out << c
+          end
           i += 1
         end
         out
@@ -109,12 +113,14 @@ module Tep
       def self.split_csv(s)
         out = [""]
         out.pop
-        return out if s.empty?
+        if s.length == 0
+          return out
+        end
 
         pos = 0
         while pos < s.length
           comma = Tep.str_find(s, ",", pos)
-          if comma.negative?
+          if comma < 0
             out.push(Handshake.trim(s[pos, s.length - pos]))
             return out
           end
@@ -126,10 +132,16 @@ module Tep
 
       def self.trim(s)
         i = 0
-        i += 1 while i < s.length && [" ", "\t"].include?(s[i])
+        while i < s.length && (s[i] == " " || s[i] == "\t")
+          i += 1
+        end
         j = s.length - 1
-        j -= 1 while j >= i && [" ", "\t"].include?(s[j])
-        return "" if j < i
+        while j >= i && (s[j] == " " || s[j] == "\t")
+          j -= 1
+        end
+        if j < i
+          return ""
+        end
 
         s[i, j - i + 1]
       end

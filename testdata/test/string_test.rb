@@ -46,14 +46,14 @@ end
 def string_bin_lm_gsub
   y = "é".b
   out = y.gsub(/./) { |m| "#{m.ord}," }
-  $LAST_MATCH_INFO ? out : ""
+  $~ ? out : ""
 end
 
 #: () -> Integer?
 def string_bin_lm_index
   v = "éa".b
   r = v =~ /a/
-  $LAST_MATCH_INFO ? r : nil
+  $~ ? r : nil
 end
 
 #: (String) -> Integer
@@ -63,7 +63,7 @@ def string_bin_split(x) = x.split(//n).size
 def string_bin_lm_offsets
   v = "éa".b
   v =~ /a/
-  [$LAST_MATCH_INFO&.begin(0), $LAST_MATCH_INFO&.end(0)]
+  [$~&.begin(0), $~&.end(0)]
 end
 
 module StringTests
@@ -146,7 +146,7 @@ module StringTests
     def test_to_i_reads_an_optional
       assert_equal 42, "42abc".to_i
       assert_equal 42, " 42".to_i
-      assert_equal(-7, "-7".to_i)
+      assert_equal -7, "-7".to_i
       assert_equal 5, "+5".to_i
       assert_equal 0, "abc".to_i
       assert_equal 0, "".to_i
@@ -158,8 +158,8 @@ module StringTests
       assert_equal 7, "007".to_i
       assert_equal 0, "-0".to_i
       assert_equal 3, "3.9".to_i
-      assert_equal 9_223_372_036_854_775_807, "9223372036854775807".to_i
-      assert_equal(-9_223_372_036_854_775_808, "-9223372036854775808".to_i)
+      assert_equal 9223372036854775807, "9223372036854775807".to_i
+      assert_equal -9223372036854775808, "-9223372036854775808".to_i
       assert_equal 43, ("42".to_i + 1)
       assert_equal 12, "12 34".to_i
     end
@@ -171,11 +171,11 @@ module StringTests
       assert_equal 1000.0, "1e3".to_f
       assert_equal 0.5, ".5".to_f
       assert_equal 2.25, "  2.25  ".to_f
-      assert_equal(-0.0, "-0.0".to_f)
+      assert_equal -0.0, "-0.0".to_f
       assert_equal 0.0, "0x1A".to_f
       assert_equal 0.0, "".to_f
       assert_equal 1.0, "1.".to_f
-      assert_equal(-0.0015, "-1.5e-3".to_f)
+      assert_equal -0.0015, "-1.5e-3".to_f
       assert_equal 10.0, "10".to_f
       assert_equal 1000.5, "1_000.5".to_f
       assert_equal 0.30000000000000004, ("0.1".to_f + "0.2".to_f)
@@ -185,7 +185,7 @@ module StringTests
     def test_ord_is_the_first_character
       assert_equal 97, "a".ord
       assert_equal 233, "é".ord
-      assert_equal 128_512, "😀".ord
+      assert_equal 128512, "😀".ord
       assert_equal 97, "abc".ord
       assert_equal 10, "\n".ord
     end
@@ -222,7 +222,7 @@ module StringTests
     def test_inspect_output_is_itself_a
       src = "x\ty\n\"z\""
       assert_equal "\"x\\ty\\n\\\"z\\\"\"", src.inspect
-      assert_equal true, (src == "x\ty\n\"z\"")
+      assert_equal true, ("x\ty\n\"z\"" == src)
     end
   end
 
@@ -231,7 +231,7 @@ module StringTests
     def test_single_quotes_keep_and_n
       assert_equal "single \#{not} \\n raw", 'single #{not} \n raw'
       assert_equal "'q' \\ \\n", '\'q\' \\ \n'
-      assert_equal "", ""
+      assert_equal "", ''
     end
 
     # Double-quoted escapes, including \u{} with several codepoints and octal/hex.
@@ -245,25 +245,25 @@ module StringTests
 
     # Percent literals with every delimiter pair, nesting included.
     def test_percent_literals_with_every_delimiter
-      assert_equal "paren (nested) 'q'", "paren (nested) 'q'"
-      assert_equal "brack 3", %(brack #{1 + 2})
+      assert_equal "paren (nested) 'q'", %q(paren (nested) 'q')
+      assert_equal "brack 3", %Q[brack #{1 + 2}]
       assert_equal "par (x)", %(par (x))
-      assert_equal "ang", %(ang)
-      assert_equal "bar", %(bar)
-      assert_equal "br {n} 1", %(br {n} #{1})
-      assert_equal %w[a b c], %w[a b c]
-      assert_equal %i[a b c], %i[a b c]
+      assert_equal "ang", %<ang>
+      assert_equal "bar", %|bar|
+      assert_equal "br {n} 1", %Q{br {n} #{1}}
+      assert_equal ["a", "b", "c"], %w[a b c]
+      assert_equal [:a, :b, :c], %i[a b c]
       assert_equal [], %w[]
     end
 
     # Character literals are one-character strings.
     def test_character_literals_are_one_character
-      assert_equal "a", "a"
-      assert_equal "\n", "\n"
-      assert_equal "é", "é"
-      assert_equal " ", "\s"
-      assert_equal "\t", "\t"
-      assert_equal "ab", ("a" + "b")
+      assert_equal "a", ?a
+      assert_equal "\n", ?\n
+      assert_equal "é", ?é
+      assert_equal " ", ?\s
+      assert_equal "\t", ?\t
+      assert_equal "ab", (?a + ?b)
       assert_equal "a)b", %q(a\)b)
       assert_equal 1, "\C-a".ord
       assert_equal 1, "\c?".bytesize
@@ -271,7 +271,7 @@ module StringTests
 
     # Adjacent plain literals and backslash-newline continue one string.
     def test_adjacent_plain_literals_and_backslash
-      assert_equal "adjacentlits", "adj" + "acent" + "lits"
+      assert_equal "adjacentlits", "adj" "acent" 'lits'
       assert_equal "line one continued", "line one \
 continued"
     end
@@ -312,9 +312,9 @@ continued"
       EOS
       assert_equal "\na\n\n  b\n\ttab\n    val\n", dedent
       m = <<~EOS
-  x #{[1, 2].map do |i|
+  x #{[1, 2].map { |i|
     i * 2
-  end.join(",")} y
+  }.join(",")} y
       EOS
       assert_equal "x 2,4 y\n", m
       a, b = <<~A, <<~B
@@ -336,15 +336,15 @@ continued"
       some = 7 #: Integer?
       t = true
       arr = [1, 2] #: Array[Integer]
-      assert_equal "5 2.5 str sy [] [7] true [1, 2]  false", "#{n} #{f} #{s} #{sym} [#{nl}] [#{some}] #{t} #{arr}  #{false}"
+      assert_equal "5 2.5 str sy [] [7] true [1, 2]  false", "#{n} #{f} #{s} #{sym} [#{nl}] [#{some}] #{t} #{arr} #{nil} #{false}"
       assert_equal "Pt(3) and big", "#{Pt.new(3)} and #{n > 3 ? "big" : "small"}"
       assert_equal "nested inner 6", "nested #{"inner #{n + 1}"}"
       assert_equal "1", "#{"#{"#{1}"}"}"
       assert_equal "STR3", "#{s.upcase}#{s.size}"
       assert_equal "[2, 4]", "#{[1, 2].map { |x| x * 2 }}"
-      assert_equal "pos", "#{n.positive? ? "pos" : "neg"}"
+      assert_equal "pos", "#{if n > 0 then "pos" else "neg" end}"
       assert_equal "few", "#{case n when 1 then "one" when 4, 5 then "few" else "many" end}"
-      assert_equal %w[a5 b strc], %W[a#{n} b #{s}c]
+      assert_equal ["a5", "b", "strc"], %W[a#{n} b #{s}c]
       assert_equal 1, %W[#{n}].size
       maybe = "abc"[5]
       assert_equal "maybe=[] [b]", "maybe=[#{maybe}] [#{"abc"[1]}]"
@@ -363,7 +363,7 @@ continued"
     def test_interpolation_builds_a_fresh_string
       parts = [] #: Array[String]
       3.times { |i| parts << "p#{i}" }
-      assert_equal %w[p0 p1 p2], parts
+      assert_equal ["p0", "p1", "p2"], parts
       assert_equal true, "a#{1}b" == "a1b"
     end
   end
@@ -384,10 +384,10 @@ continued"
       assert_equal "ll", "hello".delete("^l")
       e = assert_raises(ArgumentError) { "x".ljust(3, "") }
       assert_equal "zero width padding", e.message
-      assert_equal "03.14|ab  |ff|FF|10|101|0xff|0b101|+3| 3|1.234568e+04|1.200000E-04|1.23457e+06|100000|0.0001|A|h|%|nil|sym", format("%05.2f|%-4s|%x|%X|%o|%b|%#x|%#b|%+d|% d|%e|%E|%g|%g|%g|%c|%c|%%|%p|%s", 3.14159, "ab", 255, 255, 8, 5, 255, 5, 3, 3, 12_345.678, 0.00012, 1_234_567.0, 100_000.0, 0.0001, 65, "hey", nil, :sym)
+      assert_equal "03.14|ab  |ff|FF|10|101|0xff|0b101|+3| 3|1.234568e+04|1.200000E-04|1.23457e+06|100000|0.0001|A|h|%|nil|sym", format("%05.2f|%-4s|%x|%X|%o|%b|%#x|%#b|%+d|% d|%e|%E|%g|%g|%g|%c|%c|%%|%p|%s", 3.14159, "ab", 255, 255, 8, 5, 255, 5, 3, 3, 12345.678, 0.00012, 1234567.0, 100000.0, 0.0001, 65, "hey", nil, :sym)
       assert_equal "hi        |     there|ab| 99.5%", format("%-10s|%10s|%.2s|%5.1f%%", "hi", "there", "abc", 99.5)
       assert_equal "x and 002.2", format("%<a>s and %<b>05.1f", a: "x", b: 2.25)
-      assert_equal "1-", format("%<a>s-%<b>s", a: 1, b: nil)
+      assert_equal "1-", format("%{a}-%{b}", a: 1, b: nil)
       assert_equal "    1|2   |", format("%*d|%-*d|", 5, 1, 4, 2)
       assert_equal "3", format("%d", 3.99)
       assert_equal "26", format("%d", "0x1A") # a String argument follows Kernel#Integer's rules
@@ -402,11 +402,11 @@ continued"
       assert_equal "3.14|    3.1416|1.23e+03  |", format("%.3g|%10.4f|%-10.2e|", 3.14159, Math::PI, 1234.5)
       assert_equal "Inf -Inf NaN", format("%f %f %e", Float::INFINITY, -Float::INFINITY, Float::NAN)
       assert_equal "1010 31", format("%B %d", 10, "0x1f")
-      assert_equal "-003.142", format("%08.3f", -3.14159)
-      assert_equal "x and nil", format("%s and %p", "x", nil)
-      assert_equal "00042", format("%05d", 42)
-      assert_equal "12.3%", format("%.1f%%", 12.34)
-      assert_equal "ab   |", format("%-5s|", :ab)
+      assert_equal "-003.142", sprintf("%08.3f", -3.14159)
+      assert_equal "x and nil", "%s and %p" % ["x", nil]
+      assert_equal "00042", "%05d" % 42
+      assert_equal "12.3%", "%.1f%%" % 12.34
+      assert_equal "ab   |", "%-5s|" % :ab
       e = assert_raises(ArgumentError) { format("%d %d", 1) }
       assert_equal "too few arguments", e.message
       e = assert_raises(ArgumentError) { format("%d", "abc") }
@@ -418,13 +418,13 @@ continued"
       assert_equal 35, "z".to_i(36)
       assert_equal 12, "12abc".to_i(10)
       assert_equal 255, "ff".hex
-      assert_equal(-26, "-0x1A".hex)
+      assert_equal -26, "-0x1A".hex
       assert_equal 511, "777".oct
       assert_equal 3, "0b11".oct
       assert_equal 0, "junk".hex
-      assert_equal 9_223_372_036_854_775_807, "7fffffffffffffff".hex
-      assert_equal(-9_223_372_036_854_775_807, "-7fffffffffffffff".hex)
-      assert_equal 9_223_372_036_854_775_807, "777777777777777777777".oct
+      assert_equal 9223372036854775807, "7fffffffffffffff".hex
+      assert_equal -9223372036854775807, "-7fffffffffffffff".hex
+      assert_equal 9223372036854775807, "777777777777777777777".oct
       assert_equal "ba", "az".succ
       assert_equal "aaa", "zz".succ
       assert_equal "b0", "a9".succ
@@ -438,7 +438,7 @@ continued"
       assert_equal "abbbccc", "aaabbbccc".squeeze("a")
       assert_equal "misisipi", "mississippi".squeeze("sp")
       assert_equal "hELLO wORLD", "Hello World".swapcase
-      assert_equal(-1, "abc".casecmp("ABD"))
+      assert_equal -1, "abc".casecmp("ABD")
       assert_equal true, "abc".casecmp?("ABC")
       assert_equal false, "abc".casecmp?("abd")
       assert_equal true, "hello".start_with?("x", "he")
@@ -460,11 +460,11 @@ continued"
       assert_equal ["a", "b,c,d"], "a,b,c,d".split(",", 2)
       assert_equal ["a", "b  c"], "a b  c".split(" ", 2)
       assert_equal ["a", "b", "", ""], "a,b,,".split(",", -1)
-      assert_equal %w[a b c], "abc".each_char.to_a
-      assert_equal %W[a\n b\n], "a\nb\n".each_line.to_a
+      assert_equal ["a", "b", "c"], "abc".each_char.to_a
+      assert_equal ["a\n", "b\n"], "a\nb\n".each_line.to_a
       each_lines = [] #: Array[String]
       "x\ny".each_line { |l| each_lines << l }
-      assert_equal %W[x\n y], each_lines
+      assert_equal ["x\n", "y"], each_lines
       assert_equal "ello", "hello"[1..]
       assert_equal "ell", "hello".slice(1, 3)
       assert_equal "ababab", "ab" * 3
@@ -472,7 +472,7 @@ continued"
       assert_equal "àéî", "ÀÉÎ".downcase
       assert_equal "Hello world", "hello world".capitalize
       assert_equal "Hello", "HELLO".capitalize
-      assert_equal "003.1", format("%05.1f", 3.14159)
+      assert_equal "003.1", "%05.1f" % 3.14159
       assert_equal "ABC", "abc".tr("a-c", "A-C")
       assert_equal 294, "abc".bytes.sum
     end
@@ -486,7 +486,7 @@ continued"
       assert_equal 2, "ab".chars.size
       out = [] #: Array[String]
       "añb".each_char { |c| out << c.upcase }
-      assert_equal %w[A Ñ B], out
+      assert_equal ["A", "Ñ", "B"], out
     end
 
     # each_char is an iterator: break and next are plain loop control.
@@ -505,10 +505,10 @@ continued"
 
     # lines keeps the separator and never yields a trailing empty line.
     def test_lines_keeps_the_separator_and
-      assert_equal %W[a\n b\n], "a\nb\n".lines
-      assert_equal %W[a\n b], "a\nb".lines
+      assert_equal ["a\n", "b\n"], "a\nb\n".lines
+      assert_equal ["a\n", "b"], "a\nb".lines
       assert_equal [], "".lines
-      assert_equal %W[\n \n], "\n\n".lines
+      assert_equal ["\n", "\n"], "\n\n".lines
       assert_equal ["a\r\n", "b"], "a\r\nb".lines
       assert_equal ["no newline"], "no newline".lines
       assert_equal 3, "x\n\ny".lines.size
@@ -516,12 +516,12 @@ continued"
 
     # split with no separator (or nil) splits on runs of ASCII whitespace.
     def test_split_with_no_separator_or
-      assert_equal %w[one two three], "one two  three".split
-      assert_equal %w[lead and trail], "  lead and trail  ".split
-      assert_equal %w[tabs and newlines], "tabs\tand\nnewlines".split
+      assert_equal ["one", "two", "three"], "one two  three".split
+      assert_equal ["lead", "and", "trail"], "  lead and trail  ".split
+      assert_equal ["tabs", "and", "newlines"], "tabs\tand\nnewlines".split
       assert_equal [], "".split
       assert_equal [], "   ".split
-      assert_equal %w[a b], "a b".split(nil)
+      assert_equal ["a", "b"], "a b".split(nil)
       assert_equal ["solo"], "solo".split
     end
 
@@ -531,7 +531,7 @@ continued"
       assert_equal ["", "a"], ",a".split(",")
       assert_equal [], "".split(",")
       assert_equal [], ",,,".split(",")
-      assert_equal %w[a b], "a--b--".split("--")
+      assert_equal ["a", "b"], "a--b--".split("--")
       assert_equal ["abc"], "abc".split("x")
       assert_equal 2, "a,b".split(",").size
       whole = "whole"
@@ -540,9 +540,9 @@ continued"
 
     # split("") yields characters.
     def test_split_yields_characters
-      assert_equal %w[a b c], "abc".split("")
+      assert_equal ["a", "b", "c"], "abc".split("")
       assert_equal [], "".split("")
-      assert_equal %w[h é l l o], "héllo".split("")
+      assert_equal ["h", "é", "l", "l", "o"], "héllo".split("")
     end
 
     # Round trips through Array methods.
@@ -560,14 +560,14 @@ continued"
     # Decision 23: Symbol is its own type, never equal to the String of the same name.
     def test_decision_23_symbol_is_its
       a = :apple
-      assert_equal(-1, a <=> :banana)
+      assert_equal -1, (a <=> :banana)
       assert_equal 0, (a <=> :apple)
       assert_equal 1, (:b <=> :a)
-      assert_equal(-1, :a <=> :ab)
+      assert_equal -1, (:a <=> :ab)
       assert_equal true, (a == :apple)
       assert_equal false, (a == "apple")
       assert_equal true, (a != :x)
-      assert_equal false, (a == "apple")
+      assert_equal false, ("apple" == a)
       assert_equal true, (a.to_s == "apple")
       assert_equal true, (a == "apple".to_sym)
       assert_equal "apple", a.to_s
@@ -596,7 +596,7 @@ continued"
     # Symbol#inspect quotes only names that would not read back bare.
     def test_symbol_inspect_quotes_only_names
       syms = [:abc, :"a b", :a?, :b!, :c=, :[], :[]=, :+, :-, :-@, :+@, :<=>, :==, :===, :=~] #: Array[Symbol]
-      syms += %i[! != !~ << >> <= >= ** % / * & | ^ ~ < >]
+      syms += [:!, :!=, :!~, :<<, :>>, :<=, :>=, :**, :%, :/, :*, :&, :|, :^, :~, :<, :>]
       syms += [:"foo-bar", :"9a", :"", :A, :Abc?, :_x, :"a?b", :"a==", :"?", :"=", :"[]?", :call, :"a\nb", :"q\"q"]
       assert_equal [":abc", ":\"a b\"", ":a?", ":b!", ":c=", ":[]", ":[]=", ":+", ":-", ":-@", ":+@", ":<=>", ":==", ":===", ":=~"], syms[0, 15].map(&:inspect)
       assert_equal [":!", ":!=", ":!~", ":<<", ":>>", ":<=", ":>=", ":**", ":%", ":/", ":*", ":&", ":|", ":^", ":~", ":<", ":>"], syms[15, 17].map(&:inspect)
@@ -613,17 +613,17 @@ continued"
 
     # Sorting, min/max and &:sym blocks.
     def test_sorting_min_max_and_sym
-      assert_equal %i[a b c], %i[b a c].sort
-      assert_equal :b, %i[b a].max
-      assert_equal :a, %i[b a].min
-      assert_equal %w[x y], %i[x y].map(&:to_s)
-      assert_equal %i[p q], %w[p q].map(&:to_sym)
+      assert_equal [:a, :b, :c], [:b, :a, :c].sort
+      assert_equal :b, [:b, :a].max
+      assert_equal :a, [:b, :a].min
+      assert_equal ["x", "y"], [:x, :y].map(&:to_s)
+      assert_equal [:p, :q], %w[p q].map(&:to_sym)
       assert_equal [2, 4], %i[up down].map(&:size)
     end
 
     # case/when matches symbols by identity of name.
     def test_case_when_matches_symbols_by
-      got = %i[pear apple fig].map do |fruit|
+      got = [:pear, :apple, :fig].map do |fruit|
         case fruit
         when :pear then "pear"
         when :apple then "apple!"
@@ -638,14 +638,14 @@ continued"
       config = { port: 8080, host: "localhost" } #: Hash[Symbol, untyped]
       assert_equal 8080, config[:port]
       assert_equal "localhost", config[:host]
-      assert_equal %i[port host], config.keys
+      assert_equal [:port, :host], config.keys
       assert_nil config[:nope]
       counts = {} #: Hash[Symbol, Integer]
-      %i[a b a].each { |k| counts[k] = (counts[k] || 0) + 1 }
+      [:a, :b, :a].each { |k| counts[k] = (counts[k] || 0) + 1 }
       assert_equal "{a: 2, b: 1}", counts.inspect
       assert_equal true, counts.key?(:a)
       assert_equal "hi x", string_greet(name: "x")
-      assert_equal "hi y", string_greet(name: "y")
+      assert_equal "hi y", string_greet(:name => "y")
       assert_equal "hi z", string_greet({ name: "z" })
       assert_equal true, :sym.frozen?
       assert_equal false, :sym.nil?
@@ -664,11 +664,11 @@ continued"
       assert_equal "{\"a\" => :x, \"b c\" => :\"y z\"}", by_name.inspect
       assert_equal [:x, :"y z"], by_name.values
       ss = %i[b a c]
-      assert_equal %i[c b a], ss.sort.reverse
-      assert_equal %w[B A C], ss.map(&:to_s).map(&:upcase)
+      assert_equal [:c, :b, :a], ss.sort.reverse
+      assert_equal ["B", "A", "C"], ss.map(&:to_s).map(&:upcase)
       assert_equal :a, ss.min_by(&:to_s)
       assert_equal true, ss.include?(:a)
-      assert_equal(%i[a b c], ss.sort_by(&:to_s))
+      assert_equal [:a, :b, :c], ss.sort_by { |x| x.to_s }
       assert_equal "{1 => [:b, :a, :c]}", ss.group_by(&:size).inspect
     end
   end
@@ -847,7 +847,7 @@ continued"
       assert_equal true, s == :sym
       assert_equal false, (s == "sym")
       assert_equal :sym, s.to_sym
-      assert_equal(-1, s <=> :syn)
+      assert_equal -1, (s <=> :syn)
       assert_equal "Hello sym", "#{u} #{s}"
     end
 
@@ -874,7 +874,7 @@ continued"
       assert_equal true, "a".is_a?(Comparable)
       assert_equal true, "a".is_a?(Object)
       assert_equal true, "a".is_a?(String)
-      assert_equal false, "a".is_a?(Symbol)
+      assert_equal false, "a".kind_of?(Symbol)
       d = string_ident(" Hello\n")
       assert_equal " Hello\n Hello\n", (d * 2)
       assert_equal false, d.between?("a", "z")
@@ -912,7 +912,7 @@ continued"
       assert_equal "Hello!", "#{d.strip}!"
       assert_equal true, (d == " Hello\n")
       assert_equal false, (d != " Hello\n")
-      assert_equal true, (d == " Hello\n")
+      assert_equal true, (" Hello\n" == d)
       num = string_ident("42")
       assert_equal 43, num.to_i + 1
       assert_equal 42.0, num.to_f
@@ -981,7 +981,7 @@ continued"
     # adjacent literals and a line continuation concatenate
     def test_adjacent_literals_and_a_line
       n_interp = 1
-      assert_equal "tu1v", "t" + "u" + "#{n_interp}" + "v"
+      assert_equal "tu1v", "t" "u" "#{n_interp}" 'v'
       assert_equal "total: 1 items", "total: #{n_interp} " \
         "items"
     end
@@ -1027,7 +1027,7 @@ continued"
       ne_count = 0
       "abc".each_char { |c| ne_count += 1 if c != "b" }
       assert_equal 2, ne_count
-      assert_equal false, ("abc"[1] != "b")
+      assert_equal false, ("b" != "abc"[1])
       assert_equal "String", string_kind("a")
       assert_equal "Symbol", string_kind(:a)
       assert_equal "a|\"a\"|true|false", desc("a")
@@ -1035,7 +1035,7 @@ continued"
       assert_equal "ab|\"ab\"|true|false", desc("a" + "b")
       assert_equal "1|1|false|false", desc(1)
       objs = ["s", :t, 2.5] #: Array[Object]
-      assert_equal(["s", "t", "2.5"], objs.map(&:to_s))
+      assert_equal ["s", "t", "2.5"], objs.map { |o| o.to_s }
       assert_equal ["s", :t, 2.5], objs
     end
 
@@ -1047,8 +1047,8 @@ continued"
 
     # split(" ") is awk-style whitespace splitting
     def test_split_is_awk_style_whitespace
-      assert_equal %w[a b], "a  b ".split(" ")
-      assert_equal %w[a b], " a b".split(" ")
+      assert_equal ["a", "b"], "a  b ".split(" ")
+      assert_equal ["a", "b"], " a b".split(" ")
     end
 
     # awk-style split only breaks on ASCII whitespace
@@ -1084,7 +1084,7 @@ continued"
     # to_i accepts underscores between digits
     def test_to_i_accepts_underscores_between
       assert_equal 1000, "1_000".to_i
-      assert_equal 12_345, "12_345xyz".to_i
+      assert_equal 12345, "12_345xyz".to_i
     end
 
     # tr with a repeated from-char uses its first mapping
@@ -1116,7 +1116,7 @@ continued"
       assert_equal 1, (s_cmp <=> "a")
       assert_equal 0, (s_cmp <=> "b")
       y_cmp = string_ident_cmp(:b)
-      assert_equal(-1, y_cmp <=> :c)
+      assert_equal -1, (y_cmp <=> :c)
     end
 
     # case mapping follows Unicode special casing
@@ -1168,7 +1168,7 @@ continued"
       assert_equal true, c.nil?
       assert_equal "", c.to_s
       assert_equal "nil", c.inspect
-      assert_equal true, c.nil?
+      assert_equal true, (c == nil)
       d = s[1]
       up = d ? d.upcase : "unreached"
       assert_equal "B", up
@@ -1176,7 +1176,7 @@ continued"
       assert_equal "c", e
       assert_equal "fallback", (s[7] || "fallback")
       x = s.index("q")
-      assert_equal(-1, x ? x + 1 : -1)
+      assert_equal -1, x ? x + 1 : -1
       assert_equal "A", string_label(s[0])
       assert_equal "none", string_label(s[3])
     end
@@ -1189,7 +1189,7 @@ continued"
       assert_equal %i[AB ab Ab aB b ba], [:ab.upcase, :AB.downcase, :ab.capitalize, :Ab.swapcase, :a.succ, :az.next]
       assert_equal [0, 1, true], [:a.casecmp(:A), :b.casecmp(:a), :a.casecmp?(:A)]
       assert_equal [true, false, true], [:abc.start_with?("a"), :abc.start_with?("b"), :abc.end_with?("bc")]
-      assert_equal %w[a b bc ab], [:a.id2name, :abc[1], :abc[1, 2], :abc[0..1]]
+      assert_equal ["a", "b", "bc", "ab"], [:a.id2name, :abc[1], :abc[1, 2], :abc[0..1]]
       assert_nil :abc[5]
     end
   end
@@ -1260,7 +1260,7 @@ continued"
   class StringRubySpecRegexpSyntaxTest < Minitest::Test
     def test_extended_regexp
       m = "on 2024-03-09 ok".match(STRING_DATE_RE)
-      assert_equal %w[2024 09], [m&.[](1), m&.[](3)]
+      assert_equal ["2024", "09"], [m&.[](1), m&.[](3)]
       assert_equal [true, 2], [STRING_DATE_RE.source.include?("year"), STRING_DATE_RE.options]
       assert_equal [0, 0, 0, 0], ["a b" =~ /a\ b/x, "a#b" =~ /a\#b/x, "a b" =~ /a[ ]b/x, "ab" =~ /a b/xi]
     end
@@ -1290,13 +1290,13 @@ continued"
   class StringRubySpecUnpackTest < Minitest::Test
     def test_unpack_integers
       assert_equal [[97, 98, 99], [97, 98], [-1, 1], [97, 98, nil]], ["abc".unpack("C*"), "abc".unpack("c2"), "\xff\x01".b.unpack("c*"), "ab".unpack("C3")]
-      assert_equal [[513, 1027], [258], [513], [16_909_060], [67_305_985], [16_909_060], [-1]],
+      assert_equal [[513, 1027], [258], [513], [16909060], [67305985], [16909060], [-1]],
                    ["\x01\x02\x03\x04".unpack("S*"), "\x01\x02".unpack("n"), "\x01\x02".unpack("v"), "\x01\x02\x03\x04".unpack("N"), "\x01\x02\x03\x04".unpack("V"), "\x01\x02\x03\x04".unpack("L>"), "\xff\xff".b.unpack("s")]
       assert_equal [[1], [-1]], ["\x01\x00\x00\x00\x00\x00\x00\x00".unpack("Q"), "\xff\xff\xff\xff\xff\xff\xff\xff".b.unpack("q")]
     end
 
     def test_unpack_strings
-      assert_equal [%w[hello world], ["hi"], %w[hi there], %w[ab c], [104, 233]],
+      assert_equal [["hello", "world"], ["hi"], ["hi", "there"], ["ab", "c"], [104, 233]],
                    ["hello world".unpack("a5 x a*"), "hi  \0".unpack("A*"), "hi\0there".unpack("Z*a*"), "abc".unpack("a2a"), "hé".unpack("U*")]
       assert_equal [["4142"], ["1424"], ["0100000101000010"], ["1000001001000010"], ["414"]],
                    ["AB".unpack("H*"), "AB".unpack("h*"), "AB".unpack("B*"), "AB".unpack("b*"), "AB".unpack("H3")]
@@ -1306,7 +1306,7 @@ continued"
 
   # Array#pack and the rest of String#unpack (#54, decision 138); binary results compare as bytes since rugaroo's inspect has no binary encoding.
   class StringPackTest < Minitest::Test
-    LONG = "hello world, this is long enough to wrap beyond forty five bytes!!".freeze #: String
+    LONG = "hello world, this is long enough to wrap beyond forty five bytes!!" #: String
 
     def test_pack_strings
       assert_equal ["a", "ab\x00", "ab ", "ab\x00", "ab", "ab", "", "\x00"].map(&:bytes),
@@ -1315,7 +1315,7 @@ continued"
                    [["10110011001"].pack("B*"), ["10110011001"].pack("b10"), ["10110011001"].pack("B9"), ["1"].pack("B"),
                     ["a1F"].pack("H5"), ["a1F"].pack("h*"), ["xyz"].pack("H*"), ["2a3"].pack("B*")].map(&:bytes)
       assert_equal [[104, 195, 169, 240, 159, 152, 128], [0, 1, 127, 0x81, 0, 0xff, 0x7f, 0x81, 0x80, 0, 0xa0, 0x80, 0x80, 0x80, 0x80, 0]],
-                   [[104, 233, 0x1F600].pack("U*").bytes, [0, 1, 127, 128, 16_383, 16_384, 2**40].pack("w*").bytes]
+                   [[104, 233, 0x1F600].pack("U*").bytes, [0, 1, 127, 128, 16383, 16384, 2**40].pack("w*").bytes]
       assert_equal [237, 160, 128, 244, 144, 128, 128, 253, 191, 191, 191, 191, 191], [0xD800, 0x110000, 0x7fffffff].pack("U*").bytes # MRI's rb_uv_to_utf8
     end
 
@@ -1334,10 +1334,10 @@ continued"
       want = [[1, 254, 44], [1, 254, 44], [1, 0, 254, 255, 44, 1], [0, 1, 255, 254, 1, 44], l, [0, 0, 0, 1, 255, 255, 255, 254, 0, 0, 1, 44],
               [0, 1, 255, 254, 1, 44], [1, 0, 254, 255, 44, 1], l, [0, 0, 0, 0, 0, 0, 0, 1, 255, 255, 255, 255, 255, 255, 255, 254, 0, 0, 0, 0, 0, 0, 1, 44],
               q, q, q, l, l, q, q, [1, 0, 254, 255, 44, 1], q]
-      assert_equal(want, %w[C* c* S* s>* L* N* n* v* V* Q>* q* J* j<* I* i!* L_* l!* S!* Q!*].map { |f| [1, -2, 300].pack(f).bytes })
+      assert_equal want, %w[C* c* S* s>* L* N* n* v* V* Q>* q* J* j<* I* i!* L_* l!* S!* Q!*].map { |f| [1, -2, 300].pack(f).bytes }
       assert_equal [[1, 254, 44], [0, 1, 255, 254, 1, 44], [1, 0, 0, 0, 0, 0, 0, 0]], [[1, -2, 300].pack("C*").bytes, [1, -2, 300].pack("n*").bytes, [1].pack("Q<").bytes]
-      assert_equal [[1, -2, 300], [1, 65_534, 300], [1, -2, 300], [1, -2]], [[1, -2, 300].pack("l<*").unpack("l<*"), [1, -2, 300].pack("n*").unpack("n*"), [1, -2, 300].pack("q>*").unpack("q>*"), [1.7, -2].pack("c*").unpack("c*")]
-      assert_equal [[1], [1, 0, 2], [72_057_594_037_927_936]], ["\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("L_"), "\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("i*"), "\x01\x00\x00\x00\x00\x00\x00\x00".unpack("L!>")]
+      assert_equal [[1, -2, 300], [1, 65534, 300], [1, -2, 300], [1, -2]], [[1, -2, 300].pack("l<*").unpack("l<*"), [1, -2, 300].pack("n*").unpack("n*"), [1, -2, 300].pack("q>*").unpack("q>*"), [1.7, -2].pack("c*").unpack("c*")]
+      assert_equal [[1], [1, 0, 2], [72057594037927936]], ["\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("L_"), "\x01\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00".unpack("i*"), "\x01\x00\x00\x00\x00\x00\x00\x00".unpack("L!>")]
     end
 
     def test_pack_floats
@@ -1357,7 +1357,7 @@ continued"
 
     def test_unpack_rest
       w = [0x81, 0, 0x7f, 0xa0, 0x80, 0x80, 0x80, 0x80, 0, 0x81].pack("C*")
-      assert_equal [[128, 127, 1_099_511_627_776], [128], [128, 127]], [w.unpack("w*"), w.unpack("w"), w.unpack("w2")]
+      assert_equal [[128, 127, 1099511627776], [128], [128, 127]], [w.unpack("w*"), w.unpack("w"), w.unpack("w2")]
       assert_equal [["hello "], "h\xC3\xA9llo = w\xC3\xB6rld\tx \nnextzz=XYrest".bytes],
                    ["#:&5L\n#;&\\@\n".unpack("u"), "h=C3=A9llo =3D w=\n=C3=B6rld\tx =\n\nnext=\r\nzz=XYrest".unpack1("M").bytes]
       assert_equal [["hello"], ["hello", "hi"], ["hello"], ["hello"], ["hello"], ["a"], [""]],
@@ -1434,13 +1434,13 @@ continued"
   class RegexpUnionTest < Minitest::Test
     def test_union
       assert_equal(/a\.b|(?i-mx:c+)/, Regexp.union("a.b", /c+/i))
-      assert_equal(/x|y/, Regexp.union(%w[x y]))
+      assert_equal(/x|y/, Regexp.union(["x", "y"]))
       assert_equal(/z/, Regexp.union(/z/))
       assert_equal 1, "x/y" =~ Regexp.union(*["/", nil].compact)
     end
 
     def test_freeze
-      r = /a/
+      r = /a/.freeze
       assert r.frozen?
       assert_equal 1, r =~ "ba"
     end
@@ -1471,7 +1471,7 @@ continued"
     end
 
     def test_chomp_suffix
-      assert_equal %w[ab abc a], ["abc".chomp("c"), "abc".chomp("x"), "a\n\n".chomp("")]
+      assert_equal ["ab", "abc", "a"], ["abc".chomp("c"), "abc".chomp("x"), "a\n\n".chomp("")]
     end
   end
 
@@ -1560,7 +1560,7 @@ continued"
     end
 
     def test_record_separator_chomp
-      old = $INPUT_RECORD_SEPARATOR
+      old = $/
       begin
         $/ = "x"
         a = "abx".chomp
@@ -1572,7 +1572,7 @@ continued"
         $/ = old
       end
       assert_equal "z", d
-      assert_equal %W[ab ab\n ab\n a], [a, b, c, "a\n".chomp]
+      assert_equal ["ab", "ab\n", "ab\n", "a"], [a, b, c, "a\n".chomp]
     end
   end
 
@@ -1588,7 +1588,7 @@ continued"
     def test_last_match
       assert_equal ["home:brew:github.com/home/brew", nil], [string_remote_path("https://github.com/home/brew"), string_remote_path("x")]
       system("true")
-      assert_equal [true, true], [$CHILD_STATUS.success?, $PROCESS_ID == $PROCESS_ID]
+      assert_equal [true, true], [$CHILD_STATUS.success?, $PROCESS_ID == $$]
     end
   end
 
@@ -1614,11 +1614,11 @@ continued"
     end
 
     # $1 and $~ inside a sub/gsub block are that match (decision 241).
-    def string_camel(name) = name.to_s.gsub(/(?:^|_)(.)/) { ::Regexp.last_match(1).upcase }
+    def string_camel(name) = name.to_s.gsub(/(?:^|_)(.)/) { $1.upcase }
 
     def test_gsub_block_last_match
       assert_equal ["FooBar", "a2b4", "x<y>"],
-                   [string_camel(:foo_bar), "a1b2".gsub(/\d/) { ($LAST_MATCH_INFO[0].to_i * 2).to_s }, "xy".sub(/(y)/) { "<#{::Regexp.last_match(1)}>" }]
+                   [string_camel(:foo_bar), "a1b2".gsub(/\d/) { ($~[0].to_i * 2).to_s }, "xy".sub(/(y)/) { "<#{$1}>" }]
     end
 
     def test_scan_interpolated_groups
@@ -1638,7 +1638,7 @@ continued"
       re = %r{\A(?<user>[\w-]+)/(?<repo>[\w-]+)/(?<name>[\w+.@-]+)\z}
       ref = "homebrew/core/wget"
       uref = ref #: untyped
-      assert_equal %w[wget core homebrew wget], [ref[re, :name], ref[re, "repo"], ref[re, 1], uref[re, :name]]
+      assert_equal ["wget", "core", "homebrew", "wget"], [ref[re, :name], ref[re, "repo"], ref[re, 1], uref[re, :name]]
     end
   end
 
@@ -1689,7 +1689,7 @@ continued"
       $stderr = buf
       $VERBOSE = true
       format("test", 1)
-      format("%<a>s", { a: 1, b: 2 })
+      format("%{a}", { a: 1, b: 2 })
       out = buf.string
       $stderr = err
       $VERBOSE = verbose
@@ -1734,8 +1734,8 @@ continued"
       assert_equal [4, [98, 97, 254, 255]], [bin.each_char.size, bin.reverse.bytes]
       assert_equal [[255, 254, 88, 98], [255, 254, 98]], [bin.tr("a", "X").bytes, bin.delete("a").bytes]
       assert_equal [[[255]], "Xa", "[255]a"], ["\xffa".b.scan(/[\x80-\xff]/n).map(&:bytes), "\xffa".b.gsub(/\xff/n, "X"), "\xffa".b.sub(/\xff/n) { |m| m.bytes.inspect }]
-      assert_equal [%w[a b], true, 4], ["a\xffb".b.split(/\xff/n), "\xffa".b.start_with?(/\xff/n), bin.scan(/./).size]
-      assert_equal [%w[h é x], "xéh"], ["héx".chars, "héx".reverse]
+      assert_equal [["a", "b"], true, 4], ["a\xffb".b.split(/\xff/n), "\xffa".b.start_with?(/\xff/n), bin.scan(/./).size]
+      assert_equal [["h", "é", "x"], "xéh"], ["héx".chars, "héx".reverse]
     end
 
     # A String known binary at compile time matches bytes even when they are valid UTF-8 (decision 352).
@@ -1838,7 +1838,7 @@ continued"
         e.class
       end
       assert_equal [Encoding::CompatibilityError] * 3, errors
-      assert_equal [nil, 1, 0, %w[a é]], ["ab".b =~ /é/, "é".b =~ /\xa9/n, "é" =~ /[\xc3\xa9]/, "aé".scan(/\xc3\xa9|a/)]
+      assert_equal [nil, 1, 0, ["a", "é"]], ["ab".b =~ /é/, "é".b =~ /\xa9/n, "é" =~ /[\xc3\xa9]/, "aé".scan(/\xc3\xa9|a/)]
     end
   end
 end
@@ -1852,11 +1852,11 @@ module StringTests
       b = a + "2"
       c = a + "3"
       d = b + "4"
-      assert_equal %w[x12 x13 124], [b[-3, 3], c[-3, 3], d[-3, 3]]
+      assert_equal ["x12", "x13", "124"], [b[-3, 3], c[-3, 3], d[-3, 3]]
       refute a.equal?(b)
       acc = ""
       2000.times { |i| acc += "row #{i}," }
-      assert_equal 16_890, acc.size
+      assert_equal 16890, acc.size
       assert_equal "1999,", acc[-5, 5]
     end
 
@@ -1877,7 +1877,7 @@ module StringTests
 
     def test_symbol_inspect_by_scanner
       syms = ["foo bar", "a?", "a!", "a=", "a?=", "a=?", "a!?", "[]=", "[]", "[]==", "9a", "a9", "+", "-", "a-b", "é", "éa?", "日本", "日本?", "$", "$a", "$-w", "$-", "$-é", "$-éé", "$1", "$10", "$01", "$0", "$~", "$~~", "@", "@@", "@@@a", "@a", "@@a", "@9", "@a?", "**", "<=>", "===", "!=", "+@", "-@", "*@", "`", "$`", "A", "_", "_9", "$_", "", "a b", "a\nb", "a\"b", "a#b", "#", "?", "=", "==", "=~", "!", "!~", "<<", ">=", "a.b", "nil", "self"] #: Array[String]
-      assert_equal([":\"foo bar\"", ":a?", ":a!", ":a=", ":\"a?=\"", ":\"a=?\"", ":\"a!?\"", ":[]=", ":[]", ":\"[]==\"", ":\"9a\"", ":a9", ":+", ":-", ":\"a-b\"", ":é", ":éa?", ":日本", ":日本?", ":\"$\"", ":$a", ":$-w", ":\"$-\"", ":$-é", ":\"$-éé\"", ":$1", ":$10", ":\"$01\"", ":$0", ":$~", ":\"$~~\"", ":\"@\"", ":\"@@\"", ":\"@@@a\"", ":@a", ":@@a", ":\"@9\"", ":\"@a?\"", ":**", ":<=>", ":===", ":!=", ":+@", ":-@", ":\"*@\"", ":`", ":$`", ":A", ":_", ":_9", ":$_", ":\"\"", ":\"a b\"", ":\"a\\nb\"", ":\"a\\\"b\"", ":\"a#b\"", ":\"#\"", ":\"?\"", ":\"=\"", ":==", ":=~", ":!", ":!~", ":<<", ":>=", ":\"a.b\"", ":nil", ":self"], syms.map { |s| s.to_sym.inspect })
+      assert_equal [":\"foo bar\"", ":a?", ":a!", ":a=", ":\"a?=\"", ":\"a=?\"", ":\"a!?\"", ":[]=", ":[]", ":\"[]==\"", ":\"9a\"", ":a9", ":+", ":-", ":\"a-b\"", ":é", ":éa?", ":日本", ":日本?", ":\"$\"", ":$a", ":$-w", ":\"$-\"", ":$-é", ":\"$-éé\"", ":$1", ":$10", ":\"$01\"", ":$0", ":$~", ":\"$~~\"", ":\"@\"", ":\"@@\"", ":\"@@@a\"", ":@a", ":@@a", ":\"@9\"", ":\"@a?\"", ":**", ":<=>", ":===", ":!=", ":+@", ":-@", ":\"*@\"", ":`", ":$`", ":A", ":_", ":_9", ":$_", ":\"\"", ":\"a b\"", ":\"a\\nb\"", ":\"a\\\"b\"", ":\"a#b\"", ":\"#\"", ":\"?\"", ":\"=\"", ":==", ":=~", ":!", ":!~", ":<<", ":>=", ":\"a.b\"", ":nil", ":self"], syms.map { |s| s.to_sym.inspect }
     end
   end
 end
@@ -1904,7 +1904,7 @@ module StringTests
         ["%d", -42, "-42"],
         ["%5d", 42, "   42"],
         ["%5d", -42, "  -42"],
-        ["%2d", 12_345, "12345"],
+        ["%2d", 12345, "12345"],
         ["%i", 7, "7"],
         ["%u", 7, "7"],
         ["%d", 3.99, "3"],
@@ -1946,10 +1946,10 @@ module StringTests
         ["%.3s", "abcdef", "abc"],
         ["%-5s|", "ab", "ab   |"],
         ["%x", 255, "ff"],
-        ["%8.3x", 255, "     0ff"]
+        ["%8.3x", 255, "     0ff"],
       ] #: Array[Array[untyped]]
-      assert_equal(rows.map { |r| r[2] }, rows.map { |r| format(String(r[0]), r[1]) })
-      assert_equal ["1:ab", "<s|7>", "{a: 1}"], [format("%d:%s", 1, "ab"), format("<%<a>s|%<b>d>", a: "s", b: 7), format("%s", { a: 1 })]
+      assert_equal rows.map { |r| r[2] }, rows.map { |r| format(String(r[0]), r[1]) }
+      assert_equal ["1:ab", "<s|7>", "{a: 1}"], [format("%d:%s", 1, "ab"), format("<%{a}|%<b>d>", a: "s", b: 7), format("%s", { a: 1 })]
     end
   end
 end
@@ -1987,7 +1987,7 @@ module StringTests
   class StringCoreGapsTest < Minitest::Test
     def test_tr_s
       assert_equal ["hero", "ifmp", "*e*o", "x"], ["hello".tr_s("l", "r"), "hello".tr_s("a-y", "b-z"), "hello".tr_s("^aeiou", "*"), "this".tr_s("this", "x")]
-      assert_equal %w[helo h-o cc bbb], ["hello".tr_s("l", "l"), "hello".tr_s("el", "-"), "aabbcc".tr_s("ab", ""), "aabb".tr_s("a", "b")]
+      assert_equal ["helo", "h-o", "cc", "bbb"], ["hello".tr_s("l", "l"), "hello".tr_s("el", "-"), "aabbcc".tr_s("ab", ""), "aabb".tr_s("a", "b")]
     end
 
     def test_rindex_with_pos
@@ -1996,9 +1996,9 @@ module StringTests
     end
 
     def test_case_options
-      assert_equal %w[AßET Arço AbC ÄBÇ ÄbÇ], ["aßet".upcase(:ascii), "garçon"[1...-1].to_s.capitalize(:ascii), "aBc".swapcase(:ascii), "ÄbÇ".swapcase(:ascii), "ÄBÇ".downcase(:ascii)]
-      assert_equal %w[İ ı i I İı İjk], ["i".upcase(:turkic), "I".downcase(:turkic), "İ".downcase(:turkic), "ı".upcase(:turkic), "iI".swapcase(:turkic), "ijk".capitalize(:turkic)]
-      assert_equal %w[SS äb ss], ["ß".upcase(:lithuanian), "ÄB".downcase(:fold), "ß".downcase(:fold)]
+      assert_equal ["AßET", "Arço", "AbC", "ÄBÇ", "ÄbÇ"], ["aßet".upcase(:ascii), "garçon"[1...-1].to_s.capitalize(:ascii), "aBc".swapcase(:ascii), "ÄbÇ".swapcase(:ascii), "ÄBÇ".downcase(:ascii)]
+      assert_equal ["İ", "ı", "i", "I", "İı", "İjk"], ["i".upcase(:turkic), "I".downcase(:turkic), "İ".downcase(:turkic), "ı".upcase(:turkic), "iI".swapcase(:turkic), "ijk".capitalize(:turkic)]
+      assert_equal ["SS", "äb", "ss"], ["ß".upcase(:lithuanian), "ÄB".downcase(:fold), "ß".downcase(:fold)]
       assert_equal ArgumentError, (begin; "a".upcase(:fold); rescue ArgumentError => e; e.class; end)
       assert_equal ArgumentError, (begin; "a".swapcase(:bogus); rescue ArgumentError => e; e.class; end)
     end
@@ -2023,7 +2023,7 @@ module StringTests
       [0, 7, -7, 42, -255, 100_000, -1, 9_223_372_036_854_775_807].each do |i|
         assert_equal format(dyn, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i),
                      format("%d|%5d|%-5d|%05d|%-05d|%x|%X|%5x|%05x|%-6x|%+d|% d|%o|%i|%u", i, i, i, i, i, i, i, i, i, i, i, i, i, i, i)
-        assert_equal format("[%s] [%8s]", i, i), format("[%s] [%8s]", i, i)
+        assert_equal format("[%s] [%8s]", i, i), "[%s] [%8s]" % [i, i]
         assert_equal format(dyn.split("|").first || "", i), "%d" % i
       end
     end
@@ -2043,12 +2043,12 @@ module StringTests
       end
       assert_equal "sym|      |nil", format("%s|%-6s|%p", :sym, nil, nil)
       assert_equal "100% done", format("100%% %s", "done")
-      assert_equal "a and b", format("%s and %s", "a", "b")
+      assert_equal "a and b", "%s and %s" % ["a", "b"]
     end
 
     def test_arguments_evaluate_in_order_first
       x = 0
-      assert_equal "1 11 111", format("%d %d %d", x += 1, x += 10, x += 100)
+      assert_equal "1 11 111", format("%d %d %d", (x += 1), (x += 10), (x += 100))
       assert_equal "05|n12     |   1.714|c\n", format("%02d|%-8s|%8.3f|%x\n", 5, "n#{12 % 97}", 12 / 7.0, 12)
     end
   end
@@ -2057,10 +2057,7 @@ module StringTests
   class StringConcatChainTest < Minitest::Test
     def test_order_and_identity
       log = [] #: Array[String]
-      r = (log << "1"
-           "x") + (log << "2"
-                   "y") + (log << "3"
-                           "z")
+      r = (log << "1"; "x") + (log << "2"; "y") + (log << "3"; "z")
       assert_equal "xyz", r
       assert_equal %w[1 2 3], log
       a = "a"
@@ -2124,7 +2121,7 @@ module StringTests
     end
 
     def test_float_digits_as_mri
-      assert_equal(%w[2.68 1.00 1.02 1.04 1.12 8.34 0.12 2.50], [2.675, 1.005, 1.015, 1.035, 1.115, 8.345, 0.125, 2.5].map { |f| "%.2f" % f })
+      assert_equal %w[2.68 1.00 1.02 1.04 1.12 8.34 0.12 2.50], [2.675, 1.005, 1.015, 1.035, 1.115, 8.345, 0.125, 2.5].map { |f| "%.2f" % f }
       assert_equal "0.2 0.2 0.4", format("%.1f %.1f %.1f", 0.15, 0.25, 0.35)
       assert_equal "2 2 0", format("%.0f %.0f %.0f", 1.5, 2.5, 0.5)
       assert_equal "2.68e+00|609.830|6.1e+02", format("%.2e|%g|%.2g", 2.675, 609.8305, 609.8305)

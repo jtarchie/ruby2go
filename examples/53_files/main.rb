@@ -45,7 +45,9 @@ Dir.mktmpdir do |dir|
   end
   print File.read(report)
 
-  first = File.open(report, &:gets)
+  first = File.open(report) do |f|
+    f.gets
+  end
   p first
 
   File.open(report) do |f|
@@ -59,7 +61,7 @@ Dir.mktmpdir do |dir|
   File.rename(report, File.join(dir, "final.txt"))
   p Dir.children(dir).sort
   p Dir.entries(dir).sort
-  p(Dir.glob(File.join(dir, "*.txt")).map { |f| File.basename(f) })
+  p Dir.glob(File.join(dir, "*.txt")).map { |f| File.basename(f) }
   puts "dir exist? #{Dir.exist?(File.join(dir, "sub"))}"
 
   begin

@@ -1,6 +1,5 @@
 # rbs_inline: enabled
 
-require "English"
 require "minitest/autorun"
 require "tmpdir"
 require "fileutils"
@@ -19,10 +18,12 @@ module ProcessTests
       msgs = [] #: Array[String]
       cmds = [Array.new, [{ "A" => "b" }]] #: Array[Array[untyped]]
       cmds.each do |cmd|
-        IO.popen(cmd, &:read)
-        msgs << "no error"
-      rescue ArgumentError => e
-        msgs << e.message
+        begin
+          IO.popen(cmd) { |io| io.read }
+          msgs << "no error"
+        rescue ArgumentError => e
+          msgs << e.message
+        end
       end
       assert_equal ["wrong number of arguments (given 0, expected 1+)"] * 2, msgs
     end
@@ -48,7 +49,7 @@ module ProcessTests
         File.write(src, "inherited")
         File.open(src) do |f|
           opts = { 9 => f, out: out } #: Hash[untyped, untyped]
-          Process.wait(Process.spawn({}, %w[sh sh], "-c", "cat <&9", opts))
+          Process.wait(Process.spawn({}, ["sh", "sh"], "-c", "cat <&9", opts))
         end
         assert_equal "inherited", File.read(out)
       end
@@ -57,33 +58,33 @@ module ProcessTests
     def test_popen_redirect_closes_descriptors
       before = ProcessTests.open_fds
       100.times do
-        IO.popen(["true"], "r", { err: File::NULL }, &:read)
+        IO.popen(["true"], "r", { err: File::NULL }) { |io| io.read }
       end
       assert_operator ProcessTests.open_fds - before, :<, 10
     end
 
     def test_signalled_child_status
-      system("kill -9 $$")
-      st = $CHILD_STATUS
+      system('kill -9 $$')
+      st = $?
       assert_equal [true, 9, nil, nil, false], [st&.signaled?, st&.termsig, st&.exitstatus, st&.success?, st&.exited?]
       assert_equal "pid N SIGKILL (signal 9)", st&.to_s&.sub(/\d+/, "N")
       assert_equal 9, st&.to_i
 
-      Process.wait(Process.spawn("sh", "-c", "kill -15 $$"))
-      st = $CHILD_STATUS
+      Process.wait(Process.spawn("sh", "-c", 'kill -15 $$'))
+      st = $?
       assert_equal [true, 15, nil], [st&.signaled?, st&.termsig, st&.exitstatus]
     end
 
     def test_exited_child_status
       system("exit 3")
-      st = $CHILD_STATUS
+      st = $?
       assert_equal [false, nil, 3, false, true], [st&.signaled?, st&.termsig, st&.exitstatus, st&.success?, st&.exited?]
       assert_equal 768, st&.to_i
     end
 
     def test_popen_signalled_status
-      IO.popen(["sh", "-c", "kill -9 $$"], &:read)
-      st = $CHILD_STATUS
+      IO.popen(["sh", "-c", 'kill -9 $$']) { |io| io.read }
+      st = $?
       assert_equal [true, 9, nil], [st&.signaled?, st&.termsig, st&.exitstatus]
     end
 
@@ -94,9 +95,11 @@ module ProcessTests
         File.chmod(0o644, f)
         got = [] #: Array[String]
         [-> { Process.spawn(f) }, -> { Process.spawn({}, f) }, -> { Process.spawn(File.join(d, "missing")) }].each do |go|
-          go.call
-        rescue SystemCallError => e
-          got << "#{e.class}: #{e.message.gsub(d, "D")}"
+          begin
+            go.call
+          rescue SystemCallError => e
+            got << "#{e.class}: #{e.message.gsub(d, "D")}"
+          end
         end
         assert_equal ["Errno::EACCES: Permission denied - D/plain"] * 2 + ["Errno::ENOENT: No such file or directory - D/missing"], got
       end
@@ -187,18 +190,10 @@ module ProcessTests
     # The pin list was appended to from any thread without a lock.
     def test_autoclose_false_from_many_threads
       pipes = Array.new(16) { IO.pipe }
-      ts = pipes.map do |r, _w|
-        Thread.new do
-          50.times { r.autoclose = false }
-          true
-        end
-      end
+      ts = pipes.map { |r, _w| Thread.new { (1..50).each { r.autoclose = false }; true } }
       ts.each(&:join)
-      assert_equal([false] * 16, pipes.map { |r, _w| r.autoclose? })
-      pipes.each do |r, w|
-        w.close
-        r.close
-      end
+      assert_equal [false] * 16, pipes.map { |r, _w| r.autoclose? }
+      pipes.each { |r, w| w.close; r.close }
     end
   end
 

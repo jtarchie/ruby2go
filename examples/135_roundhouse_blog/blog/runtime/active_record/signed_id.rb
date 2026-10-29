@@ -44,7 +44,11 @@ module ActiveRecord
       # "" means "no exp key at all", which is what Rails writes for an
       # unexpiring signed id — not `"exp":null`, the cookie jar's shape.
       exp = ""
-      exp = "\"#{ActionController::MessageVerifier.iso8601_ms(Time.now + expires_in)}\"" if expires_in.positive?
+      if expires_in > 0
+        exp = "\"" +
+              ActionController::MessageVerifier.iso8601_ms(Time.now + expires_in) +
+              "\""
+      end
       ActionController::MessageVerifier.data_envelope(
         Rails.application.secret_key_base, SALT, id.to_s, purpose, exp, false
       )
