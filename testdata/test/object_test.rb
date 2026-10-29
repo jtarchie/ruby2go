@@ -6783,4 +6783,38 @@ module ObjectTests
       assert_equal 8, ObjLeafModFn.dbl(4)
     end
   end
+
+  # A Struct can hold itself: ==, eql? and hash stop at a pair or object already in progress, as MRI's
+  # rb_exec_recursive_paired and _outer do, instead of overflowing the stack.
+  class ObjectRecursiveStructTest < Minitest::Test
+    RsCar = Struct.new(:make, :model) #: [untyped, untyped]
+
+    def test_equal_when_the_difference_is_out_of_reach
+      x = RsCar.new("a", "b")
+      x[:make] = x
+      y = RsCar.new("a", "b")
+      y[:make] = x
+      assert x == y
+      assert x.eql?(y)
+      assert x.hash == y.hash
+    end
+
+    def test_a_difference_found_through_the_cycle
+      stepping = RsCar.new("Honda", "Accord")
+      stone = RsCar.new(stepping, "Accord")
+      stepping[:make] = stone
+      z = RsCar.new("Honda", "Accord")
+      z[:make] = z
+      assert z == stepping
+      stone[:model] = "1999"
+      assert_equal false, z == stepping
+      assert_equal false, z.eql?(stepping)
+    end
+
+    def test_plain_structs_compare_as_before
+      assert RsCar.new(1, 2) == RsCar.new(1, 2)
+      assert RsCar.new(1, 2).hash == RsCar.new(1, 2).hash
+      assert_equal false, RsCar.new(1, 2).eql?(RsCar.new(1, 3))
+    end
+  end
 end

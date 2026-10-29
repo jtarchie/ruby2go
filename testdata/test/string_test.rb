@@ -2214,6 +2214,14 @@ module StringTests
       assert raised
       assert_equal "a", s.dup
     end
+
+    # concat with no arguments appends nothing and returns the receiver; asking the proof about that value once recursed
+    # through the type probe until the compiler's stack overflowed (decision 382)
+    def test_concat_without_arguments_returns_self
+      str = +"hello"
+      assert str.concat.equal?(str)
+      assert_equal "hello", str.concat
+    end
   end
 
   class SetbyteGrid

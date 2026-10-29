@@ -429,6 +429,10 @@ func (p *appendProof) read(n parser.Node, stack []parser.Node) {
 		switch {
 		case c.Name == "setbyte":
 			p.changeAt(c)
+		case c.Name == "concat" && len(callArgs(c)) == 0: // appends nothing: its value is the String itself, used as the local is
+			if why := p.use(c, stack[:len(stack)-1]); why != "" {
+				p.leak(c, why)
+			}
 		case (c.Name == "<<" || c.Name == "concat") && !p.ivar:
 			p.appendAt(c, stack[:len(stack)-1])
 		case p.strict:
@@ -589,6 +593,10 @@ func (f *fctx) userAppend(n *parser.CallNode) (expr, bool) {
 	lv, ok := links[len(links)-1].Receiver.(*parser.LocalVariableReadNode)
 	if !ok || !typeEq(f.probeType(lv, nil), f.cls("String")) {
 		return expr{}, false
+	}
+	if n.Name == "concat" && len(callArgs(n)) == 0 { // appends nothing and returns self: the local, no proof needed
+		v := f.genExpr(lv, nil)
+		return expr{code: v.code, typ: v.typ}, true
 	}
 	if why := f.appendWhy(lv.Name); why != "" {
 		f.errorf(n, "undefined method %s for String: Strings are immutable in rugaroo, and %s (decision 382)", n.Name, why)

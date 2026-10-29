@@ -267,9 +267,15 @@ func valueClassSource(kind valueKind, full string, members []string, types []rbs
 	if len(eqs) == 0 {
 		eqs = []string{"true"}
 	}
-	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
-	fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    __to_h.eql?(__other.__to_h)\n  end\n", full)
-	pub("hash", "  #: () -> Integer\n  def hash = __to_h.hash\n")
+	if kind == valueStruct { // a Struct can hold itself (x[:a] = x), so ==, eql? and hash stop at a pair or object already in progress, as MRI's
+		fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    return true if ::Struct.__rec_enter(0, self, __other)\n    begin\n      %s\n    ensure\n      ::Struct.__rec_leave\n    end\n  end\n", full, strings.Join(eqs, " && "))
+		fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    return true if ::Struct.__rec_enter(1, self, __other)\n    begin\n      __to_h.eql?(__other.__to_h)\n    ensure\n      ::Struct.__rec_leave\n    end\n  end\n", full)
+		pub("hash", "  #: () -> Integer\n  def hash = ::Struct.__hash_rec(self) { __to_h.hash }\n")
+	} else {
+		fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def ==(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    %s\n  end\n", full, strings.Join(eqs, " && "))
+		fmt.Fprintf(&b, "  #: (untyped) -> bool\n  def eql?(__other)\n    return false unless __other.is_a?(::%s)\n    return false unless __other.class.equal?(self.class)\n    __to_h.eql?(__other.__to_h)\n  end\n", full)
+		pub("hash", "  #: () -> Integer\n  def hash = __to_h.hash\n")
+	}
 	fields := ""
 	if len(insp) > 0 {
 		fields = " " + strings.Join(insp, ", ")

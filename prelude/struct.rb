@@ -13,6 +13,19 @@ class Struct < Object
     p := rbObjFrozenFlag(any(self))
     return Boolean(p != nil && *p)
   }
+
+  # MRI's rb_exec_recursive_paired: true when this goroutine is already comparing (kind, a, b) (0 is ==, 1 is eql?), so a
+  # struct holding itself answers "equal so far" instead of overflowing the stack; otherwise it records the pair until
+  # __rec_leave. The generated == and eql? bracket their member comparison with the two.
+  #: (Integer, untyped, untyped) -> bool
+  def self.__rec_enter(kind, a, b) = %x{ return Boolean(rbRecEnter(kind, a, b)) }
+
+  #: () -> nil
+  def self.__rec_leave = %x{ rbRecLeave() }
+
+  # hash of a struct that reaches itself is one constant for the whole call, as MRI's rb_exec_recursive_outer.
+  #: (untyped) { () -> Integer } -> Integer
+  def self.__hash_rec(obj) = %x{ return rbRecHash(obj, func() Integer { return blk() }) }
 end
 
 # The superclass of every `Name = Data.define(:a, :b)` class: immutable
