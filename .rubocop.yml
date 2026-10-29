@@ -18,6 +18,9 @@ Layout/LeadingCommentSpace:
 # The repo is double-quoted (Gemfile, prelude).
 Style/StringLiterals:
   EnforcedStyle: double_quotes
+  Exclude:
+    # the shell example's quoting is what it demonstrates
+    - examples/73_shell/main.rb
 Style/StringLiteralsInInterpolation:
   EnforcedStyle: double_quotes
 
@@ -224,3 +227,10 @@ Style/FormatString:
 Style/PercentLiteralDelimiters:
   # the prelude's %x{} Go bodies use braces; other delimiters break on unbalanced Go text
   Enabled: false
+Lint/RedundantCopDisableDirective:
+  # fixtures carry disable comments for cops this config excludes them from
+  Enabled: false
+Layout/ElseAlignment:
+  Exclude:
+    # an `if` expression inside "#{}" interpolation; the generated-looking layout is the example's output shape
+    - examples/135_roundhouse_blog/blog/app/views/articles/_form.rb
