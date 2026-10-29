@@ -81,7 +81,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1) //nolint:gocritic // stop() is called by hand
 	}
-	results := runTargets(targets, *jobs, func(t target) *result { return runTarget(ctx, p, root, t, opts) }, opts.verbose)
+	results := runTargets(targets, *jobs, func(t target) *result { return runIsolating(ctx, p, root, t, opts) }, opts.verbose)
 	report(results, *reasons)
 	code := exitCode(results)
 	if ctx.Err() != nil {
@@ -124,7 +124,7 @@ func runTargets(targets []target, jobs int, run func(target) *result, verbose bo
 
 // exitCode is 1 when any program produced no results, so a CI run over a broken toolchain is not a pass.
 func exitCode(results []*result) int {
-	if slices.ContainsFunc(results, func(r *result) bool { return r.fatal != "" }) {
+	if slices.ContainsFunc(results, func(r *result) bool { return r.fatal != "" || len(r.failedFiles) > 0 }) {
 		return 1
 	}
 	return 0
@@ -255,6 +255,7 @@ type result struct {
 	compileSkips                 []skipped // examples the compiler skipped (CompileTestsSkipping)
 	dropped                      []skipped // statements outside examples removed
 	fatal                        string    // why the program produced no results
+	failedFiles                  []string  // spec files that produced none when run alone, after their directory's program had produced none (runIsolating)
 	crashed                      string    // the last run's crash or hang
 	why                          []string  // each skipped example's rugaroo reason, from the run
 	excluded                     []string  // why each test a crash or hang took out did
@@ -262,6 +263,39 @@ type result struct {
 	took                         time.Duration
 	compiles, builds             int           // rounds of each, for -v
 	compileTime, buildTime       time.Duration // their totals
+}
+
+// runIsolating is runTarget, and when a directory's one program produced nothing (one spec that does not compile or
+// build takes the rest of its directory with it) it runs the files one at a time, so only the files that cannot run
+// are lost, and the report names them.
+func runIsolating(ctx context.Context, p *parser.Parser, root string, t target, opts options) *result {
+	r := runTarget(ctx, p, root, t, opts)
+	if r.fatal == "" || len(t.files) < 2 || ctx.Err() != nil {
+		return r
+	}
+	merged := &result{name: t.name, took: r.took}
+	for _, f := range t.files {
+		sub := runTarget(ctx, p, root, target{name: f, files: []string{f}}, opts)
+		merged.merge(sub)
+		if sub.fatal != "" {
+			merged.failedFiles = append(merged.failedFiles, f+": "+firstLine(sub.fatal))
+		}
+	}
+	return merged
+}
+
+// merge adds a file's results to its directory's.
+func (r *result) merge(o *result) {
+	r.pass, r.fail, r.errored, r.skipped = r.pass+o.pass, r.fail+o.fail, r.errored+o.errored, r.skipped+o.skipped
+	r.unsupported = append(r.unsupported, o.unsupported...)
+	r.compileSkips = append(r.compileSkips, o.compileSkips...)
+	r.dropped = append(r.dropped, o.dropped...)
+	r.why = append(r.why, o.why...)
+	r.excluded = append(r.excluded, o.excluded...)
+	r.output += o.output
+	r.took += o.took
+	r.compiles, r.builds = r.compiles+o.compiles, r.builds+o.builds
+	r.compileTime, r.buildTime = r.compileTime+o.compileTime, r.buildTime+o.buildTime
 }
 
 func runTarget(ctx context.Context, p *parser.Parser, root string, t target, opts options) *result {
@@ -489,6 +523,9 @@ func (r *result) print(verbose bool) {
 		fmt.Printf("%-28s %4d examples  %4d pass  %3d fail  %3d error  %4d skip (%d unsupported)  %.1fs\n",
 			r.name, total+len(r.excluded), r.pass, r.fail, r.errored, r.skipped+len(r.excluded), len(r.why)+len(r.excluded), r.took.Seconds())
 	}
+	for _, f := range r.failedFiles {
+		fmt.Printf("    FATAL %s\n", f)
+	}
 	if !verbose {
 		return
 	}
@@ -518,6 +555,7 @@ func report(results []*result, reasons int) {
 		if r.fatal != "" {
 			fatal++
 		}
+		fatal += len(r.failedFiles)
 		for _, reason := range slices.Concat(r.why, r.excluded) {
 			why[specOwner.ReplaceAllString(reason, "${1}a spec")]++
 		}

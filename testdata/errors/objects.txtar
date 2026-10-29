@@ -1229,3 +1229,27 @@ class A
   protected def self.x = 1
 end
 p A.x
+-- module_override_mismatch.rb --
+# error: main.rb:4: M#foo: () -> Integer overrides BaseA#foo: () -> Symbol, but its Integer result cannot stand in for Symbol
+# a module included in a subclass overrides the parent's method: the same check a class's own override gets (it used to reach go build as a type error)
+module M
+  def foo
+    1
+  end
+end
+
+class BaseA
+  def foo
+    :BaseA
+  end
+
+  def callfoo
+    foo
+  end
+end
+
+class A < BaseA
+  include M
+end
+
+p A.new.callfoo

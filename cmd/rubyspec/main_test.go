@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -217,4 +218,44 @@ func TestExitCode(t *testing.T) {
 	if got := exitCode([]*result{{name: "a"}, {name: "b", fatal: "go build: x"}}); got != 1 {
 		t.Errorf("one fatal program: exit %d, want 1", got)
 	}
+}
+
+// TestMergeAndFailedFiles: a directory whose one program failed is run file by file; the files' results add up, and
+// each file that still produced nothing counts as a failed program and fails the run.
+func TestMergeAndFailedFiles(t *testing.T) {
+	dir := &result{name: "language"}
+	dir.merge(&result{pass: 3, fail: 1, errored: 2, skipped: 4, why: []string{"a"}, excluded: []string{"b"}, compiles: 1, builds: 1})
+	dir.merge(&result{pass: 5, skipped: 1, why: []string{"c"}})
+	dir.failedFiles = []string{"language/super_spec.rb: build failed"}
+	if dir.pass != 8 || dir.fail != 1 || dir.errored != 2 || dir.skipped != 5 || len(dir.why) != 2 || len(dir.excluded) != 1 || dir.compiles != 1 {
+		t.Errorf("merged = %+v", dir)
+	}
+	if exitCode([]*result{dir}) != 1 {
+		t.Error("a run with a failed file must exit 1")
+	}
+	if exitCode([]*result{{name: "ok", pass: 1}}) != 0 {
+		t.Error("a clean run must exit 0")
+	}
+	out := captureStdout(t, func() { report([]*result{dir}, 0) })
+	if !strings.Contains(out, "total: 17 examples  8 pass  1 fail  2 error  6 skip (3 unsupported)  1 programs failed") {
+		t.Errorf("report = %q", out)
+	}
+}
+
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	f()
+	err = w.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = old
+	b, _ := io.ReadAll(r)
+	return string(b)
 }

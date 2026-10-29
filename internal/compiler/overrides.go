@@ -202,21 +202,22 @@ func (c *Compiler) relinkOverrides() {
 	}
 }
 
-// relinkModuleOverrides: a gem module's method that overrides a superclass method of an includer with another Go
+// relinkModuleOverrides: a module's method that overrides a superclass method of an includer with another Go
 // signature (concurrent-ruby's ConditionSignalling#ns_broadcast returning self over AbstractLockableObject's) gets its
 // own Go name, and the includer answers the superclass's slot through an adapter, as a class's own override does
-// (decision 249). The name is the module's, shared by its includers.
+// (decision 249). The name is the module's, shared by its includers. A program's own module whose override no adapter
+// fits is a compile error, as a class's is, where it used to reach `go build` as a type error (decision 408).
 func (c *Compiler) relinkModuleOverrides(cls *Class) {
 	if cls.Super == nil {
 		return
 	}
 	for _, inc := range cls.Includes {
 		mod := inc.Mod
-		if mod == nil || !c.gemFile(mod.File) {
+		if mod == nil || !c.gemFile(mod.File) && !c.userFile(mod.File) {
 			continue
 		}
 		for _, m := range mod.MethodList {
-			if m.Kind != kindDef || !inInterface(m) || m.seqAdapter || !c.gemFile(m.File) {
+			if m.Kind != kindDef || !inInterface(m) || m.seqAdapter || !c.gemFile(m.File) && !c.userFile(m.File) {
 				continue
 			}
 			pe := cls.Super.lookup(m.Name)
@@ -227,6 +228,9 @@ func (c *Compiler) relinkModuleOverrides(cls *Class) {
 			ps := slot{e: *pe, in: cls.Super}
 			if slices.ContainsFunc(m.shadowed, func(x slot) bool { return x.e.M == pe.M }) {
 				continue
+			}
+			if !c.gemFile(m.File) {
+				c.checkAdaptable(slot{e: *oe, in: cls}, ps)
 			}
 			c.shadowSlot(m, slot{e: *oe, in: cls}, ps, mod.Name)
 		}
