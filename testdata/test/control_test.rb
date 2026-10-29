@@ -520,8 +520,6 @@ def definite_guarded(out, n)
 
   v = n
 
-
-
   out << twice(v)
 end
 
@@ -530,8 +528,6 @@ def raised(n)
   raise ArgumentError, "neg" unless n.positive?
 
   v = n
-
-
 
   twice(v)
 end
@@ -2207,7 +2203,6 @@ module ControlTests
         [10, 20, 30].each do |b|
           break if b > 10 * a
 
-
           found << "#{a}-#{b}"
         end
       end
@@ -2725,7 +2720,6 @@ module ControlTests
       end
 
       seen << "body"
-
 
       assert_equal %w[three body], seen
       x = if i > 5 then end #: Integer?
