@@ -1376,7 +1376,8 @@ module HashTests
       assert_equal [1, 5, -2, 7], h.map(&:last)
       e = {} #: Hash[String, Integer]
       out = []
-      e.each_key do |k| out << "never #{k}"
+      e.each_key do |k| 
+        out << "never #{k}"
                        out << "never #{k}" end
       e.each_value { |v| out << "never #{v}" }
       e.each_pair { |k, _v| out << "never #{k}" }
