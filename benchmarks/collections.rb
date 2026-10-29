@@ -9,7 +9,7 @@ cities = %i[paris tokyo lima oslo cairo]
 people = Array.new(100_000) { |i| Person.new("p#{i * 7919 % 100_003}", 18 + (i * 31 % 60), cities[i % 5] || :none) }
 
 puts people.sort_by { |p| [p.age, p.name] }.first(3).map(&:name).inspect
-puts people.min { |a, b| b.age <=> a.age }.age
+puts people.sort { |a, b| b.age <=> a.age }.first.age # rubocop:disable Style/RedundantSort -- the sort-with-block shape is the workload; min takes no block here
 by_city = people.group_by(&:city)
 puts by_city.transform_values(&:size).sort.inspect
 puts people.map(&:age).tally.max_by { |_, c| c }.inspect
