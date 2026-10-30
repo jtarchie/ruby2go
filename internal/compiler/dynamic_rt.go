@@ -66,6 +66,32 @@ func (c *Compiler) emitDelegateObj() {
 	c.w("func rbDelegateObj(x any) (any, bool) {\n\tswitch d := x.(type) {\n\tcase interface{ _DelegateObj() any }:\n\t\treturn d._DelegateObj(), true\n\tcase interface{ _Tuple() *Array[any] }:\n\t\treturn d._Tuple(), true\n\t}\n\treturn nil, false\n}\n\n")
 }
 
+// emitDynEachV emits rbEachAnyV: rbEachAny for a forwarded block whose value matters, and each's own value back (prime's
+// `generator.each(&block)` over an untyped generator whose each answers `break last_value`; decision 418). A gem class's
+// closure each with an untyped block gets the block's values; anything else is rbEachAny's, valued its receiver.
+func (c *Compiler) emitDynEachV() {
+	if !c.dynEachV {
+		return
+	}
+	c.w("func rbEachAnyV(recv any, arity int, blk func(...any) any) any {\n\tswitch r := recv.(type) {\n")
+	seen := map[string]bool{}
+	for _, cls := range c.classList {
+		m := cls.Methods["each"]
+		if m == nil || m.File == nil || m.File.isPrelude() || m.Iterator || m.Block == nil || len(m.Params) > 0 || m.generic() ||
+			len(cls.TypeParams) > 0 || len(m.Block.Params) != 1 || !isAny(m.Block.Ret) || m.Block.Self != nil || m.Block.Rest {
+			continue
+		}
+		params, ret := c.sig(m, nil)
+		shape := "interface{ " + m.GoName + "(" + params + ") " + ret + " }"
+		if seen[shape] || ret == "" {
+			continue
+		}
+		seen[shape] = true
+		c.w("\tcase %s:\n\t\treturn r.%s(func(a %s) any { return blk(a) })\n", shape, m.GoName, c.goType(m.Block.Params[0]))
+	}
+	c.w("\tdefault:\n\t}\n\treturn rbEachAny(recv, arity, func(xs ...any) { blk(xs...) })\n}\n\n")
+}
+
 // emitDynEach emits rbEachAny (dynEach): an Array's elements, a Hash's pairs, then one case per Go shape of a user or
 // gem class's own each; a block of two splits a lone Array value and a block of one gets a pair as an Array, as yield does.
 func (c *Compiler) emitDynEach() {
@@ -86,14 +112,14 @@ func (c *Compiler) emitDynEach() {
 	for _, cls := range c.classList {
 		m := cls.Methods["each"]
 		if m == nil || m.File == nil || m.File.isPrelude() || m.Block == nil || len(m.Params) > 0 || m.generic() || len(cls.TypeParams) > 0 ||
-			len(m.Block.Params) == 0 || len(m.Block.Params) > 2 || !isVoid(m.Block.Ret) || m.Block.Self != nil || m.Block.Rest {
+			len(m.Block.Params) == 0 || len(m.Block.Params) > 2 || !isVoid(m.Block.Ret) && (m.Iterator || !isAny(m.Block.Ret)) || m.Block.Self != nil || m.Block.Rest {
 			continue
 		}
 		if slices.ContainsFunc(m.Block.Params, mentionsVar) {
 			continue
 		}
 		params, ret := c.sig(m, nil)
-		shape := "interface{ Each(" + params + ") " + ret + " }"
+		shape := "interface{ " + m.GoName + "(" + params + ") " + ret + " }" // Each_blk when a seq adapter is its Each (decision 418)
 		if seen[shape] {
 			continue
 		}
@@ -108,9 +134,14 @@ func (c *Compiler) emitDynEach() {
 		for i, v := range vars {
 			typed[i] = v + " " + c.goType(m.Block.Params[i])
 		}
-		c.w("\t\tr.Each(func(%s) { yield(%s) })\n", strings.Join(typed, ", "), strings.Join(vars, ", "))
+		if isAny(m.Block.Ret) { // a gem each that reads its block's value (prime's `last_value = yield prime`): a void block's is nil
+			c.w("\t\tr.%s(func(%s) any { yield(%s); return nil })\n", m.GoName, strings.Join(typed, ", "), strings.Join(vars, ", "))
+			continue
+		}
+		c.w("\t\tr.%s(func(%s) { yield(%s) })\n", m.GoName, strings.Join(typed, ", "), strings.Join(vars, ", "))
 	}
 	c.w("\tdefault:\n\t\tpanic(rbNoMethod(\"each\", recv, false))\n\t}\n\treturn recv\n}\n\n")
+	c.emitDynEachV()
 	// rbElemsAny is an untyped receiver's elements as an Array[untyped] (decision 224): an Array's own, else what its each yields
 	c.w("func rbElemsAny(recv any) *Array[any] {\n")
 	c.w("\tif o, ok := rbDelegateObj(recv); ok {\n\t\trecv = o\n\t}\n")

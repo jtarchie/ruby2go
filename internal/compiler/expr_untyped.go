@@ -896,11 +896,15 @@ func (f *fctx) dynEachForward(n parser.Node, recv expr) expr {
 		xs[i] = f.coerce(n, expr{code: fmt.Sprintf("xs_[%d]", i), typ: TAny{}}, f.blockSig.Params[i])
 	}
 	call := "blk(" + strings.Join(xs, ", ") + ")"
-	if !isVoid(f.blockSig.Ret) {
+	each, blkT := "rbEachAny", ""
+	if isAny(f.blockSig.Ret) && f.lenient() { // the block's value reaches each (prime's `last_value = yield prime`), and each's value the caller
+		f.c.dynEachV = true
+		each, call, blkT = "rbEachAnyV", "return "+call, " any"
+	} else if !isVoid(f.blockSig.Ret) {
 		call = "_ = " + call
 	}
 	if f.m == nil || f.m.Block == nil || !f.m.Block.Optional && !f.m.Block.Untyped {
-		return expr{code: fmt.Sprintf("rbEachAny(any(%s), %d, func(xs_ ...any) { %s })", recv.code, k, call), typ: TAny{}}
+		return expr{code: fmt.Sprintf("%s(any(%s), %d, func(xs_ ...any)%s { %s })", each, recv.code, k, blkT, call), typ: TAny{}}
 	}
 	// called without a block (prime's `Prime.instance.each` over a generator a mock made untyped): x.each with none,
 	// as MRI's `x.each(&nil)` is (decision 410)
@@ -911,12 +915,16 @@ func (f *fctx) dynEachForward(n parser.Node, recv expr) expr {
 	without := fmt.Sprintf("rbEnumOf(rbSeq(func(y func(any)) { rbEachAny(%s, 1, func(xs_ ...any) { y(xs_[0]) }) }), %s, \"each\", nil, nil)", rt, rt)
 	if k != 1 {
 		without = f.coerce(n, f.genDynCall(n, expr{code: rt, typ: TAny{}}, "each", nil), TAny{})
+	} else if f.c.blocklessTwin["each"] { // a gem each's own `return self.dup unless block_given?` (prime's generators, decision 418)
+		f.c.noteDyn("__each_enum")
+		w := "Dyn" + goMethodName("__each_enum")
+		without = fmt.Sprintf("func() any { if t_, ok := %s.(interface{ %s(...any) any }); ok { return t_.%s() }; return %s }()", rt, w, w, without)
 	}
 	f.emit("var %s any", out)
 	f.emit("if blk == nil {")
 	f.emit("\t%s = %s", out, without)
 	f.emit("} else {")
-	f.emit("\t%s = rbEachAny(%s, %d, func(xs_ ...any) { %s })", out, rt, k, call)
+	f.emit("\t%s = %s(%s, %d, func(xs_ ...any)%s { %s })", out, each, rt, k, blkT, call)
 	f.emit("}")
 	return expr{code: out, typ: TAny{}}
 }

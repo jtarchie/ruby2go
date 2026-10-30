@@ -41,3 +41,28 @@ p f.soft_require, f.forward(1, 2), f.pump, Ftpish::Proto.open("u", {}, false)
 pr = Primeish.new
 p pr.witness?(3, 2, 16), pr.witness?(3, 2, 5), pr.witness?(0, 2, 16)
 p pr.scan([1, 2, 3], 2), pr.scan([1, 2, 3], 9)
+gen = PrimeishFront.new.each
+p gen.class, gen.next, gen.next
+gen.rewind
+p gen.next
+seen = []
+PrimeishFront.new.each { |v| seen << v }
+p seen
+g2 = PrimeishGen.new
+e2 = g2.each
+p e2.class, e2.next, g2.next
+p PrimeishFront.new.each(PrimeishOddGen.new(9)).to_a
+pw = PrimeishFront.new.each(PrimeishGen.new)
+p pw.next, pw.next
+pw.rewind
+p pw.next
+ua = PrimeishFront.new.each_any(PrimeishGen.new)
+p ua.next, ua.next
+ua.rewind
+p ua.next
+ub = []
+PrimeishFront.new.each_any(PrimeishGen.new) { |v| ub << v }
+p ub, PrimeishFront.new.each_any([4, 5]).next
+p ua.method(:succ) == ua.method(:next), ua.method(:succ) == ua.method(:rewind), g2.method(:succ) == g2.method(:next)
+p PrimeishBound.new.each(3) { |v| v * 10 }, PrimeishBound.new.each(0) { :value }
+p PrimeishFront.new.each_any(PrimeishLast.new(3)) { |v| v * 10 }, PrimeishFront.new.each_any(PrimeishLast.new(0)) { :value }

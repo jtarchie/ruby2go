@@ -738,6 +738,9 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		f.probe(func() { probed = f.genExpr(n.Receiver, nil); recvT = probed.typ })
 	}
 	if u, ok := recvT.(TUnion); ok {
+		if f.splitBlockForward(n, t) {
+			return true
+		}
 		return f.genUnionIterCall(n, u, t)
 	}
 	if tt, ok := recvT.(TTuple); ok && t.kind == tailNone && f.c.classes["Array"].lookup(n.Name) != nil {
@@ -857,6 +860,36 @@ func (f *fctx) resolveIter(n *parser.CallNode, recvT Type) *entry {
 		}
 	}
 	return e
+}
+
+// splitBlockForward is a gem's `generator.each(&block)` as its method's value, on a union, passing on the method's own
+// optional block (prime's Prime#each): without one the call takes each member's block-less form (a `__each_enum` twin,
+// decision 418), with one the loop runs as before; a union's iterator call has no value of its own.
+func (f *fctx) splitBlockForward(n *parser.CallNode, t tail) bool {
+	ba, ok := n.Block.(*parser.BlockArgumentNode)
+	if !ok || !f.lenient() || t.kind == tailNone || f.splittingForward || f.m == nil || f.m.Block == nil || !f.m.Block.Optional && !f.m.Block.Untyped {
+		return false
+	}
+	lv, ok := ba.Expression.(*parser.LocalVariableReadNode)
+	if !ok || f.m.Node == nil || f.m.Node.Parameters == nil || f.m.Node.Parameters.Block == nil || f.m.Node.Parameters.Block.Name == nil || *f.m.Node.Parameters.Block.Name != lv.Name {
+		return false
+	}
+	blk := f.genExpr(lv, nil)
+	f.emit("if %s == nil {", blk.code)
+	f.indent++
+	without := *n
+	without.Block = nil
+	f.genStmt(&without, t)
+	f.indent--
+	f.emit("} else {")
+	f.indent++
+	f.splittingForward = true
+	f.genStmt(n, tail{})
+	f.splittingForward = false
+	f.emptyTail(n, t) // a gem iterator call's value: nil (decision 233)
+	f.indent--
+	f.emit("}")
+	return true
 }
 
 // genUnionIterCall is genIterCall on a union (decision 150): a type switch

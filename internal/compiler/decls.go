@@ -163,6 +163,7 @@ func (c *Compiler) emitTables() {
 		c.emitCallTables()
 	}
 	c.emitSendOn()
+	c.emitAliasKeys()
 	c.emitClassOf()
 	c.emitModIsA()
 	c.emitFrozenFlag()

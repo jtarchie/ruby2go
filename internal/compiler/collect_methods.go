@@ -218,6 +218,61 @@ func (c *Compiler) addDef(f *File, cls *Class, n *parser.DefNode, private bool, 
 		cls.MethodList = append(cls.MethodList, m)
 	}
 	cls.Methods[n.Name] = m
+	c.addBlocklessTwin(f, cls, n, m)
+}
+
+// addBlocklessTwin gives a gem method that begins `return x unless block_given?` (prime's PseudoPrimeGenerator#each,
+// `return self.dup unless block_given?`) a `__name_enum` twin whose body is x: as an iterator, block_given? is true and
+// that branch is dead, so a call without a block takes the twin instead (decision 418). Not a to_enum, which decision
+// 414 already answers.
+func (c *Compiler) addBlocklessTwin(f *File, cls *Class, n *parser.DefNode, m *Method) {
+	x := blocklessGuard(n)
+	if x == nil || !c.gemFile(f) {
+		return
+	}
+	name := "__" + overloadBase(n.Name) + "_enum"
+	if cls.Methods[name] != nil {
+		return
+	}
+	tw := *n
+	tw.Name = name
+	tw.Body = &parser.StatementsNode{Location: x.GetLocation(), Body: []parser.Node{x}}
+	if n.Parameters != nil {
+		ps := *n.Parameters
+		ps.Block = nil
+		tw.Parameters = &ps
+	}
+	t := &Method{Name: name, GoName: goMethodName(name), Owner: cls, Node: &tw, srcPos: m.srcPos, Private: m.Private, Scope: m.Scope, blocklessOf: m}
+	cls.MethodList = append(cls.MethodList, t)
+	cls.Methods[name] = t
+	if c.blocklessTwin == nil {
+		c.blocklessTwin = map[string]bool{}
+	}
+	c.blocklessTwin[n.Name] = true
+}
+
+// blocklessGuard is x in a def whose first statement is `return x unless block_given?`, x not to_enum/enum_for.
+func blocklessGuard(n *parser.DefNode) parser.Node {
+	body, ok := n.Body.(*parser.StatementsNode)
+	if !ok || len(body.Body) < 2 {
+		return nil
+	}
+	u, ok := body.Body[0].(*parser.UnlessNode)
+	if !ok || u.ElseClause != nil || u.Statements == nil || len(u.Statements.Body) != 1 {
+		return nil
+	}
+	if p, ok := u.Predicate.(*parser.CallNode); !ok || p.Name != "block_given?" || p.Receiver != nil || p.Arguments != nil {
+		return nil
+	}
+	r, ok := u.Statements.Body[0].(*parser.ReturnNode)
+	if !ok || r.Arguments == nil || len(r.Arguments.Arguments) != 1 {
+		return nil
+	}
+	x := r.Arguments.Arguments[0]
+	if c, ok := x.(*parser.CallNode); ok && (c.Name == "to_enum" || c.Name == "enum_for") {
+		return nil
+	}
+	return x
 }
 
 // attrKind is which of attr_reader / attr_writer / attr_accessor declared an accessor.

@@ -141,7 +141,9 @@ type Compiler struct {
 
 // dynState: dispatchers, wrappers and forwarders for calls on untyped values (dynamic*.go, dispatch.go).
 type dynState struct {
-	dynNames      []string // method names called on untyped values
+	dynNames      []string        // method names called on untyped values
+	blocklessTwin map[string]bool // gem method names with a synthesized `__name_enum` (decision 418)
+	aliasKeys     map[string]bool // names a dynamic method(:name) keys by def, for aliases (emitAliasKeys, decision 418)
 	dynSeen       map[string]bool
 	sends         map[string]sendSpec // rbSend_ dispatchers calls named (dispatch.go)
 	sendOut       map[string]bool     // dispatchers emitted
@@ -166,6 +168,7 @@ type dynState struct {
 	fwdOut        map[*Class]bool         // forwarders emitted
 	callable      map[string]bool         // what the _Call tables switch over, once kept code asks for _Call (callableNames)
 	dynEach       bool                    // a gem file calls each with a block on an untyped receiver: emit rbEachAny (decision 176)
+	dynEachV      bool                    // ... forwarding a block whose value each reads: emit rbEachAnyV (decision 418)
 }
 
 // memoState: memos and re-entrancy flags of the analysis helpers.

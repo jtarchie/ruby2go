@@ -10,96 +10,97 @@ import (
 
 // fctx is the per-function code generation context.
 type fctx struct {
-	iterValue      *tail                         // the value tail the next genIterLoop gives its loop frame, for `break v` (decision 410)
-	iterBroke      *brokeTarget                  // the label the next genIterLoop's valueless break jumps to (decision 417)
-	iterBreakValue bool                          // the next genIterCall is a gem's iterator in value position whose block breaks (decision 417)
-	storageWrite   bool                          // discovery: the ivar write generating stores a value read out of a container (decision 392)
-	destructuring  bool                          // discovery: a multiple assignment's targets take fields of a container (decision 392)
-	aliasSrc       map[localKey]*parser.CallNode // a gem local holding an Array slot's String, which its bang edits write back (decision 331)
-	noStrIndexSet  bool                          // generating an untyped local's `[]=` as other receivers take it (genStringBang's fallback)
-	noFuse         *parser.CallNode              // the `h[k] = (h[k] || d) op v` whose miss arm is generating unfused (genFusedIndexAssign)
-	superTarget    *Method                       // a gem super call's target while its arguments generate: they type none of its parameters
-	nilRecv        Type                          // the receiver of the call whose arguments genArgs is about to generate (decision 393)
-	nilArg         nilCall                       // the call whose argument is being coerced: a nil one raises MRI's error for it (decision 393)
-	probeDepth     int                           // inside probe: output is discarded
-	unionArm       int                           // inside a union argument's arm: a call it cannot make raises there, not dynamic (unionArgCall)
-	erbDepth       int                           // inside a spliced template, where a bare name may be the caller's local
-	curBlock       parser.Node                   // the block of the call overload is resolving
-	lambdaClosure  int                           // f.closures inside the innermost lambda body, whose `return` is its own
-	inDynContainer bool                          // dynContainerCall is generating its default arm: the plain dispatcher
-	retHint        Type                          // the expected type of retHintNode's result, for type params its arguments leave open
-	retHintNode    parser.Node
-	c              *Compiler
-	f              *File
-	owner          *Class
-	m              *Method
-	implicitCall   bool     // calling method_missing/respond_to_missing? on the program's behalf
-	plainCalls     bool     // a struct's Dyn wrapper body: calls stay `self.M()`, the form dynShareable and freeCall read
-	staticDef      *Method  // an UnboundMethod's dyn: this definition is called by its free func, not dispatched to an override (decision 141)
-	lex            []*Class // lexical scope for constant lookup
-	selfType       Type
-	selfCode       string
-	selfClassObj   bool // self is exactly a class constant (a class body)
-	missingCalls   int  // receiverless calls compiled to self's method_missing, so far: a DSL block that needs them is rebound (blockArg)
-	ret            Type
-	iterator       bool
-	lastMatch      string // the Go variable of the frame's last match, when the body reads $~ or $1..$9 (decision 171)
-	inMatchSet     bool   // generating genMatchSet's own match call
-	blockSig       *BlockSig
-	buf            *strings.Builder
-	indent         int
-	tmp            int
-	pass           int  // 0 = ivar discovery, 1 = local analysis, 2 = emit
-	bodyUnit       bool // a class body's grouped statements: its constant assignments are statements (decision 170)
-	discover       bool
-	nilGuarded     map[parser.Node]bool // calls on a T? local that raise NoMethodError on nil: the local survives them non-nil (decision 357)
-	nestedDone     map[parser.Node]bool // discovery: compound statements whose branch bodies discoverNested already dry-ran
-	promoted       map[string]bool      // --int-overflow=promote: locals typed Bignum from their first write (decision 372)
-	nilElemLocals  map[string]bool      // a gem method's locals that store nil into an element (`segment[i] = nil`, decision 411)
-	dropFailing    bool                 // a recursive method's first inference pass: a statement that fails drops out of the return join (decision 355)
-	locals         map[localKey]*localInfo
-	refined        map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
-	openArgs       map[int]localKey  // an open literal passed as a memo (`each_with_object({})`): its offset -> the block param it binds (decision 344)
-	convs          map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
-	retTypes       *[]Type           // `return` values, while inferring the method's return type
-	unset          map[localKey]bool // locals read where they may be unassigned (maybeUnset)
-	scope          *scope
-	block          string
-	rbScope        string    // the block path where the current Ruby scope (method or block) starts
-	rbFrames       []rbFrame // the Ruby blocks enclosing the current position, outermost first
-	blockCtr       int
-	loops          []*loopFrame
-	switches       int  // nesting depth of emitted Go switch statements
-	patQuiet       bool // matching a pattern: its dynamic calls are the match itself, so they do not warn (decision 143)
-	labels         int  // not rewound by probe, so labels stay unique
-	closures       int  // nesting depth of Go closures (non-iterator blocks)
-	storing        int  // generating what a gem stores (an element added, an ivar assigned): only its conversions veto an ivar's typing (decision 307)
-	nextTail       tail // the innermost closure's result, for `next`
-	begins         int  // nesting depth of rescue wrappers
-	retVar         string
-	wrap           *wrapFrame  // the innermost begin wrapper
-	retryFlag      string      // set by `retry` in the rescue clauses being generated
-	declBin        bool        // declareAssign's value is a binary String: declareLocal leaves the local's bin state to it
-	binNext        bool        // the next closure is a `@binary block` method's: its String params are binary (decision 352)
-	binParams      bool        // binding that closure's params
-	viewSplat      bool        // binding a windowSafe block's params: destructuring copies out of the window (decision 386)
-	zipVal         bool        // the iterator loop is zip's [E, U?] with U = Integer/Float: pairs open to rbOpt (decision 396)
-	bodyStmts      parser.Node // the statements of the method or block body being generated (noteBinStmt)
-	noOwnSend      bool        // generating ownSendOrName's by-name arm: Kernel#send, not a class's own
-	retryDepth     int         // f.closures where retryFlag was set: a block's retry can't reach it
-	hasNamedRet    bool
-	branchLenient  bool                // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
-	retTok         string              // a gem method whose block returns: the per-call token its rbReturn panics carry (decision 247)
-	rescues        int                 // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
-	yielderFed     *[]Type             // what a probed Enumerator.new block feeds its yielder (inferYielder)
-	paramWiden     map[string]Type     // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
-	anyOrigin      map[localKey]string // RUGAROO_UNTYPED_WHY: where an untyped local's value came from (untypedWhy)
-	blockWhy       string              // RUGAROO_UNTYPED_WHY: the root of the call whose block params are being bound (blockParam)
-	breakCatch     *breakCatch         // the statement call whose closure block `break`s out of it (decision 241)
-	inMarker       bool                // markerCall's own Boolean arm: past its check (decision 241)
-	scopeRoot      parser.Node         // the method or program body genBody is generating: where an appended local's proof looks (decision 382)
-	appendProofs   map[localKey]string // appendWhy's answers for scopeRoot
-	ivarBufs       map[string]bool     // initialize's setbyte'd ivars, whose buffers hoistLocals declares (decision 395)
+	iterValue        *tail                         // the value tail the next genIterLoop gives its loop frame, for `break v` (decision 410)
+	iterBroke        *brokeTarget                  // the label the next genIterLoop's valueless break jumps to (decision 417)
+	iterBreakValue   bool                          // the next genIterCall is a gem's iterator in value position whose block breaks (decision 417)
+	splittingForward bool                          // splitBlockForward's with-a-block side: the plain union loop (decision 418)
+	storageWrite     bool                          // discovery: the ivar write generating stores a value read out of a container (decision 392)
+	destructuring    bool                          // discovery: a multiple assignment's targets take fields of a container (decision 392)
+	aliasSrc         map[localKey]*parser.CallNode // a gem local holding an Array slot's String, which its bang edits write back (decision 331)
+	noStrIndexSet    bool                          // generating an untyped local's `[]=` as other receivers take it (genStringBang's fallback)
+	noFuse           *parser.CallNode              // the `h[k] = (h[k] || d) op v` whose miss arm is generating unfused (genFusedIndexAssign)
+	superTarget      *Method                       // a gem super call's target while its arguments generate: they type none of its parameters
+	nilRecv          Type                          // the receiver of the call whose arguments genArgs is about to generate (decision 393)
+	nilArg           nilCall                       // the call whose argument is being coerced: a nil one raises MRI's error for it (decision 393)
+	probeDepth       int                           // inside probe: output is discarded
+	unionArm         int                           // inside a union argument's arm: a call it cannot make raises there, not dynamic (unionArgCall)
+	erbDepth         int                           // inside a spliced template, where a bare name may be the caller's local
+	curBlock         parser.Node                   // the block of the call overload is resolving
+	lambdaClosure    int                           // f.closures inside the innermost lambda body, whose `return` is its own
+	inDynContainer   bool                          // dynContainerCall is generating its default arm: the plain dispatcher
+	retHint          Type                          // the expected type of retHintNode's result, for type params its arguments leave open
+	retHintNode      parser.Node
+	c                *Compiler
+	f                *File
+	owner            *Class
+	m                *Method
+	implicitCall     bool     // calling method_missing/respond_to_missing? on the program's behalf
+	plainCalls       bool     // a struct's Dyn wrapper body: calls stay `self.M()`, the form dynShareable and freeCall read
+	staticDef        *Method  // an UnboundMethod's dyn: this definition is called by its free func, not dispatched to an override (decision 141)
+	lex              []*Class // lexical scope for constant lookup
+	selfType         Type
+	selfCode         string
+	selfClassObj     bool // self is exactly a class constant (a class body)
+	missingCalls     int  // receiverless calls compiled to self's method_missing, so far: a DSL block that needs them is rebound (blockArg)
+	ret              Type
+	iterator         bool
+	lastMatch        string // the Go variable of the frame's last match, when the body reads $~ or $1..$9 (decision 171)
+	inMatchSet       bool   // generating genMatchSet's own match call
+	blockSig         *BlockSig
+	buf              *strings.Builder
+	indent           int
+	tmp              int
+	pass             int  // 0 = ivar discovery, 1 = local analysis, 2 = emit
+	bodyUnit         bool // a class body's grouped statements: its constant assignments are statements (decision 170)
+	discover         bool
+	nilGuarded       map[parser.Node]bool // calls on a T? local that raise NoMethodError on nil: the local survives them non-nil (decision 357)
+	nestedDone       map[parser.Node]bool // discovery: compound statements whose branch bodies discoverNested already dry-ran
+	promoted         map[string]bool      // --int-overflow=promote: locals typed Bignum from their first write (decision 372)
+	nilElemLocals    map[string]bool      // a gem method's locals that store nil into an element (`segment[i] = nil`, decision 411)
+	dropFailing      bool                 // a recursive method's first inference pass: a statement that fails drops out of the return join (decision 355)
+	locals           map[localKey]*localInfo
+	refined          map[localKey]Type // `x = []`/`{}` typed by what is put in it (analyze)
+	openArgs         map[int]localKey  // an open literal passed as a memo (`each_with_object({})`): its offset -> the block param it binds (decision 344)
+	convs            map[int]bool      // pass 1's rbAs/OptOf conversion sites, by offset
+	retTypes         *[]Type           // `return` values, while inferring the method's return type
+	unset            map[localKey]bool // locals read where they may be unassigned (maybeUnset)
+	scope            *scope
+	block            string
+	rbScope          string    // the block path where the current Ruby scope (method or block) starts
+	rbFrames         []rbFrame // the Ruby blocks enclosing the current position, outermost first
+	blockCtr         int
+	loops            []*loopFrame
+	switches         int  // nesting depth of emitted Go switch statements
+	patQuiet         bool // matching a pattern: its dynamic calls are the match itself, so they do not warn (decision 143)
+	labels           int  // not rewound by probe, so labels stay unique
+	closures         int  // nesting depth of Go closures (non-iterator blocks)
+	storing          int  // generating what a gem stores (an element added, an ivar assigned): only its conversions veto an ivar's typing (decision 307)
+	nextTail         tail // the innermost closure's result, for `next`
+	begins           int  // nesting depth of rescue wrappers
+	retVar           string
+	wrap             *wrapFrame  // the innermost begin wrapper
+	retryFlag        string      // set by `retry` in the rescue clauses being generated
+	declBin          bool        // declareAssign's value is a binary String: declareLocal leaves the local's bin state to it
+	binNext          bool        // the next closure is a `@binary block` method's: its String params are binary (decision 352)
+	binParams        bool        // binding that closure's params
+	viewSplat        bool        // binding a windowSafe block's params: destructuring copies out of the window (decision 386)
+	zipVal           bool        // the iterator loop is zip's [E, U?] with U = Integer/Float: pairs open to rbOpt (decision 396)
+	bodyStmts        parser.Node // the statements of the method or block body being generated (noteBinStmt)
+	noOwnSend        bool        // generating ownSendOrName's by-name arm: Kernel#send, not a class's own
+	retryDepth       int         // f.closures where retryFlag was set: a block's retry can't reach it
+	hasNamedRet      bool
+	branchLenient    bool                // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)
+	retTok           string              // a gem method whose block returns: the per-call token its rbReturn panics carry (decision 247)
+	rescues          int                 // nesting depth of rescue clause bodies, where `raise` sets the new exception's cause (r_)
+	yielderFed       *[]Type             // what a probed Enumerator.new block feeds its yielder (inferYielder)
+	paramWiden       map[string]Type     // a gem method's params reassigned what their type does not hold: their widened type (decision 241)
+	anyOrigin        map[localKey]string // RUGAROO_UNTYPED_WHY: where an untyped local's value came from (untypedWhy)
+	blockWhy         string              // RUGAROO_UNTYPED_WHY: the root of the call whose block params are being bound (blockParam)
+	breakCatch       *breakCatch         // the statement call whose closure block `break`s out of it (decision 241)
+	inMarker         bool                // markerCall's own Boolean arm: past its check (decision 241)
+	scopeRoot        parser.Node         // the method or program body genBody is generating: where an appended local's proof looks (decision 382)
+	appendProofs     map[localKey]string // appendWhy's answers for scopeRoot
+	ivarBufs         map[string]bool     // initialize's setbyte'd ivars, whose buffers hoistLocals declares (decision 395)
 }
 
 // genEnd is `END { }`: Kernel#at_exit with that block, registered the

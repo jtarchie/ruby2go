@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -242,8 +243,59 @@ func (f *fctx) genDynMethod(n parser.Node, recv expr, name string, public bool) 
 	r := f.methodRecv(recv)
 	dyn := fmt.Sprintf("func(o_ any, args ...any) any { return rbDyn%s(%s, o_, args...) }", goMethodName(name), how)
 	t := TClass{C: f.c.classes["Method"], Args: []Type{TAny{}}}
+	if fn := f.c.noteAliasKey(name); fn != "" { // `p.method(:succ) == p.method(:next)` on an untyped p (prime's alias, decision 418)
+		code := fmt.Sprintf("func(r_ any) *Method[any] { return &Method[any]{dyn: %s, recv: r_, info: &rbMethodInfo{name: %q, key: %s(r_)}} }(%s)", dyn, name, fn, f.coerce(n, r, TAny{}))
+		return expr{code: code, typ: t}
+	}
 	code := fmt.Sprintf("&Method[any]{dyn: %s, recv: %s, info: &rbMethodInfo{name: %q, key: %q}}", dyn, f.coerce(n, r, TAny{}), name, "?#"+name)
 	return expr{code: code, typ: t}
+}
+
+// aliasKeyClasses are the struct classes where name shares its def with another name (`alias next succ`): there a
+// dynamic method(:name)'s key is the def's, as methodInfo's is, so the aliases compare equal.
+func (c *Compiler) aliasKeyClasses(name string) []*Class {
+	var out []*Class
+	for _, cls := range c.classList {
+		if !cls.isStruct() || cls.IsModule || cls.metaOf != nil || len(cls.TypeParams) > 0 {
+			continue
+		}
+		e := cls.lookup(name)
+		if e == nil || e.M.Node == nil || e.M.File == nil || e.M.File.isPrelude() || e.M.Kind != kindDef {
+			continue
+		}
+		for _, o := range cls.methodSet() {
+			if o.M != e.M && o.M.Node == e.M.Node {
+				out = append(out, cls)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// noteAliasKey names rbMethodKey_X for name, or "" when no class aliases it.
+func (c *Compiler) noteAliasKey(name string) string {
+	if len(c.aliasKeyClasses(name)) == 0 {
+		return ""
+	}
+	if c.aliasKeys == nil {
+		c.aliasKeys = map[string]bool{}
+	}
+	c.aliasKeys[name] = true
+	return "rbMethodKey_" + goMethodName(name)
+}
+
+// emitAliasKeys emits each noted rbMethodKey_X: a type switch over aliasKeyClasses, "?#name" for any other receiver.
+func (c *Compiler) emitAliasKeys() {
+	for _, name := range slices.Sorted(maps.Keys(c.aliasKeys)) {
+		c.w("func rbMethodKey_%s(o any) string {\n\tswitch o.(type) {\n", goMethodName(name))
+		for _, cls := range c.aliasKeyClasses(name) {
+			m := cls.lookup(name).M
+			owner := m.Owner.RubyName
+			c.w("\tcase *%s:\n\t\treturn %q\n", cls.Name, owner+"#@"+m.File.Name+":"+strconv.Itoa(m.Node.Location.StartOffset))
+		}
+		c.w("\tdefault: // gocritic rejects the one-case switch pruning can leave\n\t}\n\treturn %q\n}\n\n", "?#"+name)
+	}
 }
 
 // genUnboundMethod is Klass.instance_method(:name): UnboundMethod[^(Klass, ...) -> R], a closure taking the receiver first.
