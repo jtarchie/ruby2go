@@ -152,6 +152,10 @@ class Integer < Object
     return result
   }
 
+  # MRI's Numeric#+@: the number itself (matrix's `+a`)
+  #: () -> Integer
+  def +@ = self
+
   #: () -> Integer
   def -@ = %x{
     if rbIntWrap {

@@ -319,7 +319,11 @@ func (c *Compiler) plainSelfType(owner *Class) string {
 func (c *Compiler) typeParamDecl(m *Method) string {
 	var tps []string
 	if m.Owner.GoType == "" && !c.plainSelf(m) {
-		tps = append(tps, "Self "+c.constraint(m.Owner))
+		cons := c.constraint(m.Owner)
+		if selfInContainer(m) { // `return Scalar.new(other), self` (matrix's coerce): Tuple2's elements are comparable (decision 412)
+			cons = "interface{ " + cons + "; comparable }"
+		}
+		tps = append(tps, "Self "+cons)
 	}
 	rest := make([]string, 0, len(m.Owner.TypeParams)+len(m.TypeParams))
 	rest = append(rest, m.Owner.TypeParams...)
@@ -465,4 +469,32 @@ func (c *Compiler) leafOptType(t TOpt) string {
 	}
 	c.leafBoxes[s] = true
 	return s
+}
+
+// selfInContainer reports m's signature putting Self inside a generic type (a tuple, an Array), whose type arguments
+// Go requires comparable: a bare interface-constrained type parameter is not.
+func selfInContainer(m *Method) bool {
+	var in func(t Type, nested bool) bool
+	in = func(t Type, nested bool) bool {
+		switch t := t.(type) {
+		case TVar:
+			return nested && t.Name == "Self"
+		case TOpt:
+			return in(t.Elem, nested)
+		case TTuple:
+			return slices.ContainsFunc(t.Elems, func(e Type) bool { return in(e, true) })
+		case TClass:
+			return slices.ContainsFunc(t.Args, func(e Type) bool { return in(e, true) })
+		case TFunc:
+			return slices.ContainsFunc(t.Params, func(e Type) bool { return in(e, nested) }) || in(t.Ret, nested)
+		case TUnion:
+			return slices.ContainsFunc(t.Members, func(e Type) bool { return in(e, nested) })
+		case TAny, TNil, TVoid: // no type variables inside
+		}
+		return false
+	}
+	if in(m.Ret, false) || slices.ContainsFunc(m.Params, func(p Param) bool { return in(p.Type, false) }) {
+		return true
+	}
+	return m.Block != nil && (in(m.Block.Ret, false) || slices.ContainsFunc(m.Block.Params, func(t Type) bool { return in(t, false) }))
 }

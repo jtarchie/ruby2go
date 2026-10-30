@@ -262,6 +262,10 @@ func (f *fctx) genUnionOr(n *parser.OrNode, l expr, u TUnion) expr {
 
 // genRight: the left of `l && r` / `l || r` always ran first, so a local it nil-guarded a call on is not nil here (decision 357).
 func (f *fctx) genRight(left, right parser.Node, expected Type) expr {
+	// a branch, as an if's is: `rows = check_range(i) or row = check_int(i)` (matrix's []=) declares row in it, so a
+	// later read hoists row to the method, where Ruby has it (decision 412)
+	saved := f.enterBlock()
+	defer f.leaveBlock(saved)
 	ns := f.callNarrowing(left)
 	if len(ns) == 0 {
 		return f.genExpr(right, expected)

@@ -73,6 +73,10 @@ class Float < Object
   #: (Float) -> Float
   def **(other) = %x{ Float(rbFloatPow(float64(self), float64(other))) }
 
+  # MRI's Numeric#+@: the number itself (matrix's `+a`)
+  #: () -> Float
+  def +@ = self
+
   #: () -> Float
   def -@ = %x{ -self }
 

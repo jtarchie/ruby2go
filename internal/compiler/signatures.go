@@ -527,6 +527,11 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	if m.Name == "initialize" && m.Node != nil && !superPassesLocals(m.Node.Body) {
 		return false // `def initialize(executor) = super(Event.new(executor))`: same shape, other meaning (decision 286)
 	}
+	if e.M.Block != nil && m.Node != nil && !e.M.Block.Rest {
+		if n, ok := yieldArity(m.Node.Body); ok && n != len(e.M.Block.Params) {
+			return false // Matrix#each_with_index yields e, row, col over Enumerable's (E, Integer): its own block (decision 412)
+		}
+	}
 	m.inherited = e.M
 	m.TypeParams = e.M.TypeParams
 	for _, p := range e.M.Params {
@@ -548,6 +553,34 @@ func (c *Compiler) inheritSignature(m *Method) bool {
 	m.Iterator = e.M.Iterator && (m.Kind != kindDef || !containsRescueClause(m.Node.Body))
 	c.bindParamNames(m)
 	return true
+}
+
+// yieldArity is how many values every yield in body passes (not counting a nested def's), false when there is none,
+// they disagree, or one splats.
+func yieldArity(body parser.Node) (int, bool) {
+	n, found, ok := 0, false, true
+	walkNode(body, func(x parser.Node) (bool, bool) {
+		switch y := x.(type) {
+		case *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
+			return false, false
+		case *parser.YieldNode:
+			k := 0
+			if y.Arguments != nil {
+				for _, a := range y.Arguments.Arguments {
+					if isSplat(a) {
+						ok = false
+					}
+				}
+				k = len(y.Arguments.Arguments)
+			}
+			if found && k != n {
+				ok = false
+			}
+			n, found = k, true
+		}
+		return false, true
+	})
+	return n, found && ok
 }
 
 // ignoresOwnBlock: a gem override whose body never yields, asks block_given?, names its block, or reaches a super that
@@ -623,7 +656,10 @@ func (c *Compiler) overridesIterator(m *Method) bool {
 		return false
 	}
 	e := c.inheritedSig(m)
-	return e != nil && e.M.Block != nil && (e.M.Iterator || c.overridesIterator(e.M))
+	if e == nil || e.M.Block == nil || len(e.M.Block.Params) != len(m.Block.Params) { // another block shape is another method, not the iterator's slot (decision 412)
+		return false
+	}
+	return e.M.Iterator || c.overridesIterator(e.M)
 }
 
 // forwardParent is inheritedSig for a method that may be a top-level def.

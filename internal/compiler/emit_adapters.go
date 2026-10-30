@@ -402,7 +402,9 @@ func seqDropped(m *Method) int {
 			break
 		}
 		if _, isNil := p.Default.(*parser.NilNode); !isNil && !m.calleeDefaults {
-			break
+			if _, ok := goLiteralDefault(p.Default); !ok { // `each(which = :all)` (matrix's): a literal is passed as written
+				break
+			}
 		}
 		k++
 	}
@@ -419,6 +421,11 @@ func (c *Compiler) seqArgs(m *Method) string {
 			as[i] = "nil"
 			if t := c.goType(p.Type); m.calleeDefaults {
 				as[i] = "rbZero[" + t + "]()" // the callee runs the default: rbArgc says it was not passed
+			} else if lit, ok := goLiteralDefault(p.Default); ok {
+				as[i] = lit
+				if strings.HasPrefix(t, "*") {
+					as[i] = "Ref(" + lit + ")" // `which = :all` typed Symbol?
+				}
 			} else if strings.HasPrefix(t, "rbOpt[") {
 				as[i] = t + "{}"
 			}
@@ -776,4 +783,22 @@ func (c *Compiler) dynAdapterBody(cls *Class, e entry, s slot) string {
 		f.emit("return %s", f.coerce(nil, expr{code: call, typ: TAny{}}, ret))
 	}
 	return f.buf.String()
+}
+
+// goLiteralDefault is a parameter default an adapter can pass as Go: a Symbol, Integer, String or boolean literal (matrix's
+// `each(which = :all)`, decision 412); nil defaults pass nil, as before.
+func goLiteralDefault(n parser.Node) (string, bool) {
+	switch d := n.(type) {
+	case *parser.SymbolNode:
+		return "Symbol(" + strconv.Quote(d.Unescaped.Value) + ")", true
+	case *parser.IntegerNode:
+		return "Integer(" + strconv.FormatInt(d.Value, 10) + ")", true
+	case *parser.StringNode:
+		return "String(" + strconv.Quote(d.Unescaped.Value) + ")", true
+	case *parser.TrueNode:
+		return "Boolean(true)", true
+	case *parser.FalseNode:
+		return "Boolean(false)", true
+	}
+	return "", false
 }

@@ -881,3 +881,83 @@ module EnumeratorTests
     end
   end
 end
+
+# Matrix-shaped classes (decision 412): an Enumerable override whose block takes another arity keeps its own block,
+# `each(which = :all)` answers Enumerable's each(), `or` right operands hoist their locals, Self in a tuple, Numeric#+@.
+module EnumeratorTests
+  module Pairing
+    def pair_with(n) = [self, n]
+  end
+
+  class Grid
+    include Enumerable #[Integer]
+    include Pairing
+
+    #: (Array[Array[Integer]]) -> void
+    def initialize(rows)
+      @rows = rows
+    end
+
+    #: (?Symbol) { (Integer) -> void } -> self
+    def each(which = :all)
+      @rows.each_with_index do |row, i|
+        row.each_with_index { |e, j| yield e if which == :all || (which == :diagonal && i == j) }
+      end
+      self
+    end
+
+    #: () { (Integer, Integer, Integer) -> void } -> void
+    def each_with_index
+      @rows.each_with_index do |row, i|
+        row.each_with_index { |e, j| yield e, i, j }
+      end
+    end
+
+    #: (Integer) -> Array[Integer]?
+    def row_at(i) = @rows[i]
+
+    #: (Integer) -> String
+    def pick(i)
+      rows = row_at(i) or found = "none"
+      rows ? rows.sum.to_s : found.to_s
+    end
+  end
+
+  class GridTest < Minitest::Test
+    def test_each_default_and_enumerable
+      g = Grid.new([[1, 2], [3, 4]])
+      assert_equal([1, 2, 3, 4], g.to_a)
+      assert_equal(10, g.sum)
+      out = [] #: Array[Integer]
+      g.each(:diagonal) { |e| out << e }
+      assert_equal([1, 4], out)
+    end
+
+    def test_three_value_block
+      out = [] #: Array[String]
+      Grid.new([[5, 6], [7, 8]]).each_with_index { |e, i, j| out << "#{e}@#{i},#{j}" }
+      assert_equal(["5@0,0", "6@0,1", "7@1,0", "8@1,1"], out)
+    end
+
+    def test_or_assignment_hoists
+      g = Grid.new([[1, 2]])
+      assert_equal("3", g.pick(0))
+      assert_equal("none", g.pick(5))
+    end
+
+    def test_self_in_tuple
+      g = Grid.new([[1]])
+      pr = g.pair_with(2)
+      assert(pr[0].equal?(g))
+      assert_equal(2, pr[1])
+    end
+
+    def test_unary_plus
+      assert_equal(3, +3)
+      x = -2.5
+      assert_in_delta(-2.5, +x)
+      assert_equal(Rational(1, 2), +Rational(1, 2))
+      assert_equal(Complex(1, 2), +Complex(1, 2))
+    end
+  end
+end

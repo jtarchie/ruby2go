@@ -74,6 +74,10 @@ class Rational < Object
     return out
   }
 
+  # MRI's Numeric#+@: the number itself (matrix's `+a`)
+  #: () -> Rational
+  def +@ = self
+
   #: () -> Rational
   def -@ = %x{
     out := &Rational{}

@@ -56,6 +56,10 @@ class Complex < Object
     return rbComplexPolar(Float(rbFloatPow(r, float64(x))), Float(theta*float64(x)))
   }
 
+  # MRI's Numeric#+@: the number itself (matrix's `+a`)
+  #: () -> Complex
+  def +@ = self
+
   #: () -> Complex
   def -@ = %x{ return &Complex{rbNumNeg(self.re), rbNumNeg(self.im)} }
 
