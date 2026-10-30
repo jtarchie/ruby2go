@@ -39,7 +39,8 @@ func gemCmd(t *testing.T, exe string, args ...string) *exec.Cmd {
 	return exec.CommandContext(t.Context(), "bundle", append([]string{"exec", exe}, args...)...) //nolint:gosec // test helper; args are ours
 }
 
-// toolchainErr checks the whole toolchain once per process (it spawns ruby and two bundle execs): ruby >= 4.0, rbs-inline, rbs and golangci-lint.
+// toolchainErr checks the whole toolchain once per process (it spawns ruby and two bundle execs): the ruby .mri-version names, rbs-inline,
+// rbs and golangci-lint.
 // Every caller fails with the one error, so the fail-fast stays; it runs on a background context since the first test to ask may end before the others.
 var toolchainErr = sync.OnceValue(func() error {
 	ctx := context.Background()
@@ -47,9 +48,14 @@ var toolchainErr = sync.OnceValue(func() error {
 	if err != nil {
 		return fmt.Errorf("ruby is required: %w", err)
 	}
-	major, _ := strconv.Atoi(strings.SplitN(string(out), ".", 2)[0])
-	if major < 4 {
-		return fmt.Errorf("ruby >= 4.0 is required, found %s", out)
+	// MRI is the oracle and its bundled gems are the Gemfile's pins, so a patch release moves expectations (decision 413);
+	// not .ruby-version, which version managers (mise) would act on
+	want, err := os.ReadFile(".mri-version")
+	if err != nil {
+		return fmt.Errorf("reading .mri-version: %w", err)
+	}
+	if v := strings.TrimSpace(string(want)); string(out) != v {
+		return fmt.Errorf("ruby %s is required (.mri-version), found %s; to move to %s, see docs/decisions/413.md", v, out, out)
 	}
 	for _, c := range [][]string{{"rbs-inline", "--help"}, {"rbs", "--version"}} {
 		out, err = exec.CommandContext(ctx, "bundle", append([]string{"exec"}, c...)...).CombinedOutput() //nolint:gosec // fixed args
@@ -64,7 +70,7 @@ var toolchainErr = sync.OnceValue(func() error {
 	return nil
 })
 
-// requireToolchain fails the test unless ruby >= 4.0, the Gemfile's rbs tools and golangci-lint are present.
+// requireToolchain fails the test unless ruby is .mri-version's, the Gemfile's rbs tools and golangci-lint are present.
 func requireToolchain(t *testing.T) {
 	t.Helper()
 	err := toolchainErr()

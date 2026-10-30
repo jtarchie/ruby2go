@@ -40,7 +40,7 @@ gem "sqlite3", "~> 2.10"
 # C calls under MRI for example 127; rugaroo maps `require "ffi"` onto its own port over Fiddle (decision 375).
 gem "ffi", "~> 1.17"
 
-# Bundled gems ruby/spec's library/ directories exercise (decision 409): pinned to what Ruby 4.0.9 bundles, so the spec
+# Bundled gems ruby/spec's library/ directories exercise (decision 409): pinned to what Ruby 4.0.9 (.mri-version, decision 413) bundles, so the spec
 # numbers in docs/support.md name one version. rugaroo compiles them unmodified, as installed gems.
 gem "drb", "~> 2.2.3"
 gem "getoptlong", "~> 0.2.1"
