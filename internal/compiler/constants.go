@@ -431,7 +431,8 @@ func liftEach(nodes []parser.Node, out *[]*parser.ConstantWriteNode) ([]parser.N
 
 // builtinGlobals are the globals genGlobalRead answers itself (decision 61); any other $name is the program's own.
 var builtinGlobals = map[string]bool{"$!": true, "$0": true, "$PROGRAM_NAME": true, "$stdin": true, "$stdout": true, "$stderr": true,
-	"$?": true, "$$": true, "$~": true, "$LOAD_PATH": true, "$:": true, "$-I": true, "$VERBOSE": true, "$/": true}
+	"$?": true, "$$": true, "$~": true, "$LOAD_PATH": true, "$:": true, "$-I": true, "$VERBOSE": true, "$/": true,
+	"$@": true, "$>": true, "$<": true, "$*": true, "$;": true, "$,": true, "$\\": true}
 
 // userGlobals declares the program's own globals (decision 361): every $name a non-prelude file writes, a package
 // variable typed by its first write, as a class variable first assigned in a method is: its `#: T`, else a literal.
@@ -451,7 +452,7 @@ func (c *Compiler) userGlobals() {
 			default:
 				return false
 			}
-			if builtinGlobals[name] || englishGlobals[name] != "" || c.globals[name] != nil {
+			if builtinGlobals[name] || englishGlobals[name] != "" || englishMatchRefs[name] != "" || c.globals[name] != nil {
 				return false
 			}
 			k := &Const{RubyName: name, GoName: "rbGv_" + globalGoName(name), Value: value, srcPos: srcPos{f, f.line(n.GetLocation().StartOffset)}, inMethod: true}

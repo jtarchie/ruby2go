@@ -508,8 +508,15 @@ class Integer < Object
   #: () -> bool
   def real? = true
 
+  # MRI's Numeric#real and the long names of imag/conj/rect (matrix's `e.real`)
+  #: () -> Integer
+  def real = self
+
   #: () -> [Integer, Integer]
   def rect = [self, 0]
+  alias imaginary imag
+  alias conjugate conj
+  alias rectangular rect
 
   # [abs, arg]: the angle is Integer 0 for a non-negative number and π for a negative one, as MRI's.
   #: () -> [Integer, untyped]

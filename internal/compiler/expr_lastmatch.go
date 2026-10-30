@@ -121,7 +121,7 @@ func readsLastMatch(body parser.Node) bool {
 		case *parser.NumberedReferenceReadNode, *parser.BackReferenceReadNode:
 			return true
 		case *parser.GlobalVariableReadNode:
-			return n.Name == "$~" || n.Name == "$LAST_MATCH_INFO"
+			return n.Name == "$~" || n.Name == "$LAST_MATCH_INFO" || englishMatchRefs[n.Name] != ""
 		case *parser.CallNode: // Regexp.last_match reads the frame's $~ too
 			return isRegexpConst(n.Receiver) && n.Name == "last_match"
 		}
@@ -136,8 +136,8 @@ func (f *fctx) genMatchRef(n parser.Node) expr {
 	case *parser.NumberedReferenceReadNode:
 		group = int(n.Number)
 	case *parser.BackReferenceReadNode:
-		if n.Name != "$&" {
-			f.errorf(n, "%s is unsupported; $~, $& and $1..$9 are (decision 171)", n.Name)
+		if fn := map[string]string{"$`": "rbLMPre", "$'": "rbLMPost", "$+": "rbLMLast"}[n.Name]; fn != "" { // decision 414
+			return expr{code: fn + "(" + f.lastMatchVar(n) + ")", typ: TOpt{Elem: f.cls("String")}}
 		}
 	}
 	return expr{code: fmt.Sprintf("rbLMGroup(%s, %d)", f.lastMatchVar(n), group), typ: TOpt{Elem: f.cls("String")}}

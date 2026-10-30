@@ -155,6 +155,78 @@ func (f *fctx) callEntryAny(n parser.Node, e *entry, recv expr, args []parser.No
 	return f.callEntry0(n, e, recv, args, block)
 }
 
+// elemWriters are the Array methods that store their last argument as an element.
+var elemWriters = map[string]bool{"[]=": true, "<<": true, "push": true, "unshift": true}
+
+// widenIvarElem: discovery seeing a gem store a value its ivar's element type does not hold (eigenvalue_decomposition's
+// `@d = Array.new(n, 0)`, then `@d[i] = Math.sqrt(x)`) makes that element untyped, at the depth the `[]` reads reach
+// (`@v[i][j] = 0.5`), as MRI's Array holds anything (decision 414). Discovery accepts a Float where an Integer is
+// expected (pass 2 rejects it), so the value is checked here, not by the call failing.
+func (f *fctx) widenIvarElem(n *parser.CallNode) {
+	args := callArgs(n)
+	if !f.discover || !f.lenient() || f.owner == nil || !elemWriters[n.Name] || len(args) == 0 || n.Block != nil {
+		return
+	}
+	depth, r := 0, n.Receiver
+	for {
+		c, ok := r.(*parser.CallNode)
+		if !ok || c.Name != "[]" || c.Receiver == nil {
+			break
+		}
+		depth, r = depth+1, c.Receiver
+	}
+	rd, ok := r.(*parser.InstanceVariableReadNode)
+	if !ok {
+		return
+	}
+	iv := f.c.findIvar(f.owner, rd.Name)
+	if iv == nil || iv.open {
+		return
+	}
+	elem, ok := elemAt(iv.Type, depth)
+	if !ok {
+		return
+	}
+	v := f.probeType(args[len(args)-1], nil) // an untyped value may be any class, as eigenvalue_decomposition's Floats from @v are
+	if v == nil || !isAny(v) && fitsValue(expr{typ: v}, elem) && (!isClass(v, "Float") || !isClass(elem, "Integer")) {
+		return
+	}
+	if t, ok := untypedElemAt(iv.Type, depth); ok {
+		iv.Type = t
+	}
+}
+
+// elemAt is the Array element type depth `[]` reads into t reach, through T? wrappers.
+func elemAt(t Type, depth int) (Type, bool) {
+	tc, ok := stripOpt(t).(TClass)
+	if !ok || tc.C.RubyName != "Array" || len(tc.Args) != 1 || isAny(tc.Args[0]) {
+		return nil, false
+	}
+	if depth == 0 {
+		return tc.Args[0], true
+	}
+	return elemAt(tc.Args[0], depth-1)
+}
+
+// untypedElemAt is t with its Array element at depth (through T? wrappers) untyped; false when t has no Array there.
+func untypedElemAt(t Type, depth int) (Type, bool) {
+	if o, ok := t.(TOpt); ok {
+		e, ok := untypedElemAt(o.Elem, depth)
+		return TOpt{Elem: e}, ok
+	}
+	tc, ok := t.(TClass)
+	if !ok || tc.C.RubyName != "Array" || len(tc.Args) != 1 || isAny(tc.Args[0]) {
+		return t, false
+	}
+	elem := Type(TAny{})
+	if depth > 0 {
+		if elem, ok = untypedElemAt(tc.Args[0], depth-1); !ok {
+			return t, false
+		}
+	}
+	return TClass{C: tc.C, Args: []Type{elem}}, true
+}
+
 func isSplat(a parser.Node) bool {
 	_, ok := a.(*parser.SplatNode)
 	return ok

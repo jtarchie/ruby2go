@@ -231,9 +231,9 @@ func (c *Compiler) loadAutoload(ctx context.Context, f *File, n *parser.CallNode
 		}
 		return
 	}
-	if c.gemFile(f) && !c.autoloaded[c.real(target)] {
+	if c.gemFile(f) && c.booted && !c.autoloaded[c.real(target)] {
 		return // a gem autoload boot never loaded: nothing the program runs reaches it (decision 175)
-	}
+	} // without a boot (cmd/rubyspec's in-memory suites) it loads where it registers, as a require (matrix's LUPDecomposition, decision 414)
 	src, err := os.ReadFile(target) //nolint:gosec // a gem file boot loaded
 	if err != nil {
 		c.errorf(f, n, "cannot load such file -- %s", strings.TrimSuffix(target, ".rb"))

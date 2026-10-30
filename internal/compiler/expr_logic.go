@@ -46,8 +46,9 @@ func (f *fctx) branchFit(types []Type, gen func(t tail), joinErr *compileError) 
 // lift turns a statement-shaped expression (if/case/begin) into a temp.
 func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	var types []Type
+	var lits []bool
 	once := f.probing() // output is discarded here, so one pass both types the branches and declares their locals (decision 240)
-	probe := tail{kind: tailAssign, target: "_", types: &types, hint: expected}
+	probe := tail{kind: tailAssign, target: "_", types: &types, lits: &lits, hint: expected}
 	if once {
 		gen(probe)
 	} else {
@@ -56,10 +57,18 @@ func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	if f.c.round && slices.ContainsFunc(types, func(t Type) bool { return !holdsAny(t) && !isVoid(t) }) {
 		// an inference round's untyped is not yet learned, as a use's is (joinUses): `@root = @root ? meld(@root, n) : n`
 		// is the typed branch's, so the next round sees what it holds (decision 307)
-		types = slices.DeleteFunc(types, holdsAny)
+		keep := types[:0]
+		keepLits := lits[:0]
+		for i, t := range types {
+			if !holdsAny(t) {
+				keep = append(keep, t)
+				keepLits = append(keepLits, i < len(lits) && lits[i])
+			}
+		}
+		types, lits = keep, keepLits
 	}
 	var typ Type
-	err := catchCompileError(func() { typ = f.joinAll(n, types) })
+	err := catchCompileError(func() { typ = f.joinAllFrom(n, types, lits) })
 	if err != nil {
 		typ = f.branchFit(types, gen, err) // `c ? [2, 5] : list`: the literal takes list's Array[Integer?]
 	}
@@ -87,22 +96,30 @@ func (f *fctx) lift(n parser.Node, expected Type, gen func(t tail)) expr {
 	return expr{code: tmp, typ: typ}
 }
 
-func (f *fctx) joinAll(n parser.Node, types []Type) Type {
+func (f *fctx) joinAll(n parser.Node, types []Type) Type { return f.joinAllFrom(n, types, nil) }
+
+// joinAllFrom is joinAll knowing which values were Array/Hash literals (lits, parallel to types; nil: unknown, each may be).
+func (f *fctx) joinAllFrom(n parser.Node, types []Type, lits []bool) Type {
 	var out Type
-	for _, t := range types {
+	outLit := true
+	for i, t := range types {
 		if isVoid(t) && !isNil(t) {
 			continue
 		}
+		lit := lits == nil || i < len(lits) && lits[i]
 		if out == nil {
-			out = t
+			out, outLit = t, lit
 			continue
 		}
 		j, ok := join(out, t)
-		if !ok && f.lenient() { // a gem's `dir.directory? ? dir.children : []`: the empty literal's untyped elements take the other's
-			if k, ok2 := untypedContainerJoin(out, t); ok2 {
+		if !ok && f.lenient() { // a gem's `dir.directory? ? dir.children : []`: the literal's untyped elements take the other's
+			if k, ok2 := untypedContainerJoin(out, t, outLit, lit); ok2 {
+				j, ok = k, true
+			} else if k, ok2 := untypedContainer(out, t); ok2 { // Array[Integer?] and Array[Complex]: Array[untyped], as MRI's holds both (decision 414)
 				j, ok = k, true
 			}
 		}
+		outLit = outLit && lit
 		if !ok {
 			f.errorf(n, "branches have incompatible types %s and %s", out, t)
 		}
@@ -112,8 +129,9 @@ func (f *fctx) joinAll(n parser.Node, types []Type) Type {
 }
 
 // untypedContainerJoin is a and b when they are the same container class and one's type arguments are all untyped:
-// the typed one.
-func untypedContainerJoin(a, b Type) (Type, bool) {
+// the typed one when the untyped one is a literal (aLit, bLit), which takes it; else the untyped one, whose elements may be
+// any class (eigenvalue_decomposition's `imag == 0 ? Array.new(n) { @v[j][i] } : Array.new(n) { Complex(...) }`, decision 414).
+func untypedContainerJoin(a, b Type, aLit, bLit bool) (Type, bool) {
 	ca, ok1 := a.(TClass)
 	cb, ok2 := b.(TClass)
 	if !ok1 || !ok2 || ca.C != cb.C || len(ca.Args) == 0 || len(ca.Args) != len(cb.Args) {
@@ -121,6 +139,10 @@ func untypedContainerJoin(a, b Type) (Type, bool) {
 	}
 	allAny := func(ts []Type) bool { return !slices.ContainsFunc(ts, func(t Type) bool { return !isAny(t) }) }
 	switch { // the typed one, unless it is no more typed (brew's `cond ? [x.soname, x.needed] : [nil, []]`, Array[Array?])
+	case allAny(cb.Args) && !bLit:
+		return b, true
+	case allAny(ca.Args) && !aLit:
+		return a, true
 	case allAny(cb.Args):
 		if slices.ContainsFunc(ca.Args, holdsAny) {
 			return b, true
@@ -133,6 +155,20 @@ func untypedContainerJoin(a, b Type) (Type, bool) {
 		return b, true
 	}
 	return nil, false
+}
+
+// untypedContainer is the Array or Hash of untyped that holds a's and b's elements, when both are one of those classes.
+func untypedContainer(a, b Type) (Type, bool) {
+	ca, ok1 := a.(TClass)
+	cb, ok2 := b.(TClass)
+	if !ok1 || !ok2 || ca.C != cb.C || ca.C.RubyName != "Array" && ca.C.RubyName != "Hash" || len(ca.Args) != len(cb.Args) {
+		return nil, false
+	}
+	args := make([]Type, len(ca.Args))
+	for i := range args {
+		args[i] = TAny{}
+	}
+	return TClass{C: ca.C, Args: args}, true
 }
 
 // ---- operators, and/or

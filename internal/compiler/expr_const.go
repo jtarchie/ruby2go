@@ -361,11 +361,21 @@ func (c *Compiler) constTypeOf(cls *Class, k *Const) Type {
 	return nil
 }
 
-// englishGlobals are English.rb's aliases of the globals genGlobalRead knows (Homebrew's `$CHILD_STATUS`).
+// englishGlobals are English.rb's aliases of the globals genGlobalRead knows (Homebrew's `$CHILD_STATUS`; library/English,
+// decision 414). $. and $_ ($NR, $LAST_READ_LINE) are not: rugaroo's gets keeps no last line.
 var englishGlobals = map[string]string{
 	"$CHILD_STATUS": "$?", "$PROCESS_ID": "$$", "$PID": "$$", "$LAST_MATCH_INFO": "$~",
-	"$INPUT_RECORD_SEPARATOR": "$/", "$RS": "$/",
+	"$INPUT_RECORD_SEPARATOR": "$/", "$RS": "$/", "$ERROR_INFO": "$!", "$ERROR_POSITION": "$@",
+	"$DEFAULT_OUTPUT": "$>", "$DEFAULT_INPUT": "$<", "$ARGV": "$*",
+	"$FS": "$;", "$FIELD_SEPARATOR": "$;", "$OFS": "$,", "$OUTPUT_FIELD_SEPARATOR": "$,",
+	"$ORS": "$\\", "$OUTPUT_RECORD_SEPARATOR": "$\\",
 }
+
+// separatorVars are the Go variables of $;, $, and $\\, which String#split, Array#join and Kernel#print default to.
+var separatorVars = map[string]string{"$;": "rbFS", "$,": "rbOFS", "$\\": "rbORS"}
+
+// englishMatchRefs are English.rb's names for the last match's back-references.
+var englishMatchRefs = map[string]string{"$MATCH": "$&", "$PREMATCH": "$`", "$POSTMATCH": "$'", "$LAST_PAREN_MATCH": "$+"}
 
 // genGlobalRead maps the read-only globals rugaroo knows (decision 61); $0 is the Ruby file as named at compile time, as `ruby main.rb` sets it.
 func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
@@ -373,6 +383,24 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		alias := *n
 		alias.Name = short
 		return f.genGlobalRead(&alias)
+	}
+	if ref := englishMatchRefs[n.Name]; ref != "" {
+		return f.genMatchRef(&parser.BackReferenceReadNode{Name: ref, Location: n.Location})
+	}
+	switch n.Name {
+	case "$@": // the handled exception's backtrace (decision 414), nil outside a rescue as $! is
+		if f.rescues > 0 {
+			return f.genExpr(&parser.CallNode{Receiver: &parser.GlobalVariableReadNode{Name: "$!", Location: n.Location}, Name: "backtrace", Location: n.Location}, nil)
+		}
+		return expr{code: "nil", typ: TOpt{Elem: TClass{C: f.c.classes["Array"], Args: []Type{f.cls("String")}}}}
+	case "$>":
+		return f.genGlobalRead(&parser.GlobalVariableReadNode{Name: "$stdout", Location: n.Location})
+	case "$<":
+		return f.genConstRead(&parser.ConstantReadNode{Name: "ARGF", Location: n.Location})
+	case "$*":
+		return f.genConstRead(&parser.ConstantReadNode{Name: "ARGV", Location: n.Location})
+	case "$;", "$,", "$\\": // the separators split, join and print default to (decision 414)
+		return expr{code: separatorVars[n.Name], typ: TOpt{Elem: f.cls("String")}}
 	}
 	switch n.Name {
 	case "$!": // the exception a rescue clause handles (decision 244); ponytail: elsewhere nil, where MRI's is the frame's last
@@ -419,7 +447,12 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 // object takes the stream's writes. Reading the global still answers the
 // IO constant (decision 61), so the assignment's value is what was given.
 func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
-	if v, t := map[string]string{"$VERBOSE": "rbVerbose", "$/": "rbRS"}[n.Name], map[string]string{"$VERBOSE": "Boolean", "$/": "String"}[n.Name]; v != "" {
+	if short, ok := englishGlobals[n.Name]; ok {
+		alias := *n
+		alias.Name = short
+		return f.genGlobalWrite(&alias)
+	}
+	if v, t := map[string]string{"$VERBOSE": "rbVerbose", "$/": "rbRS", "$;": "rbFS", "$,": "rbOFS", "$\\": "rbORS"}[n.Name], map[string]string{"$VERBOSE": "Boolean", "$/": "String", "$;": "String", "$,": "String", "$\\": "String"}[n.Name]; v != "" {
 		// a statement, then the global's value: the assignment may be a block's or method's value
 		want := TOpt{Elem: f.cls(t)}
 		e := f.genExpr(n.Value, want)

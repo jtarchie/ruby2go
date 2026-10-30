@@ -14,6 +14,9 @@ func (f *fctx) widenSeed(n *parser.LocalVariableWriteNode, ann Type, exp *Type) 
 	if hn, ok := n.Value.(*parser.HashNode); ok && (f.lenient() || f.localCalled(n.Name, "[]=", "store")) { // user code too: a Hash literal its later writes widen (decision 366)
 		return f.widenHashSeed(n, hn, ann, exp)
 	}
+	if fill, ok := f.filledArray(n.Value); ok && ann == nil && *exp == nil {
+		return f.widenFillSeed(n, fill, exp)
+	}
 	an, ok := n.Value.(*parser.ArrayNode)
 	if !ok || ann != nil || *exp != nil || len(an.Elements) == 0 || slices.ContainsFunc(an.Elements, func(e parser.Node) bool { _, s := e.(*parser.SplatNode); return s }) {
 		return nil
@@ -45,6 +48,37 @@ func (f *fctx) widenSeed(n *parser.LocalVariableWriteNode, ann Type, exp *Type) 
 	}
 	*exp = TClass{C: tc.C, Args: []Type{TAny{}}}
 	return tc.Args[0]
+}
+
+// filledArray is a gem's `Array.new(n, x)` with a non-nil x and no block, and x.
+func (f *fctx) filledArray(n parser.Node) (parser.Node, bool) {
+	c, ok := n.(*parser.CallNode)
+	if !ok || !f.lenient() || c.Name != "new" || c.Block != nil || emptyNewClass(&parser.CallNode{Receiver: c.Receiver, Name: "new"}) != "Array" {
+		return nil, false
+	}
+	args := callArgs(c)
+	if len(args) != 2 || isNilLit(args[1]) || isSplat(args[0]) || isSplat(args[1]) {
+		return nil, false
+	}
+	return args[1], true
+}
+
+// widenFillSeed opens `row = Array.new(size, 0)` (matrix's diagonal, then `row[j] = values[j]`) as a literal is
+// (decision 193): what is stored over the fill types it, so a Rational or untyped write is no conversion into Integer.
+func (f *fctx) widenFillSeed(n *parser.LocalVariableWriteNode, fill parser.Node, exp *Type) Type {
+	if r := f.refined[f.localKey(n.Name)]; r != nil {
+		*exp = r
+		return nil
+	}
+	if f.pass != 1 {
+		return nil
+	}
+	t := f.probeType(fill, nil)
+	if t == nil || holdsAny(t) || isVoid(t) {
+		return nil
+	}
+	*exp = TClass{C: f.c.classes["Array"], Args: []Type{TAny{}}}
+	return t
 }
 
 // joinAllUnion folds joinUnion over ts.
@@ -133,6 +167,15 @@ func (c *Compiler) openNewType(n parser.Node) Type {
 func isNilLit(n parser.Node) bool {
 	_, ok := n.(*parser.NilNode)
 	return ok
+}
+
+// isContainerLit reports an Array or Hash literal, whose elements a sibling branch's type can type.
+func isContainerLit(n parser.Node) bool {
+	switch n.(type) {
+	case *parser.ArrayNode, *parser.HashNode:
+		return true
+	}
+	return false
 }
 
 func isEmptyLit(n parser.Node) bool {

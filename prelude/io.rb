@@ -23,7 +23,15 @@ module IOWritable
 
   #: (*untyped) -> nil
   def print(*args)
-    args.each { |a| write(a) }
+    ofs = $, # joins the arguments, and $\ follows them, when the program set them (decision 414)
+    first = true
+    args.each do |a|
+      write(ofs) if ofs && !first
+      first = false
+      write(a)
+    end
+    ors = $\
+    write(ors) if ors
     nil
   end
 

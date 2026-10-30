@@ -214,7 +214,15 @@ module Kernel
 
   #: (*untyped) -> nil
   def print(*args)
-    args.each { |a| __write(a.to_s) }
+    ofs = $, # joins the arguments, and $\ follows them, when the program set them (decision 414)
+    first = true
+    args.each do |a|
+      __write(ofs) if ofs && !first
+      first = false
+      __write(a.to_s)
+    end
+    ors = $\
+    __write(ors) if ors
     nil
   end
 

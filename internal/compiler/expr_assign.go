@@ -424,13 +424,35 @@ func (f *fctx) optArrayOrEmpty(v expr) (expr, bool) {
 }
 
 // destructureOne is `a, b = x` of an object with no to_ary: x is the first target alone, as a one-element Array (decision 364).
+// One with to_ary splits what it answers (matrix's `v, d, v_inv = eigensystem`, decision 414).
 func (f *fctx) destructureOne(n parser.Node, v expr, t TClass, lefts []parser.Node, rest parser.Node, rights []parser.Node) {
 	if t.C.lookup("to_ary") != nil {
-		f.errorf(n, "cannot destructure %s", v.typ)
+		a := f.valueOf(f.genMethodCall(n, v, "to_ary", nil, nil))
+		if c, ok := stripOpt(a.typ).(TClass); ok && c.C.RubyName != "Array" || isVoid(a.typ) {
+			f.errorf(n, "cannot destructure %s: its to_ary answers %s", v.typ, a.typ)
+		}
+		tmp := f.newTmp()
+		f.emit("%s := %s", tmp, a.code)
+		if ac, ok := a.typ.(TClass); ok && f.lenient() && rest == nil && len(rights) == 0 && len(ac.Args) == 1 && isInterfaceObj(ac.Args[0]) {
+			// a gem's `v, d, v_inv = eigensystem` of Matrix values: each target its element, nil past the end, as a gem's T? is
+			// its T (decision 172); a *MatrixI would not be the receiver later calls take
+			for i, l := range lefts {
+				f.assignTarget(l, expr{code: fmt.Sprintf("rbArrAt[%s](%s, %d).v", f.c.goType(ac.Args[0]), tmp, i), typ: ac.Args[0]})
+			}
+			return
+		}
+		f.destructureInto(n, expr{code: tmp, typ: a.typ}, lefts, rest, rights)
+		return
 	}
 	gt := f.c.goType(t)
 	one := TClass{C: f.c.classes["Array"], Args: []Type{t}}
 	f.destructureInto(n, expr{code: "(&Array[" + gt + "]{s: []" + gt + "{" + v.code + "}})", typ: one}, lefts, rest, rights)
+}
+
+// isInterfaceObj is a class whose objects are a Go interface (nil holds nil): not a value class, leaf or module.
+func isInterfaceObj(t Type) bool {
+	c, ok := t.(TClass)
+	return ok && c.C.GoType == "" && !c.C.universal && !c.C.IsModule && strings.HasSuffix(c.C.objType(), "I")
 }
 
 // destructureUnion is `a, b = x` of a union (decision 241): a type switch gives each target what x's member gives it

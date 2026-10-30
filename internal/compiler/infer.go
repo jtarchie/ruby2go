@@ -213,9 +213,22 @@ func (c *Compiler) resolvePending(m *Method, prm *Param, pp pendingParam) {
 // value the method returns (`@lock.synchronize { yield }` last, decision 226).
 func yieldValueUsed(body parser.Node, tailUsed bool) bool {
 	used := false
+	valueBlocks := map[parser.Node]bool{} // blocks whose callee takes their value: `Array.new(n) { |i| yield i }` (matrix's build, decision 414)
+	anyNode(body, func(x parser.Node) bool {
+		if c, ok := x.(*parser.CallNode); ok && c.Block != nil && blockValueTaken[c.Name] {
+			valueBlocks[c.Block] = true
+		}
+		return false
+	})
 	var walk func(parser.Node, bool, bool)
 	walk = func(x parser.Node, stmt, tail bool) {
 		if x == nil || opensScope(x) {
+			return
+		}
+		if valueBlocks[x] {
+			for _, ch := range x.CompactChildNodes() {
+				walk(ch, true, true) // the body's last statement is the callee's value
+			}
 			return
 		}
 		switch x := x.(type) {
@@ -256,6 +269,15 @@ func yieldValueUsed(body parser.Node, tailUsed bool) bool {
 	walk(body, true, tailUsed)
 	return used
 }
+
+// blockValueTaken are the core methods that use their block's value (a constructor's `new` included: Array.new, Hash.new).
+var blockValueTaken = map[string]bool{"map": true, "collect": true, "flat_map": true, "collect_concat": true, "select": true,
+	"filter": true, "reject": true, "filter_map": true, "find": true, "detect": true, "find_index": true, "sort_by": true,
+	"min_by": true, "max_by": true, "group_by": true, "partition": true, "sum": true, "count": true, "any?": true, "all?": true,
+	"none?": true, "one?": true, "inject": true, "reduce": true, "to_h": true, "uniq": true, "take_while": true,
+	"drop_while": true, "new": true, "fetch": true, "map!": true, "collect!": true, "select!": true, "reject!": true,
+	"keep_if": true, "delete_if": true, "sort": true, "min": true, "max": true, "sum_by": true, "then": true, "yield_self": true,
+	"fill": true, "sub": true, "gsub": true}
 
 // callValueUsed reports a call named name (with a block, if withBlock) somewhere in the program's own files whose value is used
 // (not a statement of its own; a def's or block's last statement counts as used): only then is a def's tail yield or

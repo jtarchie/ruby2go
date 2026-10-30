@@ -79,6 +79,8 @@ func (c *Compiler) emitDynEach() {
 	c.w("\t\tcase arity == 1 && len(xs) == 2:\n\t\t\txs = []any{&Array[any]{s: xs}}\n\t\t}\n\t\tblk(xs...)\n\t}\n")
 	c.w("\tswitch r := recv.(type) {\n\tcase Array_Any:\n\t\tfor _, x := range r._ToAny().s {\n\t\t\tyield(x)\n\t\t}\n")
 	c.w("\tcase Hash_Any:\n\t\th := r._ToAny()\n\t\tfor k, v := range rbHashEachKV(h) {\n\t\t\tyield(k, v)\n\t\t}\n")
+	// an untyped Enumerator (matrix's `each(:strict_upper).all?`, decision 414); the pruner drops the case when nothing makes one
+	c.w("\tcase Enumerator_Any:\n\t\tfor x := range r._ToAny().seq {\n\t\t\tyield(x)\n\t\t}\n")
 
 	seen := map[string]bool{}
 	for _, cls := range c.classList {

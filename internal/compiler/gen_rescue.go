@@ -215,7 +215,7 @@ func (f *fctx) genWrapper(n *parser.BeginNode, inner tail, w *wrapFrame) {
 			f.emit("if r_ := recover(); r_ != nil {")
 			f.indent++
 			for rc := n.RescueClause; rc != nil; rc = rc.Subsequent {
-				if rc.Reference != nil { // `=> e` may ask for e.backtrace: record the frames now (decision 106)
+				if rc.Reference != nil || readsErrorInfo(rc.Statements) { // `=> e` or $! may ask for its backtrace: record the frames now (decisions 106, 414)
 					f.emit("r_ = rbCaptureBacktrace(r_)")
 					break
 				}
@@ -412,4 +412,15 @@ func terminates(st *parser.StatementsNode) bool {
 		return kernelRecv(last) && (last.Name == "raise" || last.Name == "fail" || last.Name == "throw")
 	}
 	return false
+}
+
+// readsErrorInfo reports n reading the handled exception through $! or $@ (English's $ERROR_INFO, $ERROR_POSITION).
+func readsErrorInfo(n *parser.StatementsNode) bool {
+	if n == nil { // an empty rescue body
+		return false
+	}
+	return anyNode(n, func(x parser.Node) bool {
+		g, ok := x.(*parser.GlobalVariableReadNode)
+		return ok && (g.Name == "$!" || g.Name == "$@" || g.Name == "$ERROR_INFO" || g.Name == "$ERROR_POSITION")
+	})
 }

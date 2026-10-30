@@ -196,6 +196,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 		return recv
 	}
 	f.noteElems(n)
+	f.widenIvarElem(n)
 	if e, ok := f.genInstanceEval(n, recv); ok {
 		return e
 	}

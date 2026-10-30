@@ -68,6 +68,27 @@ func (f *fctx) probeType(n parser.Node, expected Type) Type {
 // A typing that fails to compile or adds a conversion is dropped, and its
 // literal stays untyped: an rbAs between instantiations copies, and the
 // copy would lose Ruby's aliasing.
+// typeTestsWidened reports a param widened since before (not in before) whose type the body tests (`b.is_a? Matrix`,
+// `case b`): its old type may have folded a branch dead that its widened copy reaches, as lup's solve (decision 414).
+func (f *fctx) typeTestsWidened(before map[string]Type) bool {
+	if f.bodyStmts == nil {
+		return false
+	}
+	return anyNode(f.bodyStmts, func(n parser.Node) bool {
+		var r parser.Node
+		switch x := n.(type) {
+		case *parser.CallNode:
+			if x.Name == "is_a?" || x.Name == "kind_of?" || x.Name == "instance_of?" {
+				r = x.Receiver
+			}
+		case *parser.CaseNode:
+			r = x.Predicate
+		}
+		lv, ok := r.(*parser.LocalVariableReadNode)
+		return ok && f.paramWiden[lv.Name] != nil && before[lv.Name] == nil
+	})
+}
+
 func (f *fctx) analyze(fresh func(), run func(int)) {
 	nw := len(f.c.Warnings)
 	if f.openArgs == nil {
@@ -87,7 +108,7 @@ func (f *fctx) analyze(fresh func(), run func(int)) {
 	f.convs = map[int]bool{}
 	orig := catchCompileError(func() { run(1) }) // `[].max` fails until the literal is typed
 	for range 4 {                                // a reassigned gem param fails the rest of the run that widened it: again on its widened copy (decision 241)
-		if orig == nil || len(f.paramWiden) == len(saved.paramWiden) {
+		if len(f.paramWiden) == len(saved.paramWiden) || orig == nil && !f.typeTestsWidened(saved.paramWiden) {
 			break
 		}
 		w := f.paramWiden
@@ -231,6 +252,12 @@ func (f *fctx) emptyRefinements() map[localKey]Type {
 	}) {
 		li := f.locals[k]
 		if li.seeded {
+			if li.filled && slices.ContainsFunc(li.elems[0], holdsAny) { // a gem's Array.new(n, 0) given an untyped value holds any class
+				if c, ok := stripOpt(li.typ).(TClass); ok {
+					out[k] = TClass{C: c.C, Args: []Type{TAny{}}}
+				}
+				continue
+			}
 			if t := widenContainer(li.typ, li.elems); t != nil {
 				out[k] = t
 			}

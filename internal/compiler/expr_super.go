@@ -66,8 +66,9 @@ func (f *fctx) genSuper(n parser.Node, args *parser.ArgumentsNode, forwarding bo
 			return expr{code: "Boolean(false)", typ: f.cls("Boolean")}
 		case "respond_to?":
 			return f.superRespondTo(n, args, forwarding)
-		case "inherited", "initialize_dup", "initialize_clone", "included", "extended", "prepended", "method_added":
-			// Class's and Object's hooks do nothing (decision 232): an override's super reaches no method, so no slot
+		case "inherited", "initialize_dup", "initialize_clone", "initialize_copy", "included", "extended", "prepended", "method_added":
+			// Class's and Object's hooks do nothing (decision 232; initialize_copy's copy is done by then, decision 414): an
+			// override's super reaches no method, so no slot
 			return expr{code: "", typ: TVoid{}, stmt: true}
 		case "method_missing": // Object's raises NoMethodError for the name
 			var name parser.Node

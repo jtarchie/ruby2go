@@ -69,7 +69,7 @@ func (f *fctx) selfProcArg(b *parser.BlockArgumentNode, self Type) (string, bool
 	if isOpt {
 		return "rbBlockOf(" + p.code + ")", true // `&nil` passes no block, as MRI's (Formula#service's `&self.class.service`)
 	}
-	return "(*" + p.code + ")", true
+	return derefCode(p.code), true
 }
 
 // blockArgBlock is the block `&expr` stands for: a Method taken by name, a Method value or a Proc.

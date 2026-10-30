@@ -527,6 +527,7 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	}
 	if ret == nil {
 		var types []Type
+		var lits []bool
 		f.probe(func() {
 			saved, savedRuby := f.enterRubyBlock(block, names.locals())
 			f.closures++
@@ -538,13 +539,13 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 					f.openMemo(c, names)
 				}
 				f.redoLabel(body)
-				f.withNextTail(tail{kind: tailReturn, types: &types}, gen)
+				f.withNextTail(tail{kind: tailReturn, types: &types, lits: &lits}, gen)
 			})
 			f.popLoop()
 			f.closures--
 			f.leaveRubyBlock(saved, savedRuby)
 		})
-		if f.bindBlockRet(n, sig, env, f.joinAll(n, types), nilAcc) {
+		if f.bindBlockRet(n, sig, env, f.joinAllFrom(n, types, lits), nilAcc) {
 			params = substAll(sig.Params, env) // the accumulator param is that type too
 		}
 		ret = subst(sig.Ret, env)

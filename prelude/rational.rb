@@ -202,6 +202,22 @@ class Rational < Object
   #: () -> bool
   def real? = true
 
+  # MRI's Numeric#real, #imag, #conj, #rect for a real number (matrix's `e.real`)
+  #: () -> Rational
+  def real = self
+
+  #: () -> Integer
+  def imag = 0
+
+  #: () -> Rational
+  def conj = self
+
+  #: () -> [Rational, Integer]
+  def rect = [self, 0]
+  alias imaginary imag
+  alias conjugate conj
+  alias rectangular rect
+
   #: () -> Rational
   def magnitude = abs
 

@@ -276,8 +276,15 @@ class Float
   #: () -> bool
   def real? = true
 
+  # MRI's Numeric#real and the long names of imag/conj/rect (matrix's `e.real`)
+  #: () -> Float
+  def real = self
+
   #: () -> [Float, Integer]
   def rect = [self, 0]
+  alias imaginary imag
+  alias conjugate conj
+  alias rectangular rect
 
   #: () -> [Float, untyped]
   def polar = negative? ? [abs, Math::PI] : [self, 0]

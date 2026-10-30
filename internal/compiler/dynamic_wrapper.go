@@ -45,7 +45,7 @@ type dynArm struct {
 var seqNames = viewHelpers(map[string][]string{
 	"rbViewCall": {"sort", "sort!", "reverse", "reverse!", "compact", "include?", "index", "find_index", "rindex",
 		"count", "max", "min", "join", "uniq", "uniq!", "+", "-", "difference", "&", "intersection", "intersect?", "|", "union", "*",
-		"delete", "delete_at", "concat", "replace", "fill", "insert", "rotate", "take", "drop", "assoc", "rassoc", "flatten", "flatten!"},
+		"delete", "delete_at", "concat", "replace", "fill", "insert", "rotate", "take", "drop", "assoc", "rassoc", "flatten", "flatten!", "transpose"},
 	"rbViewBlockCall": {"each", "each_entry", "each_with_index", "each_index", "reverse_each", "each_slice", "each_cons", "cycle",
 		"first", "select", "filter", "find_all", "reject", "select!", "filter!", "keep_if", "reject!", "delete_if", "map!", "collect!",
 		"find", "detect", "rfind", "inject", "reduce", "each_with_object", "sort_by", "sort_by!", "max_by", "min_by",
@@ -97,6 +97,7 @@ func (c *Compiler) dynWrappers(name string) ([]dynWrapper, []*dynArm) {
 			continue
 		}
 		w := dynWrapper{cls: cls, e: e, private: private, body: c.dynWrapperBodyOrWarn(cls, e, name)}
+
 		if w.body == "" {
 			continue
 		}

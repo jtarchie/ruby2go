@@ -355,6 +355,9 @@ class String < Object
   #: (?String?) -> Array[String]
   def split(sep = nil) = %x{
     out := &Array[String]{}
+    if sep == nil { // $; when the program set it (decision 414)
+      sep = rbFS
+    }
     if sep == nil || *sep == " " {
       isSpace := func(r rune) bool { return r == ' ' || r >= '\\t' && r <= '\\r' }
       for _, f := range strings.FieldsFunc(string(self), isSpace) {

@@ -673,6 +673,34 @@ func rbLMGroup(m **MatchData, n int) *String {
 	return (*m).groups[n]
 }
 
+// rbLMPre, rbLMPost and rbLMLast are $`, $' and $+ (English's $PREMATCH, $POSTMATCH, $LAST_PAREN_MATCH, decision 414):
+// the last match's text before and after it, and its highest-numbered group that matched.
+func rbLMPre(m **MatchData) *String {
+	if m == nil {
+		return nil
+	}
+	return Ref(String((*m).pre))
+}
+
+func rbLMPost(m **MatchData) *String {
+	if m == nil {
+		return nil
+	}
+	return Ref(String((*m).post))
+}
+
+func rbLMLast(m **MatchData) *String {
+	if m == nil {
+		return nil
+	}
+	for i := len((*m).groups) - 1; i >= 1; i-- {
+		if (*m).groups[i] != nil {
+			return (*m).groups[i]
+		}
+	}
+	return nil
+}
+
 // rbMatchKeep is `match` in a frame that reads $~: the MatchData, also kept as the last match.
 func rbMatchKeep(lm ***MatchData, m **MatchData) **MatchData {
 	*lm = m

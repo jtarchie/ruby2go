@@ -47,10 +47,6 @@ class Foo
   def m = /#@x/.match?("a")
 end
 puts Foo.new.m
--- back_reference.rb --
-# error: main.rb:3: $` is unsupported; $~, $& and $1..$9 are (decision 171)
-"ab" =~ /b/
-puts $`.inspect
 -- nil_subject.rb --
 # error: main.rb:2: nil where String is expected
 puts (/a/ =~ nil).inspect

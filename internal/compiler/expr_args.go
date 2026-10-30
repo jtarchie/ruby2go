@@ -136,9 +136,10 @@ func (f *fctx) genArgs(n parser.Node, m *Method, env map[string]Type, args []par
 	return codes, restIdx
 }
 
-// truncFloat is a Float argument where a core method takes an Integer: MRI's NUM2LONG truncates it (decision 181).
-func (f *fctx) truncFloat(m *Method, p Param, env map[string]Type, a expr) expr {
-	if truncatesFloats(m) && isClass(a.typ, "Float") && isClass(closed(p.Type, env), "Integer") {
+// truncFloat is a Float argument where a core method takes an Integer: MRI's NUM2LONG truncates it (decision 181). A
+// param typed by the receiver's element (`[]=`'s E of an Array[Integer]) stores the Float, as MRI does (decision 414).
+func (f *fctx) truncFloat(m *Method, p Param, _ map[string]Type, a expr) expr {
+	if truncatesFloats(m) && isClass(a.typ, "Float") && isClass(p.Type, "Integer") {
 		return expr{code: "rbNum2Long(" + a.code + ")", typ: f.cls("Integer")}
 	}
 	return a

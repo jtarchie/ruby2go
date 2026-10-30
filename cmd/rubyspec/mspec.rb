@@ -57,6 +57,17 @@ class SpecExpectation
   #: (untyped) -> bool
   def include?(other) = check(@actual.include?(other), "to include #{other.inspect}")
 
+  # mspec's `x.should.unitary?`: any other predicate asks the actual value (matrix's specs)
+  #: (Symbol, *untyped) -> bool
+  def method_missing(name, *args)
+    return super unless name.end_with?("?")
+
+    check(@actual.public_send(name, *args) ? true : false, "to be #{name}")
+  end
+
+  #: (Symbol, ?bool) -> bool
+  def respond_to_missing?(name, include_private = false) = name.end_with?("?") || super
+
   #: (untyped) -> bool
   def is_a?(other) = check(@actual.is_a?(other), "to be a #{other.inspect}")
 

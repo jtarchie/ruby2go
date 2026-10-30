@@ -419,6 +419,9 @@ func rbViewCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop
 	case "rassoc":
 		rbArity(len(args), 1, 1)
 		return rbViewAssoc(s, args[0], 1), true
+	case "transpose":
+		rbArity(len(args), 0, 0)
+		return rbTransposeAny(rbViewElems(s)), true
 	case "flatten", "flatten!":
 		rbArity(len(args), 0, 1)
 		depth := -1

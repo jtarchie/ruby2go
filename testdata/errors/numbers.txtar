@@ -247,3 +247,9 @@ puts "x" + maybe(0)
 # error: main.rb: # nil_check: "lenient" is not compile or runtime
 # nil_check: lenient
 puts 1
+-- float_into_integer_element.rb --
+# error: main.rb:4: Float where Integer is expected
+# rbs_inline: enabled
+a = Array.new(2, 0)
+a[0] = 1.5
+p a

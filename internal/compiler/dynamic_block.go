@@ -16,7 +16,8 @@ func (c *Compiler) dynBlockable(name string, m *Method) bool {
 	if m.Owner != nil && m.Owner.universal {
 		return false
 	}
-	return (c.dynBlockNames[name] || c.dynBlockAll) && (!m.Iterator || !m.hasKeywords()) && (!m.Block.Rest || anyRestBlock(m.Block))
+	// an optional block's method called dynamically without one (matrix's `r.column(0)`) takes nil for it (decision 414)
+	return (c.dynBlockNames[name] || c.dynBlockAll || m.Block.Optional && !m.Iterator) && (!m.Iterator || !m.hasKeywords()) && (!m.Block.Rest || anyRestBlock(m.Block))
 }
 
 // anyRestBlock is a gem's unannotated `&block`, `(*untyped) -> untyped`: the dynamic call's rbBlockArg as it is.

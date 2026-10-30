@@ -168,6 +168,7 @@ func (f *fctx) genCallForm(n *parser.CallNode, expected Type) (expr, bool) {
 	}
 	for _, form := range []func() (expr, bool){
 		func() (expr, bool) { return f.genToEnum(n) },
+		func() (expr, bool) { return f.genRecvToEnum(n, expected) },
 		func() (expr, bool) { return f.genKernelCall(n, expected) },
 		func() (expr, bool) { return f.genMatchSet(n) },
 		func() (expr, bool) { return f.genStringBang(n) },

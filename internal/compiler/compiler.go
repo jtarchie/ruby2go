@@ -205,6 +205,7 @@ type bootFacts struct {
 	blockEvalSites   map[*parser.CallNode]bool             // `klass.class_eval do ... end` boot ran: its block is that module's body (decision 204)
 	bootDelegators   map[boot.Loc][]string                 // def_delegators' names boot saw, by call site (decision 204)
 	bootLoadPath     []string                              // $LOAD_PATH as boot left it, nil without a boot (decision 301)
+	booted           bool                                  // a boot snapshot ran: a gem autoload it did not resolve is never reached (decision 175)
 	bootStructs      map[string][]boot.StructProp          // each T::Struct's props boot saw (decision 241)
 }
 
@@ -526,6 +527,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.autoloaded = c.neededAutoloads(opts.autoloaded)
 	var dms []boot.MethodInfo
 	if opts.boot != nil {
+		c.booted = true
 		dms = opts.boot.DefineMethods
 		c.indexBootBranches(opts.boot.Branches)
 		c.bootConstClasses = opts.boot.ConstClasses

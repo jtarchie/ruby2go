@@ -110,36 +110,42 @@ func (f *fctx) iterEnum(n parser.Node, e *entry, recv expr, codes []string, env 
 	return expr{code: code, typ: et}, true
 }
 
-// genToEnum is `to_enum`/`enum_for` (bare, or naming the enclosing method) in a method taking a one-value closure
-// block: an Enumerator that calls the method again with a block feeding it (rbSeq stops it early).
+// enumerable is m's block an Enumerator can feed: one closure block of 1-4 values (a Tuple for several).
+func enumerable(m *Method) bool {
+	return m != nil && m.Block != nil && !m.Iterator && len(m.Block.Params) > 0 && len(m.Block.Params) <= 4 &&
+		(len(m.Block.Params) == 1 || !m.Block.Rest) && !m.kwMask() && !m.calleeDefaults
+}
+
+// genToEnum is `to_enum`/`enum_for` (bare, or naming the enclosing method) in a method taking a closure block: an
+// Enumerator that calls the method again with a block feeding it (rbSeq stops it early).
 func (f *fctx) genToEnum(n *parser.CallNode) (expr, bool) {
 	m := f.m
 	if n.Name != "to_enum" && n.Name != "enum_for" || n.Receiver != nil && !isSelf(n.Receiver) || n.Block != nil ||
-		m == nil || m.Block == nil || m.Iterator || len(m.Block.Params) != 1 || !inInterface(m) && !f.lenient() || m.kwMask() || m.calleeDefaults {
+		!enumerable(m) || !inInterface(m) && !f.lenient() {
 		return expr{}, false
 	}
 	args := callArgs(n)
+	name := m.Name
 	if len(args) > 0 {
-		if enumName(args[0], m) != m.Name || len(args)-1 > len(m.Params) {
+		name = enumName(args[0], m)
+		if !f.namesMethod(name, m) || len(args)-1 > len(m.Params) && !slices.ContainsFunc(m.Params, func(p Param) bool { return p.Rest }) {
 			return expr{}, false
 		}
 		args = args[1:]
 	}
-	var as []string
-	for i, p := range m.Params {
-		switch {
-		case p.Rest:
-			return expr{}, false
-		case i < len(args):
-			as = append(as, f.coerce(n, f.genExpr(args[i], p.Type), p.Type))
-		case len(args) > 0 && p.Default != nil: // `to_enum(:each)` leaves the rest at their defaults
-			as = append(as, f.coerce(n, f.genExpr(p.Default, p.Type), p.Type))
-		default:
-			as = append(as, goLocalName(p.Name))
-		}
+	as, rest, ok := f.enumArgs(n, m, args)
+	if !ok {
+		return expr{}, false
 	}
-	elem := f.c.goType(m.Block.Params[0])
+	et := m.Block.Params[0]
+	if len(m.Block.Params) > 1 { // `yield e, row, col` (matrix's each_with_index): each value is one Array, as MRI's Enumerator packs them (decision 414)
+		et = TTuple{Elems: m.Block.Params}
+	}
+	elem := f.c.goType(et)
 	as = append(as, f.enumBlock(m, elem))
+	if rest != "" {
+		as = append(as, rest)
+	}
 	call := f.selfCode + "." + m.GoName + "(" + strings.Join(as, ", ") + ")"
 	if m.Owner != nil && (m.Owner.IsModule || f.lenient()) && !f.c.isDirectMethod(m) { // the free func: a module's constraint, or a gem class's pruned interface, may not name it (elftools' each_symbol)
 		targs := "[Self]"
@@ -148,8 +154,119 @@ func (f *fctx) genToEnum(n *parser.CallNode) (expr, bool) {
 		}
 		call = freeFuncName(m) + targs + "(" + f.selfCode + comma(strings.Join(as, ", ")) + ")"
 	}
-	code := fmt.Sprintf("rbEnumOf(rbSeq(func(y func(%s)) { %s }), any(%s), %q, nil, nil)", elem, call, f.selfCode, m.Name)
-	return expr{code: code, typ: TClass{C: f.c.classes["Enumerator"], Args: []Type{m.Block.Params[0]}}}, true
+	code := fmt.Sprintf("rbEnumOf(rbSeq(func(y func(%s)) { %s }), any(%s), %q, nil, nil)", elem, call, f.selfCode, name)
+	return expr{code: code, typ: TClass{C: f.c.classes["Enumerator"], Args: []Type{et}}}, true
+}
+
+// namesMethod reports name being m or another name for it (matrix's `alias_method :map, :collect`, `index`'s
+// `to_enum :find_index`, decision 414).
+func (f *fctx) namesMethod(name string, m *Method) bool {
+	if name == m.Name {
+		return true
+	}
+	if name == "" || f.owner == nil || m.Node == nil {
+		return false
+	}
+	e := f.owner.lookup(name)
+	return e != nil && e.M.Node == m.Node
+}
+
+// enumArgs are the arguments to_enum passes m again: each param's, a default for one it leaves out, and a trailing
+// rest param's as Go variadic arguments after the block (index's `to_enum :find_index, which, *args`).
+func (f *fctx) enumArgs(n parser.Node, m *Method, args []parser.Node) ([]string, string, bool) {
+	var as []string
+	for i, p := range m.Params {
+		switch {
+		case p.Rest:
+			if i != len(m.Params)-1 || p.Keyword {
+				return nil, "", false
+			}
+			r, ok := f.enumRest(n, p, args[min(i, len(args)):], len(args) == 0)
+			return as, r, ok
+		case i < len(args):
+			if isSplat(args[i]) {
+				return nil, "", false
+			}
+			as = append(as, f.coerce(n, f.genExpr(args[i], p.Type), p.Type))
+		case len(args) > 0 && p.Default != nil: // `to_enum(:each)` leaves the rest at their defaults
+			as = append(as, f.coerce(n, f.genExpr(p.Default, p.Type), p.Type))
+		default:
+			as = append(as, goLocalName(p.Name))
+		}
+	}
+	return as, "", true
+}
+
+// enumRest is a rest param's variadic arguments: the method's own (`to_enum` naming no arguments), or the given ones,
+// a splat spread (into a Go any only).
+func (f *fctx) enumRest(n parser.Node, p Param, args []parser.Node, own bool) (string, bool) {
+	if own {
+		return goLocalName(p.Name) + "...", true
+	}
+	if len(args) == 0 {
+		return "", true
+	}
+	var lits, parts []string
+	for _, a := range args {
+		if sp, ok := a.(*parser.SplatNode); ok {
+			if f.c.goType(p.Type) != "any" || sp.Expression == nil { // a union's Go type is any too (`Integer | Symbol`)
+				return "", false
+			}
+			if len(lits) > 0 {
+				parts = append(parts, "[]any{"+strings.Join(lits, ", ")+"}")
+				lits = nil
+			}
+			parts = append(parts, "rbSplatAny("+f.coerce(sp, f.genExpr(sp.Expression, nil), TAny{})+")")
+			continue
+		}
+		lits = append(lits, f.coerce(n, f.genExpr(a, p.Type), p.Type))
+	}
+	if len(parts) == 0 {
+		return strings.Join(lits, ", "), true
+	}
+	if len(lits) > 0 {
+		parts = append(parts, "[]any{"+strings.Join(lits, ", ")+"}")
+	}
+	return "slices.Concat(" + strings.Join(parts, ", ") + ")...", true
+}
+
+// genRecvToEnum is `x.to_enum(:each, :diagonal)` where `x.each(:diagonal)` without a block is already an Enumerator
+// (matrix's `return to_enum :each, which unless block_given?`): that call, which defers the iteration as MRI's to_enum
+// does (decision 414). Any other method keeps to_enum's ordinary dispatch.
+func (f *fctx) genRecvToEnum(n *parser.CallNode, expected Type) (expr, bool) {
+	args := callArgs(n)
+	if n.Name != "to_enum" && n.Name != "enum_for" || n.Receiver == nil || isSelf(n.Receiver) || n.Block != nil || len(args) == 0 {
+		return expr{}, false
+	}
+	sym, ok := args[0].(*parser.SymbolNode)
+	if !ok || sym.Unescaped.Value == "to_enum" || sym.Unescaped.Value == "enum_for" {
+		return expr{}, false
+	}
+	call := &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: sym.Unescaped.Value, MessageLoc: n.MessageLoc}
+	if len(args) > 1 {
+		call.Arguments = &parser.ArgumentsNode{Location: n.Arguments.Location, Arguments: args[1:]}
+	}
+	var recv Type
+	if catchCompileError(func() { f.probe(func() { recv = f.genExpr(n.Receiver, nil).typ }) }) != nil {
+		return expr{}, false
+	}
+	rc, ok := stripOpt(recv).(TClass)
+	if !ok {
+		return expr{}, false
+	}
+	e := rc.C.lookup(call.Name)
+	if e == nil || e.M.Node == nil || e.M.Node.Body == nil || !enumsItself(e.M) {
+		return expr{}, false
+	}
+	return f.genExpr(call, expected), true
+}
+
+// enumsItself reports m's body answering an Enumerator of m itself without a block (`return to_enum(:each) unless block_given?`).
+func enumsItself(m *Method) bool {
+	return anyNode(m.Node.Body, func(x parser.Node) bool {
+		c, ok := x.(*parser.CallNode)
+		return ok && (c.Name == "to_enum" || c.Name == "enum_for") && (c.Receiver == nil || isSelf(c.Receiver)) && enumName(firstArg(callArgs(c)), m) == m.Name
+	})
 }
 
 // eachReturnsSelf are the iterators whose value in MRI is their receiver.
@@ -172,6 +289,19 @@ func enumName(arg parser.Node, m *Method) string {
 
 // enumBlock is the block to_enum hands m: each value it yields goes to the Enumerator's y.
 func (f *fctx) enumBlock(m *Method, elem string) string {
+	if n := len(m.Block.Params); n > 1 {
+		ps, fs := make([]string, n), make([]string, n)
+		for i, p := range m.Block.Params {
+			ps[i] = fmt.Sprintf("x%d %s", i, f.c.goType(p))
+			fs[i] = fmt.Sprintf("F%d: x%d", i, i)
+		}
+		feed := fmt.Sprintf("y(%s{%s})", elem, strings.Join(fs, ", "))
+		if isVoid(m.Block.Ret) {
+			return fmt.Sprintf("func(%s) { %s }", strings.Join(ps, ", "), feed)
+		}
+		r := f.c.goType(m.Block.Ret)
+		return fmt.Sprintf("func(%s) %s { %s; return %s }", strings.Join(ps, ", "), r, feed, goZero(r))
+	}
 	if isVoid(m.Block.Ret) {
 		return fmt.Sprintf("func(x %s) { y(x) }", elem)
 	}

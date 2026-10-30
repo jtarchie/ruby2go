@@ -284,7 +284,13 @@ func (f *fctx) genUnboundMethod(n parser.Node, recv expr, name string, public bo
 		}
 		if static {
 			// MRI binds this definition, not a subclass's override
-			codes, _ := f.genArgs(n, m, env, args[1:], nil)
+			codes, restIdx := f.genArgs(n, m, env, args[1:], nil)
+			if m.Block != nil && !m.Iterator { // an optional block's Go param, before a rest's (matrix's `collect(which = :all, &block)`, decision 414)
+				if restIdx < 0 {
+					restIdx = len(codes)
+				}
+				codes = slices.Insert(codes, restIdx, "nil")
+			}
 			return expr{code: staticCallCode(m, "", r.code, strings.Join(codes, ", ")), typ: ft.Ret}
 		}
 		saved := f.implicitCall
@@ -394,11 +400,16 @@ func (f *fctx) methodInfo(n parser.Node, e *entry) string {
 	if owner == nil {
 		owner = f.c.classes["Object"]
 	}
-	ownerCode, key, single := classVar(owner), owner.RubyName+"#"+m.Name, false
+	ownerCode, key, single := classVar(owner), owner.RubyName+"#", false
 	if owner.metaOf != nil {
-		ownerCode, key, single = "&rbSingletonClass{of: "+classVar(owner.metaOf)+"}", owner.metaOf.RubyName+"."+m.Name, true
+		ownerCode, key, single = "&rbSingletonClass{of: "+classVar(owner.metaOf)+"}", owner.metaOf.RubyName+".", true
 	} else if owner.meta == nil {
 		f.errorf(n, "%s has no class object to be %s's owner", owner.RubyName, m.Name)
+	}
+	if m.Node != nil && m.File != nil && (m.Kind == kindDef || m.Kind == kindPrimitive) { // an alias shares its def, and MRI's == compares the def (Matrix.method(:I) == method(:identity), decision 414)
+		key += "@" + m.File.Name + ":" + strconv.Itoa(m.Node.Location.StartOffset)
+	} else {
+		key += m.Name
 	}
 	params, arity := methodParams(m, len(overloads(m)) > 0)
 	ps := make([]string, len(params))

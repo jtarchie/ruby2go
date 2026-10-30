@@ -891,8 +891,9 @@ class Array < Object
   #: (String) -> String
   def __mul_string(sep) = join(sep)
 
+  # The default is $, (nil unless the program set it, decision 414).
   #: (?String) -> String
-  def join(sep = "") = %x{
+  def join(sep = $, || "") = %x{
     parts := make([]string, len(self.s))
     for i, x := range self.s {
       // ponytail: a self-containing array overflows here, MRI raises ArgumentError; add a visited set.
@@ -1224,6 +1225,16 @@ class Array < Object
       out.s = append(out.s, col)
     }
     return out
+  }
+
+  # @self Array[X]
+  # @rbs [X] () -> Array[Array[untyped]]
+  def __transpose_any = %x{
+    xs := make([]any, len(self.s))
+    for i, x := range self.s {
+      xs[i] = x
+    }
+    return rbTransposeAny(xs)
   }
 
   # The flag is on the object; every mutator above checks it first (decision 96).

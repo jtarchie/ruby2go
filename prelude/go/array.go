@@ -147,6 +147,36 @@ func rbToAry(x any) *Array[any] {
 	return &Array[any]{s: []any{x}}
 }
 
+// rbTransposeAny is transpose of untyped rows (matrix's @rows, decision 414): each must be an Array, as MRI's to_ary check.
+func rbTransposeAny(xs []any) *Array[*Array[any]] {
+	rows := make([]*Array[any], len(xs))
+	for i, x := range xs {
+		a, ok := rbUnbox(x).(Array_Any)
+		if !ok {
+			panic(rbConvError(x, "Array"))
+		}
+		rows[i] = a._ToAny()
+	}
+	out := &Array[*Array[any]]{}
+	if len(rows) == 0 {
+		return out
+	}
+	n := len(rows[0].s)
+	for _, r := range rows {
+		if len(r.s) != n {
+			panic(NewIndexError(Ref(String(fmt.Sprintf("element size differs (%d should be %d)", len(r.s), n)))))
+		}
+	}
+	for j := range n {
+		col := &Array[any]{s: make([]any, len(rows))}
+		for i, r := range rows {
+			col.s[i] = r.s[j]
+		}
+		out.s = append(out.s, col)
+	}
+	return out
+}
+
 // rbFlattenInto appends xs to out, splicing in Arrays (any instantiation,
 // tuples too) down to depth levels; depth < 0 is all of them.
 // An Array holding itself (through any depth) is MRI's ArgumentError, as Go's stack would otherwise overflow, which no rescue catches; a bounded depth cannot loop, so only depth < 0 tracks the Arrays being flattened.

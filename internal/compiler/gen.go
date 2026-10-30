@@ -149,6 +149,7 @@ type localInfo struct {
 	param     bool      // a method parameter
 	open      bool      // an unannotated `[]`/`{}` that later writes may type (analyze)
 	seeded    bool      // a non-empty `[...]` open to widening: elems start with its own element type (decision 193)
+	filled    bool      // seeded by a gem's `Array.new(n, x)`: an untyped write widens it to untyped (decision 414)
 	elems     [2][]Type // what those writes put in it: elements, or keys and values
 	targs     [][]Type  // an open generic `X.new`: what later calls bind each type parameter to (decision 310)
 	// bin/text: some write of the first passes held a binary String, or anything else; binDeps are the locals those
@@ -387,6 +388,7 @@ type tail struct {
 	target string
 	typ    Type    // nil: infer (probe)
 	types  *[]Type // collector while inferring
+	lits   *[]bool // with types: whether each value was an Array or Hash literal (untypedContainerJoin, decision 414)
 	hint   Type    // while inferring: what the value is expected to be, for literals (`T.let(if c then [[], x] ... end, [A, B])`)
 }
 
@@ -398,9 +400,15 @@ func (t tail) want() Type {
 	return t.hint
 }
 
-func (t tail) record(ty Type) {
+func (t tail) record(ty Type) { t.recordFrom(nil, ty) }
+
+// recordFrom records the type of n's value.
+func (t tail) recordFrom(n parser.Node, ty Type) {
 	if t.types != nil {
 		*t.types = append(*t.types, ty)
+	}
+	if t.lits != nil {
+		*t.lits = append(*t.lits, isContainerLit(n))
 	}
 }
 
@@ -421,7 +429,7 @@ func (f *fctx) applyTail(n parser.Node, e expr, t tail) {
 		f.emitExprStmt(n, e)
 	case tailReturn:
 		if t.typ == nil {
-			t.record(e.typ)
+			t.recordFrom(n, e.typ)
 			f.emit("_ = %s", e.code)
 			return
 		}
@@ -436,7 +444,7 @@ func (f *fctx) applyTail(n parser.Node, e expr, t tail) {
 		f.emit("return %s", f.coerce(n, e, t.typ))
 	case tailAssign:
 		if t.typ == nil {
-			t.record(e.typ)
+			t.recordFrom(n, e.typ)
 			f.emit("_ = %s", e.code)
 			return
 		}
@@ -769,9 +777,12 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 		f.closureValue(n, n.Arguments) // a lambda's return leaves only the lambda
 		return
 	}
-	if f.closures > 0 && f.retTok != "" && (n.Arguments == nil || len(n.Arguments.Arguments) == 1) { // unwinds to the method (decision 247)
+	if f.closures > 0 && f.retTok != "" { // unwinds to the method (decision 247)
 		e := expr{code: "nil", typ: TNil{}}
-		if n.Arguments != nil {
+		switch {
+		case n.Arguments != nil && len(n.Arguments.Arguments) > 1: // `return row, col` (matrix's index) is [row, col] (decision 414)
+			e = f.genExpr(&parser.ArrayNode{Location: n.Arguments.Location, Elements: n.Arguments.Arguments}, f.ret)
+		case n.Arguments != nil:
 			e = f.genExpr(n.Arguments.Arguments[0], f.ret)
 		}
 		if f.retTypes != nil {
@@ -783,7 +794,7 @@ func (f *fctx) genReturn(n *parser.ReturnNode) {
 			v = f.newTmp() // typed, so an untyped constant (`return false`) is boxed as the method's Boolean, not Go's bool
 			f.emit("var %s %s = %s", v, f.c.goType(f.ret), f.coerce(n, e, f.ret))
 		case n.Arguments != nil:
-			f.emitExprStmt(n.Arguments.Arguments[0], e)
+			f.emitExprStmt(n, e)
 		}
 		f.emit("panic(&rbReturn{tok: %s, v: %s})", f.retTok, v)
 		return

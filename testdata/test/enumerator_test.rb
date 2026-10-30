@@ -961,3 +961,112 @@ module EnumeratorTests
     end
   end
 end
+
+# Matrix's other shapes (decision 414): `x.to_enum(:each, arg)`, a yield whose value Array.new's block takes, transpose of
+# untyped rows, initialize_copy's super.
+module EnumeratorTests
+  class Sheet
+    include Enumerable #[Integer]
+
+    #: (Array[Array[Integer]]) -> void
+    def initialize(rows)
+      @rows = rows
+    end
+
+    #: (?Symbol) ?{ (Integer) -> void } -> untyped
+    def each(which = :all)
+      return to_enum(:each, which) unless block_given?
+
+      @rows.each_with_index do |row, i|
+        row.each_with_index { |e, j| yield e if which == :all || i == j }
+      end
+      self
+    end
+
+    #: (Integer) { (Integer, Integer) -> Integer } -> Array[Array[Integer]]
+    def self.build(n)
+      Array.new(n) { |i| Array.new(n) { |j| yield i, j } }
+    end
+
+    #: () -> Array[Array[Integer]]
+    def rows = @rows
+
+    private
+
+    #: (Sheet) -> void
+    def initialize_copy(other)
+      super
+      @rows = @rows.map(&:dup)
+    end
+  end
+
+  class SheetTest < Minitest::Test
+    def test_to_enum_on_receiver
+      s = Sheet.new([[1, 2], [3, 4]])
+      assert_equal([1, 4], s.to_enum(:each, :diagonal).to_a)
+      assert_equal([1, 2, 3, 4], s.enum_for(:each).to_a)
+    end
+
+    def test_yield_value_in_array_new
+      assert_equal([[0, 1], [10, 11]], Sheet.build(2) { |i, j| (i * 10) + j })
+    end
+
+    def test_transpose_untyped
+      rows = [[1, "a"], [2, "b"]] #: Array[untyped]
+      assert_equal([[1, 2], ["a", "b"]], rows.transpose)
+    end
+
+    def test_initialize_copy_super
+      s = Sheet.new([[1, 2]])
+      d = s.dup
+      d.rows[0][0] = 9
+      assert_equal(1, s.rows[0][0])
+      assert_equal(9, d.rows[0][0])
+    end
+  end
+end
+
+# More of matrix's (decision 414): destructuring through to_ary, alias Methods equal, Numeric's long names.
+module EnumeratorTests
+  class Trio
+    #: () -> [Integer, String, Symbol]
+    def to_ary = [1, "b", :c]
+
+    #: () -> Integer
+    def det = 1
+    alias determinant det
+
+    #: (?Symbol) ?{ (Integer) -> Integer } -> Array[Integer]
+    def collect(which = :all, &block)
+      return [which.size] unless block
+
+      [1, 2].map(&block)
+    end
+    alias map collect
+  end
+
+  class TrioTest < Minitest::Test
+    def test_destructure_to_ary
+      a, b, c = Trio.new
+      assert_equal([1, "b", :c], [a, b, c])
+      x, *ys = Trio.new
+      assert_equal(1, x)
+      assert_equal(["b", :c], ys)
+    end
+
+    def test_alias_methods_equal
+      t = Trio.new
+      assert(t.method(:det) == t.method(:determinant))
+      assert(Trio.instance_method(:det) == Trio.instance_method(:determinant))
+      refute(t.method(:det) == Trio.new.method(:det))
+      assert(Trio.instance_method(:collect) == Trio.instance_method(:map))
+    end
+
+    def test_numeric_long_names
+      assert_equal([3, 0, 3, [3, 0]], [3.real, 3.imaginary, 3.conjugate, 3.rectangular])
+      assert_equal([2.5, 0, 2.5, [2.5, 0]], [2.5.real, 2.5.imaginary, 2.5.conjugate, 2.5.rectangular])
+      r = Rational(1, 2)
+      assert_equal([r, 0, r, [r, 0]], [r.real, r.imaginary, r.conjugate, r.rectangular])
+    end
+  end
+end

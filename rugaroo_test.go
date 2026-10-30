@@ -286,6 +286,20 @@ func TestMulti(t *testing.T) {
 	}
 }
 
+// TestGemAutoloadWithoutBoot compiles an in-memory suite (cmd/rubyspec's, decision 409) requiring a gem whose class
+// arrives through autoload: with no boot to say which autoloads run, each loads where it registers (decision 414).
+func TestGemAutoloadWithoutBoot(t *testing.T) {
+	requireToolchain(t)
+	src := []byte("require \"matrix\"\np Matrix[[1, 2], [3, 4]].lup.solve(Vector[1, 2])\n")
+	code, _, _, err := CompileTestsSkippingWithGems(t.Context(), []File{{Name: "lup_test.rb", Src: src}}, nil, ".")
+	if err != nil {
+		t.Fatalf("rugaroo: %v", err)
+	}
+	if !bytes.Contains(code, []byte("type Matrix_LUPDecomposition struct")) {
+		t.Error("Matrix::LUPDecomposition, matrix's autoload, was not compiled")
+	}
+}
+
 // TestBootAutoload compiles a program whose class arrives through autoload:
 // the boot snapshot records which file MRI loaded, and the compiler takes it
 // as a source (decisions 131/161). The declaration itself is compile-time.

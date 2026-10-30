@@ -99,6 +99,10 @@ func rbSetStderr(v any) any { return rbRedirect(2, v, "$stderr") }
 // rbRS is `$/`, the input record separator chomp defaults to (decision 180).
 var rbRS = Ref(String("\n"))
 
+// rbFS, rbOFS and rbORS are `$;`, `$,` and `$\`: split's default pattern, join's and print's separator, and what print
+// writes last; nil unless the program sets them (decision 414).
+var rbFS, rbOFS, rbORS *String
+
 // rbVerbose is `$VERBOSE`: false by default, nil silences Kernel#warn.
 var rbVerbose = Ref(Boolean(false))
 

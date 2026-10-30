@@ -158,15 +158,7 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 		}
 		return expr{code: "", typ: TNil{}, done: true} // declared later in the def: not in scope here
 	}
-	var val expr
-	if f.lenient() && ann == nil && exp != nil { // a gem's local rebound to what its type does not hold (`data = { **data, ... }`)
-		err := f.tryClean(func() { val = f.genExpr(n.Value, exp) })
-		if err != nil {
-			val = f.genExpr(n.Value, nil) // as itself; the local widens (decision 233)
-		}
-	} else {
-		val = f.genExpr(n.Value, exp)
-	}
+	val := f.localWriteValue(n, ann, exp)
 	if val.noreturn { // `x = raise "e"`: x still needs a Go type for the (unreachable) code after
 		t := exp
 		if t == nil {
@@ -177,6 +169,9 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 	e := f.assignLocal(n, n.Name, val, ann)
 	if info := f.localInfo(n.Name); seed != nil && info != nil { // what later writes put in it may widen it (decision 193)
 		info.open, info.seeded = true, true
+		if _, ok := f.filledArray(n.Value); ok {
+			info.filled = true
+		}
 		if kv, ok := seed.(TTuple); ok && isClass(stripOpt(info.typ), "Hash") { // a Hash literal's key and value types
 			info.elems[0], info.elems[1] = append(info.elems[0], kv.Elems[0]), append(info.elems[1], kv.Elems[1])
 		} else {
@@ -187,6 +182,23 @@ func (f *fctx) genLocalWrite(n *parser.LocalVariableWriteNode) expr {
 		info.open = true
 	}
 	return e
+}
+
+// localWriteValue is the value a local write stores, expected to be exp.
+func (f *fctx) localWriteValue(n *parser.LocalVariableWriteNode, ann, exp Type) expr {
+	var val expr
+	if f.lenient() && ann == nil && exp != nil { // a gem's local rebound to what its type does not hold (`data = { **data, ... }`)
+		err := f.tryClean(func() { val = f.genExpr(n.Value, exp) })
+		if err != nil {
+			val = f.genExpr(n.Value, nil) // as itself; the local widens (decision 233)
+		}
+	} else {
+		val = f.genExpr(n.Value, exp)
+	}
+	if _, fill := f.filledArray(n.Value); fill && exp != nil && !typeEq(val.typ, exp) && !isAny(exp) { // a fresh Array.new(n, 0) as the Array[untyped] its writes need (decision 414)
+		val = expr{code: f.coerce(n, val, exp), typ: exp}
+	}
+	return val
 }
 
 func isRangeNode(n parser.Node) bool {
@@ -264,7 +276,9 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	var e, r expr
 	f.probe(func() {
 		e = f.genExpr(n.Expression, expected)
+		f.rescues++ // `x rescue $!` reads the handled exception (decision 414)
 		r = f.genExpr(n.RescueExpression, expected)
+		f.rescues--
 	})
 	typ, ok := join(e.typ, r.typ)
 	switch {
@@ -283,12 +297,17 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	saved := f.enterBlock()
 	f.emit("defer func() {")
 	f.emit("\tif r_ := recover(); r_ != nil {")
+	if readsErrorInfo(&parser.StatementsNode{Body: []parser.Node{n.RescueExpression}}) {
+		f.emit("\t\tr_ = rbCaptureBacktrace(r_)")
+	}
 	f.emit("\t\tr_ = rbWrapPanic(r_)")
 	f.emit("\t\tif !rbIsA[StandardErrorI](r_) {")
 	f.emit("\t\t\tpanic(r_)")
 	f.emit("\t\t}")
 	f.indent += 2
+	f.rescues++
 	r = f.genExpr(n.RescueExpression, typ)
+	f.rescues--
 	if r.noreturn {
 		f.emit("%s", r.code)
 	} else {
