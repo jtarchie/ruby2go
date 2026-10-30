@@ -300,6 +300,20 @@ func TestGemAutoloadWithoutBoot(t *testing.T) {
 	}
 }
 
+// TestGemDefineMethodWithoutBoot: with no boot, a gem class body's `[:send, ...].each { |m| define_method(m) { } }` still
+// defines each method (net-ftp's BufferedSocket#send, decision 416).
+func TestGemDefineMethodWithoutBoot(t *testing.T) {
+	requireToolchain(t)
+	src := []byte("require \"net/ftp\"\nsock = Net::FTP::BufferedSocket.new(STDOUT)\np sock.respond_to?(:shutdown)\n")
+	code, _, _, err := CompileTestsSkippingWithGems(t.Context(), []File{{Name: "dm_test.rb", Src: src}}, nil, ".")
+	if err != nil {
+		t.Fatalf("rugaroo: %v", err)
+	}
+	if !bytes.Contains(code, []byte("func Net_FTP_BufferedSocket_Shutdown(")) {
+		t.Error("Net::FTP::BufferedSocket#shutdown, a literal define_method, was not compiled")
+	}
+}
+
 // TestBootAutoload compiles a program whose class arrives through autoload:
 // the boot snapshot records which file MRI loaded, and the compiler takes it
 // as a source (decisions 131/161). The declaration itself is compile-time.

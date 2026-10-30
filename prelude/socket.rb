@@ -312,6 +312,30 @@ class BasicSocket < Object
     s
   end
 
+  # net-protocol's BufferedIO reads with read_nonblock(BUFSIZE, buf, exception: false) (decision 416): here it waits for
+  # data as readpartial does, nil at the end. ponytail: never :wait_readable, so a read timeout is not enforced, and buf
+  # is not filled in place
+  #: (Integer, ?String?, ?exception: bool) -> String?
+  def read_nonblock(maxlen, buf = nil, exception: true)
+    s = @h.readpartial(maxlen)
+    raise EOFError, "end of file reached" if s.nil? && exception
+
+    s
+  end
+
+  # Writes it all, as a blocking write does: the count, never :wait_writable.
+  #: (String, ?exception: bool) -> Integer
+  def write_nonblock(str, exception: true) = write(str)
+
+  #: (?Numeric?) -> self
+  def wait_readable(timeout = nil) = self
+
+  #: (?Numeric?) -> self
+  def wait_writable(timeout = nil) = self
+
+  #: () -> self
+  def to_io = self
+
   #: () -> bool
   def eof? = @h.eof?
 
@@ -531,6 +555,7 @@ class Socket < BasicSocket
   SO_REUSEADDR = __const("SO_REUSEADDR") #: Integer
   SO_REUSEPORT = __const("SO_REUSEPORT") #: Integer
   SO_KEEPALIVE = __const("SO_KEEPALIVE") #: Integer
+  SO_OOBINLINE = __const("SO_OOBINLINE") #: Integer
   SO_LINGER = __const("SO_LINGER") #: Integer
   SO_BROADCAST = __const("SO_BROADCAST") #: Integer
   SO_RCVBUF = __const("SO_RCVBUF") #: Integer
@@ -569,6 +594,13 @@ class Socket < BasicSocket
     ensure
       s.close
     end
+  end
+
+  # A listening Socket's next connection and its peer, as MRI's Socket#accept (Addrinfo#listen's; net-ftp's makeport, decision 416).
+  #: () -> [Socket, Addrinfo]
+  def accept
+    c = Socket.__wrap(@h.accept)
+    [c, c.remote_address]
   end
 
   #: (String, Integer, ?String?, ?Integer?, ?connect_timeout: Float?) -> Socket
@@ -730,6 +762,11 @@ class Addrinfo < Object
 
   #: () -> String
   def to_s = to_sockaddr
+
+  # A Socket listening on this address (port 0: one the system picks), as MRI's Addrinfo#listen (decision 416).
+  # ponytail: TCP only, and the backlog is Go's
+  #: (?Integer) -> Socket
+  def listen(backlog = Socket::SOMAXCONN) = Socket.__wrap(BasicSocket::Handle__.listen_tcp(ip_address, ip_port))
 
   #: () -> [String, Integer, String, String]
   def __addr = %x{ rbSockIPAddr(self) }

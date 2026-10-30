@@ -10,7 +10,7 @@ import (
 // collect declares the classes, modules, methods and constants of f's top-level statements (the first pass over a file).
 func (c *Compiler) collect(ctx context.Context, f *File) {
 	if c.gemFile(f) {
-		lenientBlockParams(f.Root)
+		lenientBlockParams(f)
 	}
 	queue := f.Root.Statements.Body
 	locals := map[string]bool{} // the top level's, so far

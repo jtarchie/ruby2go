@@ -5,6 +5,7 @@
 require "foo"
 require "ng"
 require "mx"
+require "ftpish"
 p Foo::ORDERINGS
 p Foo::FLAGS
 p Foo::RETURN_IN_ORDER
@@ -30,3 +31,9 @@ p Mx.diagonal(1, 2)
 p Mx.ramp(4)
 p x.twin_solve
 p x.dyn_col
+f = Ftpish.new
+p f.parse("t", "2024.5"), f.parse("t", "2024"), f.parse("z", "q")
+p Ftpish::KIND, f.connect, f.get, f.get("x"), f.drain("ab")
+w = Ftpish::Wire.new
+p f.push(w, "STAT"), w.sent, f.by_name("abc", "upcase")
+p f.soft_require, f.forward(1, 2), f.pump, Ftpish::Proto.open("u", {}, false)

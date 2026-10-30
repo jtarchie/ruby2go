@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -93,6 +94,61 @@ end
 	origBefore, _, _ := strings.Cut(spec, "it_behaves_like")
 	if strings.Count(before, "\n") != strings.Count(origBefore, "\n") {
 		t.Errorf("rewrite moved lines:\n%s", got)
+	}
+}
+
+// TestRewriteLibraryHelpers: a library's own spec_helper loads (net-ftp's requires net/ftp), ruby/spec's does not; a
+// shared spec's `__dir__` names its own directory once inlined; guard_not keeps CRuby's make-test-spec check's block
+// (decision 416).
+func TestRewriteLibraryHelpers(t *testing.T) {
+	root := t.TempDir()
+	write := func(name, src string) {
+		t.Helper()
+		p := filepath.Join(root, name)
+		err := os.MkdirAll(filepath.Dir(p), 0o750)
+		if err == nil {
+			err = os.WriteFile(p, []byte(src), 0o600)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("spec_helper.rb", "raise 'never loaded'\n")
+	write("library/x/spec_helper.rb", "X_HELPER = 1\n")
+	write("library/x/shared/s.rb", "describe :x_s, shared: true do\n  it \"reads\" do\n    File.exist?(__dir__ + \"/../fixtures/f\").should == true\n  end\nend\n")
+	write("library/x/a_spec.rb", `require_relative '../../spec_helper'
+guard_not -> { MSpecScript.instance_variable_defined?(:@testing_ruby) } do
+  require_relative 'spec_helper'
+  require_relative 'shared/s'
+  describe "X" do
+    it_behaves_like :x_s, :s
+  end
+end
+`)
+	ctx := context.Background()
+	p, err := parser.NewParser(ctx, parser.WithVersion(parser.SyntaxVersionLatest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, err := load(ctx, p, root, []string{"library/x/a_spec.rb"}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(prog.files))
+	for _, f := range prog.files {
+		names = append(names, f.name)
+	}
+	if !slices.Contains(names, "library/x/spec_helper.rb") || slices.Contains(names, "spec_helper.rb") {
+		t.Errorf("want the library's spec_helper loaded and ruby/spec's not: %v", names)
+	}
+	got := prog.files[len(prog.files)-1].text
+	for _, want := range []string{`describe "X" do`, `(__dir__ + "/shared") + "/../fixtures/f"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rewritten spec lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "guard_not") {
+		t.Errorf("guard_not kept as a call:\n%s", got)
 	}
 }
 

@@ -514,13 +514,14 @@ func (c *Compiler) sameParamShape(m, parent *Method) bool {
 	if ps := m.Node.Parameters; ps != nil {
 		own, ownRest = len(ps.Requireds)+len(ps.Optionals)+len(ps.Posts), ps.Rest != nil
 	}
-	npos, hasRest := 0, false
+	npos, hasRest, hasKwRest := 0, false, false
 	var kws []string
 	for _, p := range parent.Params {
 		switch {
 		case p.Keyword && !p.KwRest:
 			kws = append(kws, p.Name)
 		case p.Keyword:
+			hasKwRest = true
 		case p.Rest:
 			hasRest = true
 		default:
@@ -528,14 +529,18 @@ func (c *Compiler) sameParamShape(m, parent *Method) bool {
 		}
 	}
 	var ownKws []string
+	ownKwRest := false
 	for _, k := range c.defKeywords(m, m.Node.Parameters) {
 		if !k.rest {
 			ownKws = append(ownKws, k.name)
+		} else {
+			ownKwRest = true
 		}
 	}
 	slices.Sort(kws)
 	slices.Sort(ownKws)
-	return npos == own && hasRest == ownRest && slices.Equal(kws, ownKws)
+	// a `**` too: drb's DRbProtocol#open(uri, config, first = true) is not Kernel#open(path, mode, perm, **opts) (decision 416)
+	return npos == own && hasRest == ownRest && hasKwRest == ownKwRest && slices.Equal(kws, ownKws)
 }
 
 // rehome rebuilds a type from an earlier compile with this one's classes, by name.

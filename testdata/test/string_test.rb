@@ -2429,3 +2429,15 @@ module StringTests
     end
   end
 end
+
+# slice's forms, typed and untyped, as []'s (decision 416).
+module StringTests
+  class SliceFormsTest < Minitest::Test
+    def test_slice_forms
+      s = "220-hello"
+      assert_equal(["220", "2", "hel", "20", "20"], [s.slice(/\A([0-9]{3})-/, 1), s.slice(0), s.slice("hel"), s.slice(1..2), s.slice(1, 2)])
+      u = s #: untyped
+      assert_equal(["220", "220", "2", "hel", "20", "20"], [u.slice(/\A([0-9]{3})-/, 1), u.slice(/\d+/), u.slice(0), u.slice("hel"), u.slice(1..2), u.slice(1, 2)])
+    end
+  end
+end

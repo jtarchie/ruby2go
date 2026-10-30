@@ -98,6 +98,7 @@ func span(l parser.Location) (int, int) { return l.StartOffset, l.StartOffset + 
 // sharedSpec is a `describe :name, shared: true` body, inlined where it_behaves_like names it.
 type sharedSpec struct {
 	body string
+	dir  string // the shared file's directory: its `__dir__` is not the including spec's
 }
 
 type rewriter struct {
@@ -199,7 +200,7 @@ func (rw *rewriter) call(call *parser.CallNode) bool {
 		s, e := span(*call.MessageLoc)
 		rw.edits = append(rw.edits, edit{s, e, "describe"})
 	case call.Name == "describe" && blk != nil && isShared(args):
-		rw.prog.shared[literal(args[0])] = sharedSpec{body: rw.text(blk.Body)}
+		rw.prog.shared[literal(args[0])] = sharedSpec{body: rw.text(blk.Body), dir: filepath.Dir(rw.name)}
 		rw.edits = append(rw.edits, blankLoc(rw.src, call.Location))
 		return true
 	case (call.Name == "it_behaves_like" || call.Name == "it_should_behave_like") && len(args) >= 2: // mspec aliases the second
@@ -297,18 +298,21 @@ func (rw *rewriter) require(call *parser.CallNode, arg parser.Node) {
 		return
 	}
 	rw.edits = append(rw.edits, blankLoc(rw.src, call.Location))
-	if filepath.Base(rel) == "spec_helper" || filepath.Base(rel) == "spec_helper.rb" {
-		return
-	}
 	target := filepath.Join(filepath.Dir(rw.name), rel)
 	if !strings.HasSuffix(target, ".rb") {
 		target += ".rb"
+	}
+	if filepath.Clean(target) == "spec_helper.rb" { // ruby/spec's own, which mspec.rb stands in for; a library's (net-ftp's requires net/ftp, matrix's defines be_close_to_matrix) loads (decision 416)
+		return
 	}
 	err := rw.prog.load(rw.ctx, target)
 	if err != nil && rw.err == nil {
 		rw.err = err
 	}
 }
+
+// dirRef is a `__dir__` call.
+var dirRef = regexp.MustCompile(`\b__dir__\b`)
 
 // methodRef is a read of mspec's @method/@object in a shared spec (it_behaves_like's second and third arguments); group 2 is what follows, so an assignment is left alone.
 var methodRef = regexp.MustCompile(`@(method|object)\b(\s*=[^=~>]|)`)
@@ -330,6 +334,11 @@ func (rw *rewriter) inline(call *parser.CallNode, args []parser.Node) {
 		}
 		return m
 	})
+	rel, relErr := filepath.Rel(filepath.Dir(rw.name), spec.dir)
+	if relErr == nil && rel != "." && spec.dir != "" {
+		// the shared file's `__dir__ + "/../fixtures/putbinaryfile"` (net-ftp's) names its own directory, not the spec's (decision 416)
+		body = dirRef.ReplaceAllString(body, "(__dir__ + "+strconv.Quote("/"+filepath.ToSlash(rel))+")")
+	}
 	// helpers outside the shared body (pack_format) read the ivars at run time, so set them too: a hook, rewritten
 	// with the body's own so it chains, on the body's first line so its lines stay put. Only literals: any other
 	// expression (a lambda calling a private method) would fail to compile for every example, not just its users.
@@ -391,6 +400,8 @@ func (rw *rewriter) keep(name string, args []parser.Node) bool {
 		return !platformIs(args)
 	case "little_endian", "as_user", "not_supported_on", "without_feature":
 		return true
+	case "guard_not": // `-> { MSpecScript.instance_variable_defined?(:@testing_ruby) }` is CRuby's own make test-spec: not this run (library/drb, decision 416)
+		return len(args) == 1 && strings.Contains(rw.text(args[0]), "@testing_ruby")
 	}
 	return false
 }

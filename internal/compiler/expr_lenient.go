@@ -10,8 +10,8 @@ import (
 
 // lenientBlockParams rewrites a gem file's block and lambda params rugaroo cannot bind as Ruby binds them: `&blk` (dropBlockArgParam)
 // and a lambda's defaults (decision 241).
-func lenientBlockParams(root parser.Node) {
-	anyNode(root, func(n parser.Node) bool {
+func lenientBlockParams(file *File) {
+	anyNode(file.Root, func(n parser.Node) bool {
 		switch b := n.(type) {
 		case *parser.BlockNode:
 			body := b.Body
@@ -21,7 +21,12 @@ func lenientBlockParams(root parser.Node) {
 			body := b.Body
 			dropBlockArgParam(b.Parameters, &body)
 			b.Body = body
-			optionalLambdaParams(b)
+			if k := optionalLambdaParams(b); k > 0 {
+				if file.lambdaOpt == nil {
+					file.lambdaOpt = map[*parser.LambdaNode]int{}
+				}
+				file.lambdaOpt[b] = k
+			}
 		}
 		return false
 	})
@@ -53,11 +58,13 @@ func dropBlockArgParam(params parser.Node, body *parser.Node) {
 	}
 }
 
-// optionalLambdaParams gives a gem lambda's optional params their defaults as a block's get them (optionalBlockParams).
-func optionalLambdaParams(l *parser.LambdaNode) {
+// optionalLambdaParams gives a gem lambda's optional params their defaults as a block's get them (optionalBlockParams),
+// answering how many it moved.
+func optionalLambdaParams(l *parser.LambdaNode) int {
 	b := &parser.BlockNode{Location: l.Location, Parameters: l.Parameters, Body: l.Body, Locals: l.Locals}
-	optionalBlockParams(b)
+	k := optionalBlockParams(b)
 	l.Parameters, l.Body = b.Parameters, b.Body
+	return k
 }
 
 // lenientBlockRet types a gem block's untyped value where the method wants Array[U] (flat_map): its unbound type

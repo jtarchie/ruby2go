@@ -245,11 +245,12 @@ type tableState struct {
 	tablesOut bool
 	tablesAt  tableInputs // tableInputs when the tables went out
 	// tuple arities used, so their types get emitted
-	tupleN    map[int]bool
-	optConv   map[string]bool  // class T?s bound to a method type parameter: rbOptClassFrom's cases (decision 295)
-	procTypes map[string]bool  // Proc Go types rendered (*func(...)), for the generated rbIsProc
-	procFuncs map[string]TFunc // the type each procTypes entry renders, for rbDynProcCall
-	argBoxes  map[string]bool  // T? boxes of generic type arguments, which generic code may hold
+	tupleN       map[int]bool
+	optConv      map[string]bool  // class T?s bound to a method type parameter: rbOptClassFrom's cases (decision 295)
+	procTypes    map[string]bool  // Proc Go types rendered (*func(...)), for the generated rbIsProc
+	procFuncs    map[string]TFunc // the type each procTypes entry renders, for rbDynProcCall
+	procMinArity map[string]int   // per procTypes entry: the fewest arguments a gem lambda of that Go type takes (decision 416)
+	argBoxes     map[string]bool  // T? boxes of generic type arguments, which generic code may hold
 	// concrete T? Go types (*T) rendered anywhere, for rbUnbox; the value
 	// says whether T is itself optional
 	boxes     map[string]bool
@@ -535,6 +536,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 		c.bootLoadPath = opts.boot.LoadPath
 		c.bootStructs = opts.boot.Structs
 	}
+	dms = c.withStaticDefineMethods(opts, dms)
 	c.markDefineMethods(dms)
 	c.loadPrelude(ctx, "prelude.rb")
 	c.loadIntOverflow(ctx)

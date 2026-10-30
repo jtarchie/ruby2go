@@ -551,6 +551,52 @@ func (f *fctx) anyArgs(args []parser.Node) []string {
 	return codes
 }
 
+// ownSendOrName is a gem's `x.send(a, b)` on an untyped x when some class defines its own send: that class's method for
+// its objects (BasicSocket#send(mesg, flags), which net-ftp's BufferedSocket forwards OOB data through), Kernel#send's
+// call by name for the rest, decided at run time as MRI's method lookup decides it (decision 416).
+func (f *fctx) ownSendOrName(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	if name != "send" || !isAny(recv.typ) || block != nil || !f.lenient() || f.noOwnSend || slices.ContainsFunc(args, isSplat) {
+		return expr{}, false
+	}
+	var owners []string
+	for _, cls := range f.c.classList {
+		if m := cls.Methods["send"]; m != nil && !cls.universal && !cls.IsModule && cls.metaOf == nil && m.Owner == cls {
+			owners = append(owners, f.c.goType(cls.instance()))
+		}
+	}
+	if len(owners) == 0 {
+		return expr{}, false
+	}
+	slices.Sort(owners)
+	owners = slices.Compact(owners)
+	r := f.newTmp()
+	f.emit("%s := %s", r, f.coerce(n, recv, TAny{}))
+	pinned := make([]parser.Node, len(args))
+	for i, a := range args {
+		t := f.newTmp()
+		f.emit("%s := %s", t, f.coerce(a, f.genExpr(a, nil), TAny{}))
+		pinned[i] = &exprNode{Node: a, e: expr{code: t, typ: TAny{}}}
+	}
+	ra := expr{code: r, typ: TAny{}}
+	res := f.newTmp()
+	f.emit("var %s any", res)
+	f.emit("switch %s.(type) {", r)
+	f.emit("case %s:", strings.Join(owners, ", "))
+	f.indent++
+	own := f.genDynCall(n, ra, "send", pinned)
+	f.emit("%s = %s", res, f.coerce(n, own, TAny{}))
+	f.indent--
+	f.emit("default:")
+	f.indent++
+	f.noOwnSend = true
+	byName := f.genSend(n, ra, name, pinned, nil)
+	f.noOwnSend = false
+	f.emit("%s = %s", res, f.coerce(n, byName, TAny{}))
+	f.indent--
+	f.emit("}")
+	return expr{code: res, typ: TAny{}}, true
+}
+
 // genSend compiles send/public_send/__send__. A literal name is an
 // ordinary call (send may reach private methods); a computed one switches
 // over every method name at run time.
@@ -561,6 +607,9 @@ func (f *fctx) genSend(n parser.Node, recv expr, name string, args []parser.Node
 		}
 		e := f.genMethodCall(n, recv, lit, args[1:], block)
 		f.implicitCall = false
+		return e
+	}
+	if e, ok := f.ownSendOrName(n, recv, name, args, block); ok {
 		return e
 	}
 	var blockArg string

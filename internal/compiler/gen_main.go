@@ -293,6 +293,12 @@ func (f *fctx) genConstInit1(k *Const) {
 	typ := f.c.constType(k)
 	sub := f.c.constFctx(k)
 	sub.indent = f.indent + 1
+	if lambdaInside(k.Value) { // a block's locals are hoisted at its top from what pass 1 saw (net-ftp's TIME_PARSER, decision 416)
+		sub.unset = maybeUnset(k.Value, nil) // `usec = ... if fractions` is nil when it does not run
+		sub.pass = 1
+		_ = catchCompileError(func() { sub.probe(func() { sub.genExpr(k.Value, typ) }) })
+		sub.pass = 2
+	}
 	e := sub.genExpr(k.Value, typ)
 	code := sub.coerce(k.Value, e, typ)
 	if e.lit && typeEq(e.typ, typ) { // coerce boxed or converted any other literal
@@ -321,6 +327,17 @@ func (f *fctx) genConstInit1(k *Const) {
 	if t := cmp.Or(k.first, k); t.guarded {
 		f.emit("%s = true", constSet(t))
 	}
+}
+
+// lambdaInside reports a lambda, proc or block in n, whose body hoists its own locals.
+func lambdaInside(n parser.Node) bool {
+	return anyNode(n, func(x parser.Node) bool {
+		switch x.(type) {
+		case *parser.LambdaNode, *parser.BlockNode:
+			return true
+		}
+		return false
+	})
 }
 
 // guardConsts marks main.rb's constants that may be read before their

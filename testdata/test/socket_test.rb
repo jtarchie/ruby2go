@@ -398,3 +398,40 @@ module SocketTests
     end
   end
 end
+
+# net-ftp's socket calls (decision 416): Addrinfo#listen and Socket#accept, the nonblock family net-protocol's
+# BufferedIO uses, SO_OOBINLINE, and Socket.tcp held untyped.
+module SocketTests
+  class FtpSocketTest < Minitest::Test
+    def test_listen_accept_nonblock
+      srv = Addrinfo.tcp("127.0.0.1", 0).listen
+      port = srv.local_address.ip_port
+      t = Thread.new do
+        c = TCPSocket.new("127.0.0.1", port)
+        c.setsockopt(Socket::SOL_SOCKET, Socket::SO_OOBINLINE, 1)
+        c.write_nonblock("hi", exception: false)
+        c.close
+      end
+      conn, peer = srv.accept
+      assert_equal("127.0.0.1", peer.ip_address)
+      assert_equal("hi", conn.read_nonblock(2, nil, exception: false))
+      assert(conn.to_io.equal?(conn))
+      assert(conn.wait_readable(1).equal?(conn))
+      t.join
+      assert_nil(conn.read_nonblock(2, nil, exception: false))
+      conn.close
+      srv.close
+    end
+
+    def test_untyped_socket_tcp
+      k = Socket #: untyped
+      refused = begin
+        k.tcp("127.0.0.1", 1)
+        false
+      rescue SystemCallError
+        true
+      end
+      assert(refused)
+    end
+  end
+end

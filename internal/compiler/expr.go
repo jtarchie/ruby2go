@@ -287,7 +287,7 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	case !ok:
 		typ = TAny{}
 	}
-	if isVoid(typ) && !isNil(typ) {
+	if isVoid(typ) && !isNil(typ) || isVoid(stripOpt(typ)) && !isNil(stripOpt(typ)) { // `require(x) rescue nil` (drb's auto_load): void or nil, untyped (decision 416)
 		typ = TAny{}
 	}
 	tmp := f.newTmp()
@@ -317,7 +317,12 @@ func (f *fctx) genRescueModifier(n *parser.RescueModifierNode, expected Type) ex
 	f.emit("\t}")
 	f.emit("}()")
 	e = f.genExpr(n.Expression, typ)
-	f.emit("%s = %s", tmp, f.coerce(n, e, typ))
+	if isVoid(e.typ) && !isNil(e.typ) { // `require(x) rescue nil`: the call runs, its value is nil
+		f.emitExprStmt(n, e)
+		f.emit("%s = nil", tmp)
+	} else {
+		f.emit("%s = %s", tmp, f.coerce(n, e, typ))
+	}
 	f.leaveBlock(saved)
 	f.indent--
 	f.emit("})")

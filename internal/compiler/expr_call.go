@@ -203,7 +203,7 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if n.Block != nil {
 		if _, ok := n.Block.(*parser.BlockNode); ok {
 			if e := f.resolve(recv.typ, n.Name); e != nil && e.M.Iterator && !coreEach(e.M) {
-				f.errorf(n, "%s with a block is an iterator and can only be used as a statement", n.Name)
+				return f.iteratorValue(n)
 			}
 		}
 	}
@@ -346,9 +346,8 @@ func (f *fctx) genMethodCall1(n parser.Node, recv expr, name string, args []pars
 			args = f.keywordMembers(n, vr, args)
 		}
 	}
-	if meta := f.metaOfType(recv.typ); name == "new" && meta != nil && meta.metaOf.hashBase && len(meta.metaOf.Subclasses) == 0 && len(args) == 0 {
-		f.emit("_ = %s", recv.code)
-		return f.genNew(n, meta.metaOf, nil, nil, nil, block) // `klass.new` on a singleton(HashSubclass), as rack's `@params_class.new`
+	if e, ok := f.classObjCall(n, recv, name, args, block); ok {
+		return e
 	}
 	f.checkEncodingNames(n, recv, name, args)
 	if recv.view != "" && block == nil {
@@ -534,7 +533,7 @@ func (f *fctx) ownSend(t Type, name string) bool {
 	if name != "send" {
 		return false
 	}
-	c := classOf(t)
+	c := classOf(stripOpt(t)) // a Socket? is a Socket's send too
 	return c != nil && c.lookup(name) != nil
 }
 
@@ -827,4 +826,42 @@ func (f *fctx) selfCall(n parser.Node, recv expr, name string, args []parser.Nod
 		f.errorf(n, "undefined method %s for %s", name, f.owner.displayName())
 	}
 	return f.universalCall(n, recv, name, args, block)
+}
+
+// iteratorValue is an iterator call in value position: a gem's `loop do ... break ... end` as a block's last value
+// (drb's main_loop) runs, then is nil (decisions 233, 416); anything else is an error.
+func (f *fctx) iteratorValue(n *parser.CallNode) expr {
+	if f.lenient() && n.Name == "loop" && kernelRecv(n) {
+		f.genStmt(n, tail{})
+		return expr{code: "nil", typ: TNil{}, lit: true}
+	}
+	f.errorf(n, "%s with a block is an iterator and can only be used as a statement", n.Name)
+	return expr{}
+}
+
+// classObjCall is a held class object's `new` of a Hash subclass (`klass.new` on a singleton(HashSubclass), as rack's
+// `@params_class.new`) or `allocate`.
+func (f *fctx) classObjCall(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	if meta := f.metaOfType(recv.typ); name == "new" && meta != nil && meta.metaOf.hashBase && len(meta.metaOf.Subclasses) == 0 && len(args) == 0 {
+		f.emit("_ = %s", recv.code)
+		return f.genNew(n, meta.metaOf, nil, nil, nil, block), true
+	}
+	return f.genAllocate(n, recv, name, args, block)
+}
+
+// genAllocate is Class#allocate on a struct class: the object without initialize, as Marshal.load makes one (net-ftp's
+// specs, decision 416); its ivars must read nil (or false, as falsy) unset: an Integer's would read 0.
+func (f *fctx) genAllocate(n parser.Node, recv expr, name string, args []parser.Node, block parser.Node) (expr, bool) {
+	meta := f.metaOfType(recv.typ)
+	if name != "allocate" || meta == nil || len(args) != 0 || block != nil || !meta.metaOf.isStruct() ||
+		len(meta.metaOf.Subclasses) != 0 || meta.metaOf.lookup("allocate") != nil {
+		return expr{}, false
+	}
+	for _, iv := range f.c.ivarOrder(meta.metaOf) {
+		if g := f.c.goType(iv.Type); g != "any" && !strings.HasPrefix(g, "*") && !strings.HasSuffix(g, "I") && g != "Boolean" && !strings.HasPrefix(g, "rbOpt[") {
+			f.errorf(n, "%s.allocate: %s is %s, which would read as its zero value, not nil, before initialize", meta.metaOf.RubyName, iv.Name, iv.Type)
+		}
+	}
+	f.emit("_ = %s", recv.code)
+	return expr{code: "(&" + meta.metaOf.Name + "{})", typ: TClass{C: meta.metaOf}}, true
 }

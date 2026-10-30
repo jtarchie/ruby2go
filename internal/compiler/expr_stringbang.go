@@ -144,9 +144,9 @@ func (f *fctx) safeStringBang(n *parser.CallNode, lv parser.Node, write func(exp
 	if !ok {
 		e = f.genExpr(plain, nil)
 	}
-	if e.stmt || isVoid(e.typ) {
+	if e.stmt && !e.done || isVoid(e.typ) {
 		f.emit("%s", e.code)
-	} else {
+	} else { // a done edit's code is the String it left (net-ftp's `result&.concat(data)`, decision 416)
 		f.emit("%s = %s", res, f.coerce(n, e, TAny{}))
 	}
 	f.leaveBlock(saved)
@@ -164,6 +164,10 @@ func (f *fctx) stringBangOn(n *parser.CallNode, lv parser.Node, write func(expr)
 		switch {
 		case n.Name == "[]=" && local && f.stringEditArgs(callArgs(n)):
 			return f.untypedIndexSet(n, lv, write), true
+		case (n.Name == "clear" || n.Name == "replace") && local: // net-protocol's rbuf_fill: `@rbuf << rv; rv.clear` (decision 416)
+			return f.untypedStringEdit(n, lv, func(sv string) (expr, bool) {
+				return f.stringReplaceBang(n, callArgs(n), func() string { return sv }, write)
+			}), true
 		case n.Name == "<<" || n.Name == "concat" || strings.HasSuffix(n.Name, "!") && f.c.classes["String"].lookup(strings.TrimSuffix(n.Name, "!")) != nil:
 			// kramdown's adapt_source: `source = source.encode('UTF-8'); source.gsub!(...); source << "\n"` (decision 330)
 			return f.untypedStringEdit(n, lv, func(sv string) (expr, bool) {

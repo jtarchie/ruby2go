@@ -26,7 +26,7 @@ var rbSockConsts = map[string]int{
 	"PF_INET": syscall.AF_INET, "PF_INET6": syscall.AF_INET6, "PF_UNIX": syscall.AF_UNIX, "PF_UNSPEC": syscall.AF_UNSPEC,
 	"SOCK_STREAM": syscall.SOCK_STREAM, "SOCK_DGRAM": syscall.SOCK_DGRAM, "SOCK_RAW": syscall.SOCK_RAW,
 	"SOL_SOCKET": syscall.SOL_SOCKET, "SO_REUSEADDR": syscall.SO_REUSEADDR, "SO_REUSEPORT": syscall.SO_REUSEPORT,
-	"SO_KEEPALIVE": syscall.SO_KEEPALIVE, "SO_LINGER": syscall.SO_LINGER, "SO_BROADCAST": syscall.SO_BROADCAST,
+	"SO_KEEPALIVE": syscall.SO_KEEPALIVE, "SO_LINGER": syscall.SO_LINGER, "SO_BROADCAST": syscall.SO_BROADCAST, "SO_OOBINLINE": syscall.SO_OOBINLINE,
 	"SO_RCVBUF": syscall.SO_RCVBUF, "SO_SNDBUF": syscall.SO_SNDBUF, "SO_TYPE": syscall.SO_TYPE, "SO_ERROR": syscall.SO_ERROR,
 	"IPPROTO_IP": syscall.IPPROTO_IP, "IPPROTO_IPV6": syscall.IPPROTO_IPV6, "IPPROTO_TCP": syscall.IPPROTO_TCP, "IPPROTO_UDP": syscall.IPPROTO_UDP,
 	"TCP_NODELAY": syscall.TCP_NODELAY, "INADDR_ANY": 0, "SHUT_RD": syscall.SHUT_RD, "SHUT_WR": syscall.SHUT_WR, "SHUT_RDWR": syscall.SHUT_RDWR,

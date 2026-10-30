@@ -2774,3 +2774,16 @@ module HashTests
     end
   end
 end
+
+# A converted copy keeps Hash.new's default (decision 416).
+module HashTests
+  class DefaultCopyTest < Minitest::Test
+    #: (Hash[untyped, untyped]) -> untyped
+    def hash_default_read(h) = h["zz"]
+
+    def test_default_survives_conversion
+      h = Hash.new(5) #: Hash[String, Integer]
+      assert_equal(5, hash_default_read(h))
+    end
+  end
+end

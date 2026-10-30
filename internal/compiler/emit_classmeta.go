@@ -137,6 +137,14 @@ func (c *Compiler) emitSingletonMethodTable(cls, desc *Class) {
 		add(desc.MethodList, true)
 	}
 	c.w("\t}\n}\n\n")
+	// its private ones (`private_class_method :new`), for a class object's private_methods (matrix's specs, decision 416)
+	c.w("func (self *%s) _PrivateSingletonMethods() []rbConst {\n\treturn []rbConst{\n", cls.Name)
+	for _, m := range cls.MethodList {
+		if m.Private && m.Name != "initialize" && !strings.HasPrefix(m.Name, "__") {
+			c.w("\t\t{%q, nil, false},\n", m.Name)
+		}
+	}
+	c.w("\t}\n}\n\n")
 }
 
 // emitPrivateMethodTable is emitMethodTable's private half, for Module#private_instance_methods only (decision 181),
@@ -256,15 +264,28 @@ func (c *Compiler) emitDynProcCall(procs []string) {
 			c.w("\tcase %s:\n\t\treturn (*p)(args...), true\n", p)
 			continue
 		}
-		if t.Self != nil || slices.ContainsFunc(t.Params, isVoid) || t.Rest {
+		if t.Self != nil || slices.ContainsFunc(t.Params, isVoid) || t.Rest && len(t.Params) == 0 {
 			continue
 		}
-		args := make([]string, len(t.Params))
-		for i, pt := range t.Params {
+		fixed := len(t.Params)
+		if t.Rest {
+			fixed--
+		}
+		args := make([]string, fixed)
+		for i, pt := range t.Params[:fixed] {
 			args[i] = c.dynArg(pt, i)
 		}
+		least, most := fixed, fixed
+		if n, ok := c.procMinArity[p]; ok { // a gem lambda's optional params, nil when not given (decision 416)
+			least = n
+		}
+		if t.Rest { // `-> s, *args { }` (net-ftp's fixture handlers, decision 416): the rest after the fixed ones
+			et := t.Params[fixed]
+			args = append(args, fmt.Sprintf("rbRest[%s](args, %d, %q)...", c.goType(et), fixed, et.String()))
+			most = -1
+		}
 		call := "(*p)(" + strings.Join(args, ", ") + ")"
-		c.w("\tcase %s:\n\t\trbArity(len(args), %d, %d)\n", p, len(t.Params), len(t.Params))
+		c.w("\tcase %s:\n\t\trbArity(len(args), %d, %d)\n", p, least, most)
 		switch {
 		case isVoid(t.Ret):
 			c.w("\t\t%s\n\t\treturn nil, true\n", call)

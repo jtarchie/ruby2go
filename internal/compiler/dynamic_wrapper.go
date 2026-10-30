@@ -468,8 +468,8 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 	if mix && rest == nil && opt == 0 {
 		c.dynTwinsAndNumbers(f, e, recv, env)
 	}
-	if rest == nil && opt == 0 {
-		c.dynClassOverloads(f, e, recv)
+	if rest == nil {
+		c.dynClassOverloads(f, e, recv, req, opt)
 	}
 	if m.Name == "<=>" && len(m.Params) == 1 && req == 1 {
 		if t, ok := subst(m.Params[0].Type, env).(TClass); ok { // MRI's <=> answers nil for an incomparable argument
@@ -578,7 +578,8 @@ func rbDynFn(name string) string { return "rbDyn" + goMethodName(name) }
 
 // dynClassOverloads picks a decision-12 overload by its first argument's run-time class, as a typed call picks it by
 // the static one: `x.gsub(/re/, s)` on an untyped String is `__gsub_regexp`, not gsub's (String, String).
-func (c *Compiler) dynClassOverloads(f *fctx, e *entry, recv expr) {
+// With optional params (Time.utc's), each argument count calls the twin with that many, so its defaults run (decision 416).
+func (c *Compiler) dynClassOverloads(f *fctx, e *entry, recv expr, req, opt int) {
 	m, cls := e.M, classOf(recv.typ)
 	if cls == nil || len(m.Params) == 0 || strings.HasPrefix(m.Name, "__") {
 		return
@@ -604,7 +605,17 @@ func (c *Compiler) dynClassOverloads(f *fctx, e *entry, recv expr) {
 			pt := tw.Params[i].Type
 			nodes = append(nodes, &exprNode{e: expr{code: c.dynArg(pt, i), typ: pt}})
 		}
-		f.emitDynReturn(f.callEntry(&parser.NilNode{}, te, recv, nodes, nil))
+		if opt == 0 {
+			f.emitDynReturn(f.callEntry(&parser.NilNode{}, te, recv, nodes, nil))
+		} else {
+			for k := max(req, 1); k <= req+opt; k++ {
+				f.emit("if len(args) == %d {", k)
+				f.indent++
+				f.emitDynReturn(f.callEntry(&parser.NilNode{}, te, recv, nodes[:k], nil))
+				f.indent--
+				f.emit("}")
+			}
+		}
 		f.indent--
 		f.emit("}")
 	}

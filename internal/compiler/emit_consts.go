@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
@@ -111,7 +112,61 @@ func (c *Compiler) constType(k *Const) (typ Type) {
 		c.errorf(k.File, k.Value, "cannot infer the type of constant %s; annotate it with `#: T`", k.RubyName)
 	}
 	k.Type = c.joinAgains(k, e.typ)
+	if c.gemFile(k.File) {
+		k.Type = c.widenConstElems(k, f, k.Type)
+	}
 	return k.Type
+}
+
+// widenConstElems is a gem's Hash or Array constant t with its element untyped when a `K[k] = v` (or `K << v`) in its file
+// stores a v its element type cannot hold: net-ftp's `FACT_PARSERS = Hash.new(CASE_DEPENDENT_PARSER)` given a two-param
+// TIME_PARSER, as MRI's Hash holds any value (decision 416).
+func (c *Compiler) widenConstElems(k *Const, f *fctx, t Type) Type {
+	tc, ok := t.(TClass)
+	if !ok || len(tc.Args) == 0 || tc.C.RubyName != "Hash" && tc.C.RubyName != "Array" {
+		return t
+	}
+	short := k.RubyName[strings.LastIndex(k.RubyName, ":")+1:]
+	vi := len(tc.Args) - 1
+	if isAny(tc.Args[vi]) {
+		return t
+	}
+	widen := false
+	anyNode(k.File.Root, func(n parser.Node) bool {
+		call, ok := n.(*parser.CallNode)
+		if widen || !ok || call.Name != "[]=" && call.Name != "<<" || !namesConst(call.Receiver, short) {
+			return false
+		}
+		args := callArgs(call)
+		if len(args) == 0 {
+			return false
+		}
+		var v expr
+		if catchCompileError(func() { f.probe(func() { v = f.genExpr(args[len(args)-1], nil) }) }) != nil {
+			return false
+		}
+		_, vf := v.typ.(TFunc)
+		_, ef := tc.Args[vi].(TFunc)
+		widen = vf && ef && c.goType(v.typ) != c.goType(tc.Args[vi]) || !vf && !isAny(v.typ) && !fits(v.typ, tc.Args[vi])
+		return false
+	})
+	if !widen {
+		return t
+	}
+	args := slices.Clone(tc.Args)
+	args[vi] = TAny{}
+	return TClass{C: tc.C, Args: args}
+}
+
+// namesConst reports n reading the constant short, bare or as the last segment of a path.
+func namesConst(n parser.Node, short string) bool {
+	switch r := n.(type) {
+	case *parser.ConstantReadNode:
+		return r.Name == short
+	case *parser.ConstantPathNode:
+		return r.Name != nil && *r.Name == short
+	}
+	return false
 }
 
 // joinAgains is a constant's type with what its later assignments give it, as a local joins its writes (decision 363).

@@ -255,3 +255,17 @@ module DateTests
     end
   end
 end
+
+# Time.utc, gm and local take numeric Strings and local takes usec, as MRI's (net-ftp's TIME_PARSER, decision 416).
+module DateTests
+  class TimeStringArgsTest < Minitest::Test
+    def test_string_args
+      assert_equal(Time.utc(1998, 7, 5, 13, 23, 16), Time.gm("1998", "07", "05", "13", "23", "16"))
+      assert_equal(500_000, Time.utc(2024, 5, 6, 7, 8, 9, 500_000).usec)
+      t = Time #: untyped
+      assert_equal(2024, t.public_send(:utc, "2024", "05", "06", "07", "08", "09", nil).year)
+      assert_equal(250_000, Time.local(2024, 1, 1, 0, 0, 0, 250_000).usec)
+      assert_equal(7, Time.mktime("1998", "07").month)
+    end
+  end
+end

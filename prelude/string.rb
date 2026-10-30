@@ -572,12 +572,23 @@ class String < Object
     return out
   }
 
+  # slice is [] (decision 416: its forms mirror []'s, so an untyped receiver's call picks the same one).
+  #: (Integer) -> String?
+  def slice(i) = self[i]
+
   #: (Integer, Integer) -> String?
-  def slice(start, len) = self[start, len]
+  def __slice_2(start, len) = self[start, len]
 
   # slice(range) on an untyped receiver (a typed call is []).
   #: (Range[Integer]) -> String?
   def __slice_range(r) = __idx_range(r)
+
+  # slice's other forms, as []'s (net-ftp's `lines.last.slice(/\A([0-9a-zA-Z]{3})-/, 1)` on an untyped line, decision 416).
+  #: (String) -> String?
+  def __slice_string(str) = __idx_string(str)
+
+  #: (Regexp, ?untyped) -> String?
+  def __slice_regexp(re, n = 0) = __idx_regexp(re, n)
 
   # One character set only (no intersection of several, as MRI's).
   #: (String) -> String

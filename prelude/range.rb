@@ -323,9 +323,6 @@ class Range < Object
   #: () -> Array[E]
   def entries = to_a
 
-  #: () -> Array[E]
-  def to_ary = to_a
-
   #: () -> String
   def to_s = %x{ rbRangeStr(self, rbToS) }
 

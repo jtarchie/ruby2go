@@ -83,6 +83,7 @@ type fctx struct {
 	viewSplat      bool        // binding a windowSafe block's params: destructuring copies out of the window (decision 386)
 	zipVal         bool        // the iterator loop is zip's [E, U?] with U = Integer/Float: pairs open to rbOpt (decision 396)
 	bodyStmts      parser.Node // the statements of the method or block body being generated (noteBinStmt)
+	noOwnSend      bool        // generating ownSendOrName's by-name arm: Kernel#send, not a class's own
 	retryDepth     int         // f.closures where retryFlag was set: a block's retry can't reach it
 	hasNamedRet    bool
 	branchLenient  bool                // a gem method's retry: an if/else branch that does not compile raises if reached (decision 251)

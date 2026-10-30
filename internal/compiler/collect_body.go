@@ -480,6 +480,7 @@ func (c *Compiler) collectClassCall(ctx context.Context, f *File, cls *Class, n 
 		// snapshot, decision 161, supplies what it resolved); ruby2_keywords
 		// is MRI's keyword-passthrough marker, which rugaroo passes statically;
 		// deprecate_constant warns only with Warning[:deprecated], off by default.
+		c.ruby2KeywordsDef(f, cls, n, args, vis.private, scope)
 		c.noteAutoloadCall(n, args, scope)
 		c.loadAutoload(ctx, f, n)
 	case "include", "extend", "prepend", "mixes_in_class_methods":
@@ -770,4 +771,11 @@ func (c *Compiler) singletonOtherCall(f *File, s *parser.CallNode, scope []*Clas
 		c.errorf(f, s, "unsupported call in `class << self`: %s", s.Name)
 	}
 	c.addClassStmt(f, s, scope)
+}
+
+// ruby2KeywordsDef collects `ruby2_keywords def method_missing(...)`'s def (drb's DRbObject, decision 416).
+func (c *Compiler) ruby2KeywordsDef(f *File, cls *Class, n *parser.CallNode, args []parser.Node, private bool, scope []*Class) {
+	if d, ok := firstArg(args).(*parser.DefNode); ok && n.Name == "ruby2_keywords" && len(args) == 1 {
+		c.addMethod(f, cls, d, private, scope)
+	}
 }

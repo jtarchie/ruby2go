@@ -745,3 +745,112 @@ func (c *Compiler) staticallyIncludes(cls *Class, mod *Class) bool {
 	}
 	return false
 }
+
+// staticDefineMethods are the boot records a gem's `[:a, :b].each { |m| define_method(m) { ... } }` in a class body would
+// make (net-ftp's BufferedSocket forwarding send, shutdown, ...), for a compile with no boot (cmd/rubyspec's, decision 416):
+// one per Symbol, its block param captured as that Symbol.
+func (c *Compiler) staticDefineMethods() []boot.MethodInfo {
+	var out []boot.MethodInfo
+	for _, path := range slices.Sorted(maps.Keys(c.parsed)) {
+		f := c.parsed[path]
+		if !c.gemFile(f) {
+			continue
+		}
+		var walk func(n parser.Node, owner []string)
+		walk = func(n parser.Node, owner []string) {
+			switch x := n.(type) {
+			case *parser.ClassNode:
+				owner = append(slices.Clone(owner), constPathText(f, x.ConstantPath))
+				walk(x.Body, owner)
+				return
+			case *parser.ModuleNode:
+				owner = append(slices.Clone(owner), constPathText(f, x.ConstantPath))
+				walk(x.Body, owner)
+				return
+			case *parser.DefNode, *parser.SingletonClassNode:
+				return
+			case *parser.CallNode:
+				out = append(out, staticDefineLoop(f, x, owner)...)
+			}
+			if n == nil {
+				return
+			}
+			for _, ch := range n.CompactChildNodes() {
+				walk(ch, owner)
+			}
+		}
+		walk(f.Root, nil)
+	}
+	return out
+}
+
+// staticDefineLoop is staticDefineMethods for one `[...].each do |m| define_method(m) { } end` in owner's body.
+func staticDefineLoop(f *File, call *parser.CallNode, owner []string) []boot.MethodInfo {
+	arr, ok := call.Receiver.(*parser.ArrayNode)
+	blk, ok2 := call.Block.(*parser.BlockNode)
+	if !ok || !ok2 || call.Name != "each" || len(owner) == 0 || blk.Body == nil {
+		return nil
+	}
+	params := blockParamNames(blk)
+	st, ok := blk.Body.(*parser.StatementsNode)
+	if len(params) != 1 || !ok || len(st.Body) != 1 {
+		return nil
+	}
+	dm, ok := st.Body[0].(*parser.CallNode)
+	if !ok || !isDefineMethodCall(dm) || dm.Receiver != nil || len(callArgs(dm)) != 1 {
+		return nil
+	}
+	if lv, ok := callArgs(dm)[0].(*parser.LocalVariableReadNode); !ok || lv.Name != params[0] {
+		return nil
+	}
+	loc := dm.Location
+	if dm.MessageLoc != nil {
+		loc = *dm.MessageLoc
+	}
+	var out []boot.MethodInfo
+	for _, el := range arr.Elements {
+		sym, ok := el.(*parser.SymbolNode)
+		if !ok {
+			return nil
+		}
+		name := sym.Unescaped.Value
+		out = append(out, boot.MethodInfo{Owner: strings.Join(owner, "::"), Name: name, Loc: f.bootLoc(loc.StartOffset),
+			Captures: map[string]string{params[0]: ":" + name}})
+	}
+	return out
+}
+
+// constPathText is a class or module statement's name as written (`FTP`, `Net::FTP`).
+func constPathText(f *File, n parser.Node) string {
+	return strings.TrimPrefix(f.text(n.GetLocation()), "::")
+}
+
+// blockParamNames are a block's plain required params, nil when it has any other kind.
+func blockParamNames(b *parser.BlockNode) []string {
+	bp, ok := b.Parameters.(*parser.BlockParametersNode)
+	if !ok || bp.Parameters == nil {
+		return nil
+	}
+	ps := bp.Parameters
+	if len(ps.Optionals) > 0 || ps.Rest != nil || len(ps.Posts) > 0 || len(ps.Keywords) > 0 || ps.KeywordRest != nil || ps.Block != nil {
+		return nil
+	}
+	var out []string
+	for _, r := range ps.Requireds {
+		rp, ok := r.(*parser.RequiredParameterNode)
+		if !ok {
+			return nil
+		}
+		out = append(out, rp.Name)
+	}
+	return out
+}
+
+// withStaticDefineMethods is boot's define_method records, or, with no boot to record them, the literal ones a gem's class
+// body makes (decision 416).
+func (c *Compiler) withStaticDefineMethods(opts *options, dms []boot.MethodInfo) []boot.MethodInfo {
+	if opts.boot == nil && len(opts.gemDirs) > 0 {
+		return c.staticDefineMethods()
+	}
+	return dms
+}

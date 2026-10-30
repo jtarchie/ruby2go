@@ -3336,3 +3336,18 @@ module ArrayTests
     end
   end
 end
+
+# A tuple where an Array is expected, and an untyped + of mixed classes (decision 416).
+module ArrayTests
+  class TupleArrayTest < Minitest::Test
+    def test_tuple_into_array
+      xs = [1] #: Array[Integer]
+      assert_equal([1, 3, 1], xs + 7.divmod(2))
+    end
+
+    def test_untyped_plus_mixed
+      ys = ["a"].map(&:to_s) #: untyped
+      assert_equal(["a", 3, 1], ys + 7.divmod(2))
+    end
+  end
+end

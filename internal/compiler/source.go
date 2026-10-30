@@ -13,17 +13,18 @@ import (
 
 // File is one parsed Ruby source file.
 type File struct {
-	Name     string // as shown in //line directives and errors
-	Src      []byte
-	Root     *parser.ProgramNode
-	lines    []int   // byte offset of each line start
-	origin   Origin  // set at construction for the prelude; a source file's gem-or-user answer is gemFile's, once asked
-	valueGen bool    // a Struct/Data's generated members (valueClassSource), which may mark @dynamic
-	pinLine  int     // every position reports this line: generated source, whose errors belong to its declaration
-	path     string  // a user file's real path on disk, which require_relative resolves against
-	data     *string // the text after `__END__`, which DATA reads
-	overflow string  // its own `# int_overflow: mode` line, which governs the Integer arithmetic written in it (decision 381)
-	nilCheck string  // its own `# nil_check: mode` line, else its require_relative-ing file's; governs the T? uses written in it (decisions 393, 404)
+	Name      string // as shown in //line directives and errors
+	Src       []byte
+	Root      *parser.ProgramNode
+	lines     []int                      // byte offset of each line start
+	origin    Origin                     // set at construction for the prelude; a source file's gem-or-user answer is gemFile's, once asked
+	lambdaOpt map[*parser.LambdaNode]int // a gem lambda's optional params, made required with nil defaults (optionalLambdaParams)
+	valueGen  bool                       // a Struct/Data's generated members (valueClassSource), which may mark @dynamic
+	pinLine   int                        // every position reports this line: generated source, whose errors belong to its declaration
+	path      string                     // a user file's real path on disk, which require_relative resolves against
+	data      *string                    // the text after `__END__`, which DATA reads
+	overflow  string                     // its own `# int_overflow: mode` line, which governs the Integer arithmetic written in it (decision 381)
+	nilCheck  string                     // its own `# nil_check: mode` line, else its require_relative-ing file's; governs the T? uses written in it (decisions 393, 404)
 
 	// standalone annotation comments by the line they precede (first code line after)
 	leading map[int][]comment

@@ -219,6 +219,11 @@ func (c *Compiler) dynEntry(cls *Class, name string) (*entry, bool) {
 		return nil, false
 	}
 	e := cls.lookup(name)
+	if e != nil && e.M.Block != nil && !c.dynBlockable(name, e.M) && !c.dynBlockNames[name] && (e.M.Owner == nil || !e.M.Owner.universal) { // not Kernel's open on every class
+		if en := cls.lookup("__" + overloadBase(name) + "_enum"); en != nil && en.M.Block == nil && !en.M.generic() {
+			e = en // no dynamic call passes it a block: its block-less form (net-ftp's `Socket.tcp(host, port)`, decision 416)
+		}
+	}
 	if e == nil || e.M.generic() && (e.M.Block == nil || !c.dynBlockable(name, e.M)) || e.M.Block != nil && !c.dynBlockable(name, e.M) {
 		return nil, false
 	}

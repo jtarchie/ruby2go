@@ -86,6 +86,7 @@ func (f *fctx) coerce0(n parser.Node, e expr, to Type) string {
 	if typeEq(e.typ, to) {
 		return e.code
 	}
+	f.checkProcShape(n, e, to)
 	if e.view != "" && isAny(to) {
 		return e.view // the value itself, not a converted copy
 	}
@@ -322,6 +323,46 @@ func (f *fctx) truthiness(e expr) (string, bool) {
 	return "", false
 }
 
+// coerceIntoClass is the untyped value converted (rbAs also converts an Array/Hash of another instantiation, rbConv), or a
+// tuple as an Array.
+func (f *fctx) coerceIntoClass(n parser.Node, e expr, to TClass) (string, bool) {
+	if isAny(e.typ) {
+		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String())), true
+	}
+	if tt, ok := e.typ.(TTuple); ok && to.C.RubyName == "Array" && len(to.Args) == 1 {
+		return f.tupleIntoArray(n, e, tt, to), true
+	}
+	return "", false
+}
+
+// checkProcShape: a Proc of another shape is another Go func type, with no conversion between them (decision 416).
+func (f *fctx) checkProcShape(n parser.Node, e expr, to Type) {
+	ef, ok := stripOpt(e.typ).(TFunc)
+	if !ok {
+		return
+	}
+	if tf, ok := stripOpt(to).(TFunc); ok && f.c.goType(ef) != f.c.goType(tf) {
+		f.errorf(n, "a Proc %s where a Proc %s is expected; their parameters or result differ", ef, tf)
+	}
+}
+
+// tupleIntoArray is a tuple where an Array is expected: an Array of its fields when each fits the element type, else a
+// compile error (net-ftp's `host.split(".") + port.divmod(256)`, an [Integer, Integer] for Array[String]: gem code then
+// calls + at run time, decision 416). Go would reject the tuple as it is.
+func (f *fctx) tupleIntoArray(n parser.Node, e expr, tt TTuple, to TClass) string {
+	et := to.Args[0]
+	tmp := f.newTmp()
+	f.emit("%s := %s", tmp, e.code)
+	parts := make([]string, len(tt.Elems))
+	for i, el := range tt.Elems {
+		if !isAny(et) && !fitsValue(expr{typ: el}, et) {
+			f.errorf(n, "%s where %s is expected", e.typ, to)
+		}
+		parts[i] = f.coerce(n, expr{code: fmt.Sprintf("%s.F%d", tmp, i), typ: el}, et)
+	}
+	return arrayLit(f.c.goType(et), parts)
+}
+
 // coerceClass is coerce to a class type.
 func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 	if to.C.universal && e.lit {
@@ -332,9 +373,8 @@ func (f *fctx) coerceClass(n parser.Node, e expr, to TClass) string {
 			return code
 		}
 	}
-	// rbAs also converts an Array/Hash of another instantiation (rbConv).
-	if isAny(e.typ) {
-		return f.noteConv(n, fmt.Sprintf("rbAs[%s](%s, %q)", f.c.goType(to), e.code, to.String()))
+	if code, ok := f.coerceIntoClass(n, e, to); ok {
+		return code
 	}
 	if code, ok := bignumConv(e, to); ok {
 		return code

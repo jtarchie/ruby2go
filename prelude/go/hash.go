@@ -94,8 +94,17 @@ func (*Hash[K, V]) rbFrom(v any) (*Hash[K, V], bool) {
 		}
 		return conv
 	})
+	if d, ok := v.(interface{ _DefAny() (any, bool) }); ok && conv { // Hash.new(default)'s default comes along (decision 416)
+		// ponytail: a default proc does not: its func type is the source's; convert it when a program needs one
+		if dv, has := d._DefAny(); has {
+			out.defVal, out.hasDef = rbConv[V](dv)
+		}
+	}
 	return out, conv
 }
+
+// _DefAny is the Hash.new(default) value, boxed, and whether there is one.
+func (self *Hash[K, V]) _DefAny() (any, bool) { return self.defVal, self.hasDef }
 
 // rbEachAny yields each pair unboxed, as _ToAny's copy holds them.
 func (self *Hash[K, V]) rbEachAny(yield func(k, v any) bool) {

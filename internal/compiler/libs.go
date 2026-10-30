@@ -19,7 +19,8 @@ import (
 var preludeLibs = map[string]string{
 	"json":                     "prelude/json.rb",
 	"__errno_process":          "prelude/errno_process.rb",
-	"__bignum":                 "prelude/bignum.rb", // no require: --int-overflow=promote (decision 372) // no require of its own: named by Errno::ESRCH/EPERM (requireScan.visit)
+	"__reflection":             "prelude/reflection.rb", // no require: a private_methods/protected_methods call (requireScan.visit, decision 416)
+	"__bignum":                 "prelude/bignum.rb",     // no require: --int-overflow=promote (decision 372) // no require of its own: named by Errno::ESRCH/EPERM (requireScan.visit)
 	"stringio":                 "prelude/stringio.rb",
 	"fileutils":                "prelude/fileutils.rb",
 	"tempfile":                 "prelude/tempfile.rb",
@@ -246,6 +247,9 @@ func (sc *requireScan) visit(f *File, n parser.Node) {
 	}
 	if call, ok := n.(*parser.CallNode); ok && unlinksPath(call) {
 		sc.lib("__errno_process") // unlink(2) of a directory is EPERM on macOS (decision 339)
+	}
+	if call, ok := n.(*parser.CallNode); ok && (call.Name == "private_methods" || call.Name == "protected_methods") {
+		sc.lib("__reflection") // decision 416
 	}
 	if _, ok := n.(*parser.DefNode); ok { // a method body: a computed require there is reached only at run time
 		prev := sc.top

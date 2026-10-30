@@ -6827,3 +6827,75 @@ module ObjectTests
     end
   end
 end
+
+# net-ftp's and drb's shapes in a program's own code (decision 416).
+module ObjectTests
+  class FtpPt
+    #: (Integer?) -> void
+    def initialize(x)
+      @x = x
+    end
+
+    #: () -> Integer?
+    def x = @x
+
+    private
+
+    #: () -> Integer
+    def hidden = 1
+  end
+
+  class FtpMade
+    private_class_method :new
+
+    #: () -> FtpMade
+    def self.make = new
+  end
+
+  class FtpShapesTest < Minitest::Test
+    def test_allocate
+      pt = FtpPt.allocate
+      assert_nil(pt.x)
+      pt.send(:initialize, 5)
+      assert_equal(5, pt.x)
+    end
+
+    def test_private_methods
+      assert(FtpPt.new(1).private_methods.include?(:hidden))
+      refute(FtpPt.new(1).private_methods.include?(:x))
+    end
+
+    def test_class_private_methods
+      assert(FtpMade.private_methods.include?(:new))
+      assert(FtpMade.make.is_a?(FtpMade))
+    end
+
+    def test_range_has_no_to_ary
+      a, b = (1..2)
+      assert_equal([1..2, nil], [a, b])
+      r = (1..2) #: untyped
+      refute(r.respond_to?(:to_ary))
+    end
+
+    def test_weak_map
+      m = ObjectSpace::WeakMap.new
+      m[1] = "one"
+      assert_equal(["one", true, false], [m[1], m.key?(1), m.key?(2)])
+    end
+
+    def test_rest_proc_untyped_call
+      h = {} #: Hash[Symbol, untyped]
+      h[:a] = ->(s, *args) { [s, args] }
+      f = h[:a] #: untyped
+      assert_equal([[1, []], [1, [2, 3]]], [f.call(1), f.call(1, 2, 3)])
+    end
+
+    def test_lambda_conditional_local
+      f = ->(x) {
+        y = x * 2 if x > 1
+        y
+      }
+      assert_equal([nil, 6], [f.call(1), f.call(3)])
+    end
+  end
+end

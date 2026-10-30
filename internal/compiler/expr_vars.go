@@ -57,8 +57,10 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	if !fitsValue(val, iv.Type) && f.lenient() && isUnion(val.typ) { // a gem's union into a narrower ivar converts where it lands, as untyped does (decision 320): Homebrew's `@name = owner.name` of a Formula | Cask
 		val = expr{code: val.code, typ: TAny{}}
 	}
-	if !fitsValue(val, iv.Type) && f.discover && f.lenient() && iv.Owner != f.owner && !isVoid(val.typ) {
-		iv.Type = TAny{} // a gem subclass storing another class in its parent's ivar (liquid's Raw: a String @body over Block's BlockBody, decision 331)
+	if !fitsValue(val, iv.Type) && f.discover && f.lenient() && !isVoid(val.typ) && (iv.Owner != f.owner || isClassObj(val.typ) && isClassObj(iv.Type)) {
+		// a gem subclass storing another class in its parent's ivar (liquid's Raw: a String @body over Block's BlockBody,
+		// decision 331), or a class's own of an unrelated class (net-ftp's NullSocket placeholder, then a Socket, decision 416)
+		iv.Type = TAny{}
 	}
 	if !fitsValue(val, iv.Type) && f.lenient() && sameButUntyped(val.typ, stripOpt(iv.Type)) { // so does a gem's Array[untyped] (Homebrew's `@deps = graph.tsort_with_cycles { ... } - [@cask]`, decision 374)
 		val = expr{code: f.coerce(n, val, stripOpt(iv.Type)), typ: stripOpt(iv.Type)}
@@ -72,6 +74,12 @@ func (f *fctx) genIvarWrite(n *parser.InstanceVariableWriteNode) expr {
 	f.storing--
 	f.markIvar(iv)
 	return f.ivarWritten(n, iv, val, code)
+}
+
+// isClassObj is an instance of a class (not a value class, module or container): an object an ivar may be replaced by.
+func isClassObj(t Type) bool {
+	c, ok := stripOpt(t).(TClass)
+	return ok && c.C.GoType == "" && !c.C.IsModule && !c.C.universal && len(c.Args) == 0
 }
 
 // widenNilReset makes a gem's ivar T? when a method resets it to nil (getoptlong's terminate: `@canonical_names = nil`

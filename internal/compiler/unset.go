@@ -120,8 +120,17 @@ func (w *unsetWalk) walk(n parser.Node) {
 		return
 	}
 	switch n := n.(type) {
-	case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode, *parser.LambdaNode:
+	case nil, *parser.DefNode, *parser.ClassNode, *parser.ModuleNode, *parser.SingletonClassNode:
 		// no locals of this scope inside
+	case *parser.LambdaNode: // its own scope, as a block's (`usec = ... if fractions` in net-ftp's TIME_PARSER, decision 416)
+		saved := w.st.clone()
+		w.scopes = append(w.scopes, n.Location.StartOffset)
+		w.breaks = append(w.breaks, nil)
+		w.walk(n.Parameters)
+		w.walk(n.Body)
+		w.scopes = w.scopes[:len(w.scopes)-1]
+		w.breaks = w.breaks[:len(w.breaks)-1]
+		w.st = saved
 	case *parser.IfNode:
 		w.walk(n.Predicate)
 		w.fork(func() { w.stmts(n.Statements) }, func() { w.walk(n.Subsequent) })

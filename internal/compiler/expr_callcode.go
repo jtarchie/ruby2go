@@ -1047,7 +1047,8 @@ func (f *fctx) untypedTwinArg(e *entry, recvT Type, args []parser.Node, block pa
 	prefix := "__" + overloadBase(m.Name) + "_"
 	twin := slices.ContainsFunc(rc.C.methodSet(), func(x entry) bool {
 		rest := strings.TrimPrefix(x.M.Name, prefix)
-		return rest != x.M.Name && rest != "" && (rest[0] < '0' || rest[0] > '9') && len(x.M.Params) == len(m.Params)
+		// `__tcp_enum` is the block-less form, not a by-class twin (net-ftp's `Socket.tcp(host, port)`, decision 416)
+		return rest != x.M.Name && rest != "" && rest != "enum" && (rest[0] < '0' || rest[0] > '9') && len(x.M.Params) == len(m.Params)
 	})
 	if !twin {
 		return false

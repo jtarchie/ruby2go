@@ -91,6 +91,21 @@ func (c *Compiler) foldCond(f *File, n parser.Node, scope []*Class) (value, ok b
 			return !v, ok
 		}
 		if args := callArgs(n); n.Name == "respond_to?" && len(args) == 1 && n.Block == nil {
+			if sym, isSym := args[0].(*parser.SymbolNode); isSym && n.Receiver == nil && len(scope) > 0 {
+				// a class body's own `respond_to?(:to_a)`: what the class object answers (drb's `undef :to_a if respond_to?(:to_a)`,
+				// decision 416): its singleton methods, else Class's (Module's, Object's, Kernel's)
+				// read the method tables directly: lookup at collect time would cache them before link adds the includes
+				name := sym.Unescaped.Value
+				if m := scope[len(scope)-1].meta; m != nil && m.Methods[name] != nil {
+					return true, true
+				}
+				for _, k := range []string{"Class", "Module", "Object", "Kernel", "BasicObject"} {
+					if cls := c.classes[k]; cls != nil && cls.Methods[name] != nil {
+						return true, true
+					}
+				}
+				return false, true
+			}
 			if sym, isSym := args[0].(*parser.SymbolNode); isSym { // `Const.respond_to?(:m)`, as defined?(Const.m)
 				return c.foldDefined(f, &parser.CallNode{Location: n.Location, Receiver: n.Receiver, Name: sym.Unescaped.Value}, scope)
 			}

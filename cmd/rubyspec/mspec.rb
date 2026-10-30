@@ -37,16 +37,26 @@ class SpecExpectation
   end
 
   #: (untyped) -> bool
-  def <(other) = check(@actual < other, "< #{other.inspect}")
+  def <(other) = check(@actual.is_a?(Module) ? module_cmp(other, false, false) : @actual < other, "< #{other.inspect}")
 
   #: (untyped) -> bool
-  def <=(other) = check(@actual <= other, "<= #{other.inspect}")
+  def <=(other) = check(@actual.is_a?(Module) ? module_cmp(other, false, true) : @actual <= other, "<= #{other.inspect}")
 
   #: (untyped) -> bool
-  def >(other) = check(@actual > other, "> #{other.inspect}")
+  def >(other) = check(@actual.is_a?(Module) ? module_cmp(other, true, false) : @actual > other, "> #{other.inspect}")
 
   #: (untyped) -> bool
-  def >=(other) = check(@actual >= other, ">= #{other.inspect}")
+  def >=(other) = check(@actual.is_a?(Module) ? module_cmp(other, true, true) : @actual >= other, ">= #{other.inspect}")
+
+  # A class's `<` held untyped (`Net::FTPError.should < Exception`), from its ancestors: a dynamic Module#< would keep
+  # every class's ancestor table in every program (decision 416).
+  #: (untyped, bool, bool) -> bool
+  def module_cmp(other, above, or_equal)
+    a, b = above ? [other, @actual] : [@actual, other]
+    return or_equal if a.equal?(b)
+
+    a.ancestors.include?(b)
+  end
 
   #: (untyped) -> bool
   def equal?(other) = check(@actual.equal?(other), "to be equal? #{other.inspect}")

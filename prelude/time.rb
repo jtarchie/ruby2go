@@ -34,14 +34,35 @@ class Time < Object
   #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped) -> Time
   def self.gm(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0) = utc(y, mo, d, h, mi, s, usec)
 
-  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
-  def self.local(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = %x{
+  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped) -> Time
+  def self.local(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0) = %x{
     rbTimeArgs(y, mo, d, h, mi, s)
-    return &Time{t: time.Date(int(y), time.Month(mo), int(d), int(h), int(mi), int(s), 0, time.Local)}
+    return &Time{t: time.Date(int(y), time.Month(mo), int(d), int(h), int(mi), int(s), 0, time.Local).Add(rbTimeSubsec(usec, "microsecond"))}
   }
 
-  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer) -> Time
-  def self.mktime(y, mo = 1, d = 1, h = 0, mi = 0, s = 0) = local(y, mo, d, h, mi, s)
+  #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped) -> Time
+  def self.mktime(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0) = local(y, mo, d, h, mi, s, usec)
+
+  # Numeric Strings, as MRI's utc and local take them (net-ftp's TIME_PARSER passes regexp captures, decision 416).
+  # ponytail: no month names ("jan")
+  #: (String, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped) -> Time
+  def self.__utc_string(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0)
+    utc(__time_int(y), __time_int(mo), __time_int(d), __time_int(h), __time_int(mi), __time_int(s), usec || 0)
+  end
+
+  #: (String, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped) -> Time
+  def self.__local_string(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0)
+    local(__time_int(y), __time_int(mo), __time_int(d), __time_int(h), __time_int(mi), __time_int(s), usec || 0)
+  end
+
+  #: (String, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped) -> Time
+  def self.__gm_string(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0) = __utc_string(y, mo, d, h, mi, s, usec)
+
+  #: (String, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped, ?untyped) -> Time
+  def self.__mktime_string(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, usec = 0) = __local_string(y, mo, d, h, mi, s, usec)
+
+  #: (untyped) -> Integer
+  def self.__time_int(x) = x.is_a?(String) ? Integer(x, 10) : x
 
   #: (Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?Integer, ?untyped, ?in: untyped) -> Time
   def self.new(y, mo = 1, d = 1, h = 0, mi = 0, s = 0, zone = nil, in: nil) = %x{

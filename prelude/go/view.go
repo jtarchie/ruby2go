@@ -58,6 +58,21 @@ func rbViewFrom(s rbView, xs []any) any {
 	return out
 }
 
+// rbViewFromWide is rbViewFrom for a new Array that may mix classes (`host.split(".") + port.divmod(256)`, net-ftp's
+// sendport): an Array[untyped] when an element is not s's, as MRI's holds any (decision 416). No per-instantiation
+// accessor answers "is it an E", so the typed build's TypeError says it.
+func rbViewFromWide(s rbView, xs []any) (out any) {
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(TypeErrorI); !ok {
+				panic(r)
+			}
+			out = &Array[any]{s: xs}
+		}
+	}()
+	return rbViewFrom(s, xs)
+}
+
 // rbViewReplace makes s hold xs (raw elements), in place.
 func rbViewReplace(s rbView, xs []any) {
 	s.rbCheckFrozen()
@@ -279,7 +294,7 @@ func rbViewCall(name string, s rbView, args []any) (any, bool) { //nolint:cyclop
 		return s, true
 	case "+":
 		rbArity(len(args), 1, 1)
-		return rbViewFrom(s, append(rbViewElems(s), rbViewArg(args[0], "Array")...)), true
+		return rbViewFromWide(s, append(rbViewElems(s), rbViewArg(args[0], "Array")...)), true
 	case "-", "difference":
 		rbArity(len(args), 1, 1)
 		drop := rbNewKeySet(rbViewArg(args[0], "Array"))

@@ -40,7 +40,23 @@ func (f *fctx) genLambda(n, block, params parser.Node, expected Type) expr {
 	} else {
 		code = f.genClosure(n, block, sig, env)
 	}
-	return expr{code: "Ref(" + code + ")", typ: TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true, Src: src, Rest: sig.Rest}}
+	ft := TFunc{Params: sig.Params, Ret: subst(sig.Ret, env), Proc: true, Src: src, Rest: sig.Rest}
+	if l, ok := n.(*parser.LambdaNode); ok && f.f.lambdaOpt[l] > 0 { // `->(value, local = false)` takes 1 or 2 (net-ftp's TIME_PARSER, decision 416)
+		f.c.noteProcMinArity(ft, len(sig.Params)-f.f.lambdaOpt[l])
+	}
+	return expr{code: "Ref(" + code + ")", typ: ft}
+}
+
+// noteProcMinArity records that a Proc of ft's Go type may be called with as few as n arguments: a dynamic call checks the
+// fewest any such lambda takes.
+func (c *Compiler) noteProcMinArity(ft TFunc, n int) {
+	g := c.goType(ft)
+	if c.procMinArity == nil {
+		c.procMinArity = map[string]int{}
+	}
+	if cur, ok := c.procMinArity[g]; !ok || n < cur {
+		c.procMinArity[g] = n
+	}
 }
 
 // isProcLiteral is `proc { }` or `Proc.new { }` for an untyped `^(*untyped)` Proc: a proc, not a lambda, takes any count,

@@ -1253,3 +1253,20 @@ class A < BaseA
 end
 
 p A.new.callfoo
+-- proc_of_another_shape.rb --
+# error: main.rb:5: a Proc ^(untyped, untyped) -> Array[untyped] where a Proc ^(String) -> String is expected
+ONE = ->(v) { v }
+TWO = ->(v, l) { [v, l] }
+H = Hash.new(ONE)
+H["t"] = TWO
+p H["z"].call("q")
+-- allocate_integer_ivar.rb --
+# error: main.rb:9: Pt.allocate: @x is Integer, which would read as its zero value, not nil, before initialize
+class Pt
+  #: (Integer) -> void
+  def initialize(x)
+    @x = x
+  end
+end
+Pt.new(1)
+p Pt.allocate
