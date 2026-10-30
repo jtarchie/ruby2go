@@ -16,3 +16,9 @@ p gets
 # $. is the last read's line number (decision 425); English.rb names it $NR and $INPUT_LINE_NUMBER
 require "English"
 p $NR, $INPUT_LINE_NUMBER
+
+# $. can be assigned, as its lineno setter: an Integer, a Float truncated
+$. = 123.5
+p $.
+ln_set = ($. = 7)
+p ln_set, $NR

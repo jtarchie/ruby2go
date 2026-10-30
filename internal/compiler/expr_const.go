@@ -462,6 +462,23 @@ func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
 		f.emit("%s = %s", v, f.coerce(n.Value, e, want))
 		return expr{code: v, typ: want}
 	}
+	if n.Name == "$." { // MRI's lineno setter: an Integer, a Float truncated, else to_int (decision 425)
+		f.c.usesLineNo = true
+		it := f.cls("Integer")
+		e := f.genExpr(n.Value, it)
+		code := ""
+		if typeEq(e.typ, f.cls("Float")) { // through a variable: a literal is a Go constant, which Integer(123.5) rejects
+			fl := f.newTmp()
+			f.emit("var %s Float = %s", fl, e.code)
+			code = "Integer(" + fl + ")"
+		} else {
+			code = f.coerce(n.Value, e, it)
+		}
+		tmp := f.newTmp()
+		f.emit("var %s Integer = %s", tmp, code) // typed: a literal alone would be Go's int
+		f.emit("rbLineNo.Store(int64(%s))", tmp)
+		return expr{code: tmp, typ: it}
+	}
 	if n.Name == "$~" || n.Name == "$LAST_MATCH_INFO" { // the frame's last match, set as a MatchData or nil (decision 364)
 		want := TOpt{Elem: f.cls("MatchData")}
 		v := f.lastMatchVar(n)
