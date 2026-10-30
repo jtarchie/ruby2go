@@ -102,11 +102,18 @@ func (c *Compiler) emitCopy(cls *Class) {
 // emitDup is Object#dup for a struct class: a shallow copy, then the class's own initialize_copy (rbDup).
 func (c *Compiler) emitDup(cls *Class) {
 	c.w("func (self *%s) _Dup() any {\n\tdup := *self\n", cls.Name)
+	call := func(e *entry) { // `def initialize_copy` without the source (ruby/spec's def_spec): MRI's ArgumentError, as dup passes it (decision 416)
+		if len(e.M.Params) == 0 {
+			c.w("\tpanic(NewArgumentError(Ref(String(\"wrong number of arguments (given 1, expected 0)\"))))\n")
+			return
+		}
+		c.w("\t%s%s(&dup, self)\n", freeFuncName(e.M), c.forwardTypeArgs(*e, cls))
+	}
 	if e := cls.lookup("initialize_dup"); e != nil && e.M.File != nil && !e.M.File.isPrelude() {
 		// ponytail: its super reaches Kernel's no-op, not the class's initialize_copy as MRI's Object#initialize_dup would
-		c.w("\t%s%s(&dup, self)\n", freeFuncName(e.M), c.forwardTypeArgs(*e, cls))
+		call(e)
 	} else if e := cls.lookup("initialize_copy"); e != nil && e.M.File != nil && !e.M.File.isPrelude() {
-		c.w("\t%s%s(&dup, self)\n", freeFuncName(e.M), c.forwardTypeArgs(*e, cls)) // private: no forwarder
+		call(e) // private: no forwarder
 	}
 	c.w("\treturn &dup\n}\n\n")
 }

@@ -205,6 +205,10 @@ func (c *Compiler) emitBridges(cls *Class, recv string) {
 				body = b
 			} else if _, tret := c.sig(t.M, c.forwarderEnv(cls, t)); ret != "" && tret == "" { // a void parent under a valued override's bridge: nil
 				body += "; return " + goZero(ret)
+			} else if ret != "" && tret != ret && m.Ret != nil {
+				// the parent answers another Go type than the override (`[:b, super]` over a Symbol `foo`, ruby/spec's
+				// AliasWithSuper): converted, raising where they differ, not a go build failure (decision 416)
+				body = fmt.Sprintf("return rbAs[%s](any(%s), %q)", ret, body, m.Ret.String())
 			} else if ret != "" {
 				body = "return " + body
 			}

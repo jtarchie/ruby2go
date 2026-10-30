@@ -37,3 +37,32 @@ Class.new do
   ANON_BLOCK_CONST = 1
 end
 p(Object.constants.include?(:ANON_BLOCK_CONST), Object.constants.none? { |k| k.to_s.start_with?("RbAnon") })
+
+# A module method's super into another module's that answers another type (ruby/spec's AliasWithSuper, decision 416):
+# reachable, so its bridge must build; not called, as rugaroo types super by the override's result.
+module DynOutSupA
+  def dyn_out_sup = :a
+end
+
+module DynOutSupB
+  def dyn_out_sup = [:b, super]
+end
+
+class DynOutSupBase
+  extend DynOutSupA
+  extend DynOutSupB
+end
+dyn_out_sup_any = [DynOutSupBase, 1, "x", :y][0] #: untyped
+p dyn_out_sup_any.dyn_out_sup if ARGV.size > 99
+
+# `def initialize_copy` without the source object: dup passes it, MRI's ArgumentError (ruby/spec's def_spec, decision 416)
+class DynOutCopy
+  def initialize_copy
+    @copied = true
+  end
+end
+begin
+  DynOutCopy.new.dup
+rescue ArgumentError => e
+  p e.message
+end
