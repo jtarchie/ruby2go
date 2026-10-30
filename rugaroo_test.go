@@ -314,6 +314,27 @@ func TestGemDefineMethodWithoutBoot(t *testing.T) {
 	}
 }
 
+// TestPrimeVendoredSig: prime's shipped sig types each `-> void`, but its value is `break last_value` (7, or nil with
+// no prime) and a generator without a block; sig/gems/prime corrects it (decision 419), so the value MRI gives comes out.
+func TestPrimeVendoredSig(t *testing.T) {
+	requireToolchain(t)
+	src := []byte("require \"prime\"\np Prime.each(10) { |x| x }, Prime.each(1) { :v }, Prime.instance.each(7).to_a\n")
+	code, _, _, err := CompileTestsSkippingWithGems(t.Context(), []File{{Name: "prime_sig_test.rb", Src: src}}, nil, ".")
+	if err != nil {
+		t.Fatalf("rugaroo: %v", err)
+	}
+	gen := t.TempDir()
+	writeModule(t, gen)
+	err = os.WriteFile(filepath.Join(gen, "main.go"), code, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, exit, _ := runIO(t, ".", progIO{}, goBuild(t, gen, "-l"))
+	if want := "7\nnil\n[2, 3, 5, 7]\n"; out != want || exit != 0 {
+		t.Errorf("got (exit %d):\n%s\nwant:\n%s", exit, out, want)
+	}
+}
+
 // TestBootAutoload compiles a program whose class arrives through autoload:
 // the boot snapshot records which file MRI loaded, and the compiler takes it
 // as a source (decisions 131/161). The declaration itself is compile-time.

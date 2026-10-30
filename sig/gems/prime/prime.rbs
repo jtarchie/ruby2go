@@ -1,0 +1,12 @@
+# Corrections to prime 0.1.4's shipped sig/prime.rbs (decision 306: vendored members win over shipped ones), which
+# declares each `{ (Integer) -> void } -> void`: the implementation reads the block's value (`last_value = yield prime`)
+# and answers `break last_value` with an upper bound, the generator without a block (decision 419).
+class Prime
+  def self.each: (?Integer? ubound, ?PseudoPrimeGenerator generator) ?{ (Integer) -> untyped } -> untyped
+
+  def each: (?Integer? ubound, ?PseudoPrimeGenerator generator) ?{ (Integer) -> untyped } -> untyped
+
+  class PseudoPrimeGenerator
+    def each: () ?{ (Integer) -> untyped } -> untyped
+  end
+end
