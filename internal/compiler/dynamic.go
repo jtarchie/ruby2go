@@ -220,8 +220,8 @@ func (c *Compiler) dynEntry(cls *Class, name string) (*entry, bool) {
 	}
 	e := cls.lookup(name)
 	if e != nil && e.M.Block != nil && !c.dynBlockable(name, e.M) && !c.dynBlockNames[name] && (e.M.Owner == nil || !e.M.Owner.universal) { // not Kernel's open on every class
-		if en := cls.lookup("__" + overloadBase(name) + "_enum"); en != nil && en.M.Block == nil && !en.M.generic() {
-			e = en // no dynamic call passes it a block: its block-less form (net-ftp's `Socket.tcp(host, port)`, decision 416)
+		if b := blocklessTwin(cls, name); b != nil {
+			e = b
 		}
 	}
 	if e == nil || e.M.generic() && (e.M.Block == nil || !c.dynBlockable(name, e.M)) || e.M.Block != nil && !c.dynBlockable(name, e.M) {
@@ -234,6 +234,19 @@ func (c *Compiler) dynEntry(cls *Class, name string) (*entry, bool) {
 		return nil, false // the embedded base's own module method (Pathname's Comparable): its Self is the base, not cls
 	}
 	return e, e.M.Private && !rubyPrivate[name] && name != "method_missing"
+}
+
+// blocklessTwin is the form a dynamic call without a block takes of a block method no dynamic call passes one: its
+// `__name_enum` (net-ftp's `Socket.tcp(host, port)`, decision 416), else decision 12's zero-argument twin
+// (`public_send(:all?)` on an Enumerable, ruby/spec's `x.should.all?`, decision 417).
+func blocklessTwin(cls *Class, name string) *entry {
+	if en := cls.lookup("__" + overloadBase(name) + "_enum"); en != nil && en.M.Block == nil && !en.M.generic() {
+		return en
+	}
+	if z := cls.lookup("__" + overloadBase(name) + "_0"); z != nil && z.M.Block == nil && !z.M.generic() && len(z.M.Params) == 0 {
+		return z
+	}
+	return nil
 }
 
 // privateIn lists the concrete classes on which name is a private method.

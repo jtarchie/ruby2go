@@ -524,10 +524,15 @@ func (c *Compiler) emitDynCall(f *fctx, e *entry, recv expr, env map[string]Type
 // dynArityOverloads routes an argument count the method does not take to its decision-12 `__<name>_<count>`, as a typed call does.
 func (c *Compiler) dynArityOverloads(f *fctx, e *entry, recv expr, env map[string]Type, req, maxArgs int) {
 	m, cls := e.M, classOf(recv.typ)
-	if cls == nil || strings.HasPrefix(m.Name, "__") {
+	prefix := "__" + overloadBase(m.Name) + "_"
+	if strings.HasPrefix(m.Name, "__") && strings.HasSuffix(m.Name, "_0") {
+		prefix = strings.TrimSuffix(m.Name, "0") // dynEntry's block-less twin: `all?(Integer)` still takes `__all_q_1`
+	} else if cls == nil || strings.HasPrefix(m.Name, "__") {
 		return
 	}
-	prefix := "__" + overloadBase(m.Name) + "_"
+	if cls == nil {
+		return
+	}
 	for _, x := range cls.methodSet() {
 		k, ok := strings.CutPrefix(x.M.Name, prefix)
 		if !ok {

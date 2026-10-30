@@ -3391,3 +3391,30 @@ module DynamicTests
     end
   end
 end
+
+module DynamicTests
+  class DynEnumBag
+    include Enumerable
+
+    def initialize(*list) = @list = list
+
+    def each(&block)
+      @list.each(&block)
+      self
+    end
+  end
+
+  # A computed public_send of an Enumerable predicate without a block takes its block-less form (decision 417).
+  class DynEnumPredicateSendTest < Minitest::Test
+    def dyn_enum_ask(obj, name, *args) = obj.public_send(name, *args) ? true : false
+
+    def test_blockless_predicates_by_name
+      assert dyn_enum_ask(DynEnumBag.new(1, 2), :all?)
+      refute dyn_enum_ask(DynEnumBag.new(nil, 1), :all?)
+      assert dyn_enum_ask(DynEnumBag.new(nil, 1), :one?)
+      refute dyn_enum_ask(DynEnumBag.new(1, 2), :none?)
+      assert dyn_enum_ask(DynEnumBag.new(1, "a"), :any?, String)
+      refute dyn_enum_ask(DynEnumBag.new(1, "a"), :all?, Integer)
+    end
+  end
+end

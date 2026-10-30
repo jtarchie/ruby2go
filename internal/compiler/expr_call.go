@@ -200,12 +200,8 @@ func (f *fctx) genCall(n *parser.CallNode, expected Type) expr {
 	if e, ok := f.genInstanceEval(n, recv); ok {
 		return e
 	}
-	if n.Block != nil {
-		if _, ok := n.Block.(*parser.BlockNode); ok {
-			if e := f.resolve(recv.typ, n.Name); e != nil && e.M.Iterator && !coreEach(e.M) {
-				return f.iteratorValue(n)
-			}
-		}
+	if v, ok := f.iterCallValue(n, recv); ok {
+		return v
 	}
 	return f.genMethodCall(n, recv, n.Name, callArgs(n), n.Block)
 }
@@ -830,6 +826,39 @@ func (f *fctx) selfCall(n parser.Node, recv expr, name string, args []parser.Nod
 
 // iteratorValue is an iterator call in value position: a gem's `loop do ... break ... end` as a block's last value
 // (drb's main_loop) runs, then is nil (decisions 233, 416); anything else is an error.
+// iterCallValue is an iterator call with a literal block in value position, which only gem code may use.
+func (f *fctx) iterCallValue(n *parser.CallNode, recv expr) (expr, bool) {
+	b, ok := n.Block.(*parser.BlockNode)
+	if !ok {
+		return expr{}, false
+	}
+	e := f.resolve(recv.typ, n.Name)
+	switch {
+	case e == nil || !e.M.Iterator:
+		return expr{}, false
+	case !coreEach(e.M):
+		return f.iteratorValue(n), true
+	case f.lenient() && blockBreaks(b.Body):
+		return f.brokenIterValue(n, recv), true
+	}
+	return expr{}, false
+}
+
+// brokenIterValue is a gem's `return false if r.times do ... break if x == m ... end` (decision 417): the receiver, or
+// nil when the block broke out, through genBrokenIterLoop; recv is already evaluated, so the loop reuses it.
+func (f *fctx) brokenIterValue(n *parser.CallNode, recv expr) expr {
+	tmp := f.newTmp()
+	f.emit("var %s any", tmp)
+	call := *n
+	call.Receiver = &exprNode{Node: n.Receiver, e: recv}
+	f.iterBreakValue = true
+	defer func() { f.iterBreakValue = false }() // an errorf recovered by probe must not leave it set for the next call
+	if !f.genIterCall(&call, tail{kind: tailAssign, target: tmp, typ: TAny{}}) {
+		f.errorf(n, "%s with a block is an iterator and can only be used as a statement", n.Name)
+	}
+	return expr{code: tmp, typ: TAny{}}
+}
+
 func (f *fctx) iteratorValue(n *parser.CallNode) expr {
 	if f.lenient() && n.Name == "loop" && kernelRecv(n) {
 		f.genStmt(n, tail{})

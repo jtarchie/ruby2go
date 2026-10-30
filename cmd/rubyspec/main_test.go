@@ -278,3 +278,19 @@ func TestIsolationStopsOnRepeatedFatal(t *testing.T) {
 		t.Errorf("assumed file = %q", merged.failedFiles[4])
 	}
 }
+
+// A thread's exception report between a test's name and its result still counts the result (library/drb).
+func TestTestLineInterleaved(t *testing.T) {
+	out := "A#test_0001_x = 0.00 s = .\n" +
+		"B#test_0001_y = #<Thread> terminated with exception (report_on_exception is true): boom (TypeError)\n0.00 s = E\n" +
+		"Finished in 0.004392s, 455.3604 runs/s, 0.0000 assertions/s.\n"
+	var got []string
+	for _, line := range strings.Split(out, "\n") {
+		if m := testLine.FindStringSubmatch(line); m != nil {
+			got = append(got, m[1])
+		}
+	}
+	if !slices.Equal(got, []string{".", "E"}) {
+		t.Fatalf("results %q, want [. E]", got)
+	}
+}

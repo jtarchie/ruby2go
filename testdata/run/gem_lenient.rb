@@ -6,6 +6,7 @@ require "foo"
 require "ng"
 require "mx"
 require "ftpish"
+require "primeish"
 p Foo::ORDERINGS
 p Foo::FLAGS
 p Foo::RETURN_IN_ORDER
@@ -37,3 +38,6 @@ p Ftpish::KIND, f.connect, f.get, f.get("x"), f.drain("ab")
 w = Ftpish::Wire.new
 p f.push(w, "STAT"), w.sent, f.by_name("abc", "upcase")
 p f.soft_require, f.forward(1, 2), f.pump, Ftpish::Proto.open("u", {}, false)
+pr = Primeish.new
+p pr.witness?(3, 2, 16), pr.witness?(3, 2, 5), pr.witness?(0, 2, 16)
+p pr.scan([1, 2, 3], 2), pr.scan([1, 2, 3], 9)

@@ -26,15 +26,22 @@ const (
 // loopFrame lets a `break` inside a Go switch (case/when) exit the loop via a label, not just the switch.
 type loopFrame struct {
 	kind     loopKind
-	switches int    // f.switches when the loop was entered
-	begins   int    // f.begins when the loop was entered
-	closures int    // f.closures when the loop was entered
-	start    int    // where the label goes
-	label    string // set by the first `break` that needs it
-	redo     string // the label opening the body, when it has a `redo`
-	next     string // a do-while's label before its condition, when the body has a `next`
-	scope    *scope // the scope around the loop: a jump out of a branch skips only what lies inside the loop (leaveBranch)
-	value    *tail  // a while used as a value: where `break v` puts v (decision 364)
+	switches int          // f.switches when the loop was entered
+	begins   int          // f.begins when the loop was entered
+	closures int          // f.closures when the loop was entered
+	start    int          // where the label goes
+	label    string       // set by the first `break` that needs it
+	redo     string       // the label opening the body, when it has a `redo`
+	next     string       // a do-while's label before its condition, when the body has a `next`
+	scope    *scope       // the scope around the loop: a jump out of a branch skips only what lies inside the loop (leaveBranch)
+	value    *tail        // a while used as a value: where `break v` puts v (decision 364)
+	broke    *brokeTarget // an iterator used as a value: a valueless break jumps past its "ran to the end" value (decision 417)
+}
+
+// brokeTarget is the label after an iterator call's loop that its valueless break jumps to, set used by the first one.
+type brokeTarget struct {
+	label string
+	used  bool
 }
 
 // pushLoop goes just before the `for`; a label sits above its //line directive so the `for` keeps its Ruby line.
@@ -343,6 +350,11 @@ func blockBreaks(n parser.Node) bool {
 func (f *fctx) emitBreak(l *loopFrame) {
 	if f.begins > l.begins {
 		f.leaveWrapper(jumpBreak)
+		return
+	}
+	if l.broke != nil { // Go has no for-else: the jump skips the value a loop that ran to its end has
+		l.broke.used = true
+		f.emit("goto %s", l.broke.label)
 		return
 	}
 	if f.switches > l.switches {

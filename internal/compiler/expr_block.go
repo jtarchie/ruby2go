@@ -764,11 +764,7 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 		recv = f.genExpr(n.Receiver, nil)
 	}
 	if selfValue {
-		tmp := f.newTmp()
-		f.emit("var %s %s = %s", tmp, f.c.goType(recv.typ), recv.code) // typed: a literal receiver (`4.times`) is an Integer, not Go's int
-		recv.code = tmp
-		f.genIterLoop(n, e, recv)
-		f.applyTail(n, recv, t)
+		f.genSelfValueIter(n, e, recv, t)
 		return true
 	}
 	safe := isOptRecv && n.IsSAFE_NAVIGATION()
@@ -790,6 +786,36 @@ func (f *fctx) genIterCall(n *parser.CallNode, t tail) bool {
 	}
 	f.iterEmptyTail(n, t, valued)
 	return true
+}
+
+// genSelfValueIter is an iterator call whose value is its receiver, as MRI's each returns it (decision 172).
+func (f *fctx) genSelfValueIter(n *parser.CallNode, e *entry, recv expr, t tail) {
+	tmp := f.newTmp()
+	f.emit("var %s %s = %s", tmp, f.c.goType(recv.typ), recv.code) // typed: a literal receiver (`4.times`) is an Integer, not Go's int
+	recv.code = tmp
+	if f.lenient() && f.iterBreakValue {
+		f.iterBreakValue = false
+		f.genBrokenIterLoop(n, e, recv, t)
+		return
+	}
+	f.genIterLoop(n, e, recv)
+	f.applyTail(n, recv, t)
+}
+
+// genBrokenIterLoop is a gem's `r.times do ... break ... end` as a value (prime's miller_rabin_test): the receiver when
+// the loop runs to its end, nil when a break leaves it, as MRI's; the break is a goto past the receiver's assignment.
+func (f *fctx) genBrokenIterLoop(n *parser.CallNode, e *entry, recv expr, t tail) {
+	res := f.newTmp()
+	f.emit("var %s any", res) // above the loop: the goto may not jump over a declaration
+	bt := &brokeTarget{label: "broke" + res}
+	f.iterBroke = bt
+	f.genIterLoop(n, e, recv)
+	f.iterBroke = nil
+	f.emit("%s = %s", res, f.coerce(n, recv, TAny{}))
+	if bt.used {
+		f.emit("%s:", bt.label)
+	}
+	f.applyTail(n, expr{code: res, typ: TAny{}}, t)
 }
 
 // iterTwin is the twin an iterator call takes: literal options (CSV.foreach(path, headers: true), decision 117), its
@@ -1005,6 +1031,7 @@ func (f *fctx) genIterLoop(n *parser.CallNode, e *entry, recv expr) {
 	f.zipVal = false
 	f.pushLoop(loopIter)
 	f.loops[len(f.loops)-1].value, f.iterValue = f.iterValue, nil
+	f.loops[len(f.loops)-1].broke, f.iterBroke = f.iterBroke, nil
 	switch {
 	case head != "":
 		f.emit("%s", head)
