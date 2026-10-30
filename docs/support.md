@@ -52,7 +52,7 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 
 ## Core classes — stable
 
-ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit f393057d). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
+ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit f393057d; `core/io` at 657de61d). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
 
 | Class | Tier | ruby/spec pass (of those run) | Skipped | Notes |
 |---|---|---:|---:|---|
@@ -77,7 +77,7 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit f393057d).
 | `Math` | stable | 116 of 117 (99%) | 126 |  |
 | `File`, `Dir`, `FileTest` | stable | 685 of 805 (85%) | 425 |  |
 | `File::Stat` | stable | 8 of 108 (7%) | 27 | Partial. |
-| `IO`, `ARGF`, `$stdin` | stable | 370 of 598 (62%) | 861 | `IO.popen`, `system` and backticks run real processes. |
+| `IO`, `ARGF`, `$stdin` | stable | 377 of 598 (63%) | 861 | `IO.popen`, `system` and backticks run real processes. |
 | `ENV` | stable | 75 of 97 (77%) | 96 |  |
 | `Kernel` | stable | 690 of 1,147 (60%) | 749 | No `eval`, `binding` or `load`. |
 | `Exception` and its subclasses | stable | 90 of 155 (58%) | 95 |  |

@@ -145,7 +145,7 @@ the same programs).
 Correctness is measured against MRI: every [example](examples/), minitest
 suite and compile-error archive runs against `ruby` under `go test`. As a
 wider probe, `cmd/rubyspec` runs [ruby/spec](https://github.com/ruby/spec):
-12,207 of its examples pass (9,091 in `core`, 1,935 in `library`, 1,181 in `language`;
+12,217 of its examples pass (9,098 in `core`, 1,937 in `library`, 1,182 in `language`;
 71% of the `core` examples that run), and most of the rest are skipped for something rugaroo leaves out by
 design. [docs/support.md](docs/support.md#core-classes--stable) has the rate
 for each core class.
