@@ -52,13 +52,13 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 
 ## Core classes — stable
 
-ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit 9bfff461). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
+ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit 82ac6552). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
 
 | Class | Tier | ruby/spec pass (of those run) | Skipped | Notes |
 |---|---|---:|---:|---|
 | `Array` | stable | 612 of 704 (87%) | 511 |  |
 | `Array#pack`, `String#unpack` | stable | 2,556 of 3,004 (85%) | 173 | No C pointers (`P`, `p`); Bignum directives need `promote`. |
-| `Hash` | stable | 244 of 276 (88%) | 286 | Insertion-ordered; `Hash#[]` is typed `V?`. |
+| `Hash` | stable | 245 of 276 (89%) | 286 | Insertion-ordered; `Hash#[]` is typed `V?`. |
 | `String` | stable | 1,019 of 1,334 (76%) | 1,029 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)) and `setbyte` on one, or on an ivar in `initialize` ([decision 395](decisions/395.md)). |
 | `Symbol` | stable | 84 of 104 (81%) | 74 |  |
 | `Integer` | stable | 185 of 265 (70%) | 333 | 64-bit; see below. |
@@ -68,7 +68,7 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit 9bfff461).
 | `Range` | stable | 296 of 339 (87%) | 267 |  |
 | `Set` | stable | 69 of 79 (87%) | 97 | Core, as in MRI 4.0. |
 | `Struct`, `Data` | stable | 102 of 142 (72%) | 116 |  |
-| `Enumerable` | stable | 160 of 219 (73%) | 272 | Elements with equal keys can come out of `sort_by`, `max_by(n)` and `min_by(n)` in another order than MRI's, whose order depends on the platform's `qsort_r`. |
+| `Enumerable` | stable | 166 of 219 (76%) | 272 | Elements with equal keys can come out of `sort_by`, `max_by(n)` and `min_by(n)` in another order than MRI's, whose order depends on the platform's `qsort_r`. |
 | `Enumerator`, `Enumerator::Lazy`, arithmetic sequences | stable | 47 of 70 (67%) | 278 | `next`/`peek`, `Enumerator.new` generators. |
 | `Comparable` | stable | 0 of 46 (0%) | 8 | ruby/spec's fixture class doesn't compile, so every example errors; covered by rugaroo's own tests. |
 | `Regexp`, `MatchData` | stable | 253 of 342 (74%) | 98 | Ruby syntax translated to Go's regexp engines. |
@@ -77,16 +77,16 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit 9bfff461).
 | `Math` | stable | 116 of 119 (97%) | 124 |  |
 | `File`, `Dir`, `FileTest` | stable | 685 of 805 (85%) | 425 |  |
 | `File::Stat` | stable | 8 of 108 (7%) | 27 | Partial. |
-| `IO`, `ARGF`, `$stdin` | stable | 369 of 587 (63%) | 861 | `IO.popen`, `system` and backticks run real processes. |
+| `IO`, `ARGF`, `$stdin` | stable | 370 of 598 (62%) | 861 | `IO.popen`, `system` and backticks run real processes. |
 | `ENV` | stable | 75 of 97 (77%) | 96 |  |
 | `Kernel` | stable | 690 of 1,147 (60%) | 749 | No `eval`, `binding` or `load`. |
 | `Exception` and its subclasses | stable | 90 of 155 (58%) | 95 |  |
 | `Proc`, `Method`, `UnboundMethod` | stable | 97 of 245 (40%) | 153 |  |
 | `Module`, `Class` | stable | 189 of 332 (57%) | 772 | No `define_method` or runtime reopening in user code. |
 | `BasicObject`, `Object`, `nil`, `true`, `false` | stable | 66 of 117 (56%) | 66 |  |
-| `Thread`, `Queue`, `SizedQueue`, `Mutex`, `ThreadGroup` | stable | 158 of 232 (68%) | 238 | Goroutines and channels; `SizedQueue` is a Go channel (decision 403). |
-| `Fiber` | stable | 25 of 67 (37%) | 121 |  |
-| `Signal`, `Process` | stable | 35 of 80 (44%) | 236 | `trap`, `Process.kill`, `spawn`, `wait`. |
+| `Thread`, `Queue`, `SizedQueue`, `Mutex`, `ThreadGroup` | stable | 158 of 240 (66%) | 238 | Goroutines and channels; `SizedQueue` is a Go channel (decision 403). |
+| `Fiber` | stable | 25 of 68 (37%) | 121 |  |
+| `Signal`, `Process` | stable | 35 of 81 (43%) | 236 | `trap`, `Process.kill`, `spawn`, `wait`. |
 | `Marshal` | stable | 30 of 255 (12%) | 97 | Round-trips its own bytes, not MRI's, so specs that compare bytes fail. |
 | `Encoding` | stable | 73 of 125 (58%) | 13 | 60 encodings ([list](#encodings)), no per-String tag ([decision 136](decisions/136.md)). |
 | `Warning`, `GC`, `ObjectSpace` | stable | 15 of 22 (68%) | 93 | The parts a program can observe; no heap walking. |
