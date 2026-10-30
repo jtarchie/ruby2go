@@ -796,6 +796,10 @@ func rbAsSlow[T any](a any, want string) T {
 			return t
 		}
 	}
+	if want == "element" { // stored into a typed container through the untyped view: MRI's Array keeps the value as it is, so
+		// no to_int/to_str (Float#to_int put 0 for matrix's eigenvectors' 0.82; decision 420)
+		panic(rbConvError(a, want))
+	}
 	if t, ok := rbImplicitConv[T](a); ok {
 		return t
 	}

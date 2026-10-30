@@ -116,3 +116,16 @@ class MxPair
 
   def to_ary = [Mx.new(@a), Mx.new(@b)]
 end
+
+# EigenvalueDecomposition's shape (decision 420): rows seeded with Integer 0s, then written with Floats through the
+# untyped @v; and a symmetric path whose @v is another value, so @v is untyped.
+class MxEigen
+  def initialize(size, symmetric)
+    @v = symmetric ? [[1.5]] : Array.new(size) { Array.new(size, 0) }
+  end
+
+  def scale(f)
+    @v.each_index { |i| @v[i].each_index { |j| @v[i][j] = (i + 1) * f + j } }
+    @v
+  end
+end

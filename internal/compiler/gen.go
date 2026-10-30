@@ -14,6 +14,7 @@ type fctx struct {
 	iterBroke        *brokeTarget                  // the label the next genIterLoop's valueless break jumps to (decision 417)
 	iterBreakValue   bool                          // the next genIterCall is a gem's iterator in value position whose block breaks (decision 417)
 	splittingForward bool                          // splitBlockForward's with-a-block side: the plain union loop (decision 418)
+	untypedRows      int                           // f.closures of a gem's `Array.new(n) { row }` block whose rows are untyped elements (decision 420)
 	storageWrite     bool                          // discovery: the ivar write generating stores a value read out of a container (decision 392)
 	destructuring    bool                          // discovery: a multiple assignment's targets take fields of a container (decision 392)
 	aliasSrc         map[localKey]*parser.CallNode // a gem local holding an Array slot's String, which its bang edits write back (decision 331)
@@ -437,6 +438,7 @@ func (f *fctx) applyTail(n parser.Node, e expr, t tail) {
 			f.emit("_ = %s", e.code)
 			return
 		}
+		e = f.untypedRow(n, e, t)
 		if isVoid(t.typ) {
 			f.emitExprStmt(n, e)
 			return

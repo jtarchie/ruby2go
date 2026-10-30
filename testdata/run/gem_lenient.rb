@@ -66,3 +66,4 @@ p ub, PrimeishFront.new.each_any([4, 5]).next
 p ua.method(:succ) == ua.method(:next), ua.method(:succ) == ua.method(:rewind), g2.method(:succ) == g2.method(:next)
 p PrimeishBound.new.each(3) { |v| v * 10 }, PrimeishBound.new.each(0) { :value }
 p PrimeishFront.new.each_any(PrimeishLast.new(3)) { |v| v * 10 }, PrimeishFront.new.each_any(PrimeishLast.new(0)) { :value }
+p MxEigen.new(2, false).scale(0.25), MxEigen.new(1, true).scale(0.5)

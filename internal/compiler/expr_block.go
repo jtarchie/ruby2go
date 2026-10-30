@@ -579,11 +579,16 @@ func (f *fctx) genClosure(n parser.Node, block parser.Node, sig *BlockSig, env m
 	}
 	f.hoistLocals(f.rbFrames[len(f.rbFrames)-1].key)
 	f.redoLabel(body) // redo reruns the block with the same arguments: a closure is its own Go function (#52)
+	savedRows := f.untypedRows
+	if f.untypedRowBlock(n, ret) {
+		f.untypedRows = f.closures
+	}
 	if isVoid(ret) {
 		f.withNextTail(tail{}, gen)
 	} else {
 		f.withNextTail(tail{kind: tailReturn, typ: ret}, gen)
 	}
+	f.untypedRows = savedRows
 	f.indent--
 	if strings.Contains(b.String(), "\n//line ") {
 		// the block's statements moved the line mapping; what follows it on the Go side is the call's line again. Only then: a block without its own directives (&:sym) would look to linters like it ends in blank lines.
@@ -860,6 +865,40 @@ func (f *fctx) resolveIter(n *parser.CallNode, recvT Type) *entry {
 		}
 	}
 	return e
+}
+
+// untypedRowBlock is a gem's `Array.new(n) { ... }` whose elements are untyped (matrix's `@v = Array.new(@size) {
+// Array.new(@size, 0) }`, later written with Floats): each row the block builds is an Array[untyped] (untypedRow).
+func (f *fctx) untypedRowBlock(n parser.Node, ret Type) bool {
+	c, ok := n.(*parser.CallNode)
+	if !ok || !f.lenient() || !isAny(ret) || c.Name != "new" {
+		return false
+	}
+	r, ok := c.Receiver.(*parser.ConstantReadNode)
+	return ok && r.Name == "Array"
+}
+
+// untypedRow converts a fresh Array the untypedRowBlock returns into an Array[untyped], as MRI's row holds any value:
+// an Array[Integer] row took `row[j] = 0.82` through the untyped view as a TypeError (decision 420). Fresh, so the copy
+// aliases nothing.
+func (f *fctx) untypedRow(n parser.Node, e expr, t tail) expr {
+	if f.untypedRows == 0 || f.untypedRows != f.closures || !isAny(t.typ) {
+		return e
+	}
+	at, ok := e.typ.(TClass)
+	if !ok || at.C != f.c.classes["Array"] || len(at.Args) != 1 || isAny(at.Args[0]) {
+		return e
+	}
+	switch x := n.(type) {
+	case *parser.ArrayNode:
+	case *parser.CallNode:
+		if r, ok := x.Receiver.(*parser.ConstantReadNode); !ok || r.Name != "Array" || x.Name != "new" {
+			return e
+		}
+	default:
+		return e
+	}
+	return expr{code: fmt.Sprintf("rbAs[*Array[any]](any(%s), \"Array[untyped]\")", e.code), typ: TClass{C: at.C, Args: []Type{TAny{}}}}
 }
 
 // splitBlockForward is a gem's `generator.each(&block)` as its method's value, on a union, passing on the method's own
