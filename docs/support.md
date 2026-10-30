@@ -52,17 +52,17 @@ ruby/spec numbers come from a dated `go run ./cmd/rubyspec` run (see
 
 ## Core classes — stable
 
-ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit 82ac6552). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
+ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit f393057d). "Of those run" leaves out examples skipped because they use something rugaroo leaves out by design (Bignum by default, String mutation, `eval`, ...); the skipped column counts those.
 
 | Class | Tier | ruby/spec pass (of those run) | Skipped | Notes |
 |---|---|---:|---:|---|
 | `Array` | stable | 612 of 704 (87%) | 511 |  |
 | `Array#pack`, `String#unpack` | stable | 2,556 of 3,004 (85%) | 173 | No C pointers (`P`, `p`); Bignum directives need `promote`. |
 | `Hash` | stable | 245 of 276 (89%) | 286 | Insertion-ordered; `Hash#[]` is typed `V?`. |
-| `String` | stable | 1,019 of 1,334 (76%) | 1,029 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)) and `setbyte` on one, or on an ivar in `initialize` ([decision 395](decisions/395.md)). |
+| `String` | stable | 1,019 of 1,333 (76%) | 1,030 | Immutable ([decision 58](decisions/058.md)), except `<<`/`concat` on an unaliased local ([decision 382](decisions/382.md)) and `setbyte` on one, or on an ivar in `initialize` ([decision 395](decisions/395.md)). |
 | `Symbol` | stable | 84 of 104 (81%) | 74 |  |
 | `Integer` | stable | 185 of 265 (70%) | 333 | 64-bit; see below. |
-| `Float` | stable | 151 of 182 (83%) | 79 |  |
+| `Float` | stable | 151 of 181 (83%) | 80 |  |
 | `Rational`, `Complex` | stable | 144 of 168 (86%) | 158 | Mixed arithmetic coerces as MRI. |
 | `Numeric` | stable | 27 of 55 (49%) | 260 |  |
 | `Range` | stable | 296 of 339 (87%) | 267 |  |
@@ -74,7 +74,7 @@ ruby/spec numbers: `go run ./cmd/rubyspec core` on 2026-10-30 (commit 82ac6552).
 | `Regexp`, `MatchData` | stable | 253 of 342 (74%) | 98 | Ruby syntax translated to Go's regexp engines. |
 | `Time` | stable | 326 of 407 (80%) | 245 |  |
 | `Random` | stable | 53 of 54 (98%) | 33 | The same sequence as MRI for a given seed. |
-| `Math` | stable | 116 of 119 (97%) | 124 |  |
+| `Math` | stable | 116 of 117 (99%) | 126 |  |
 | `File`, `Dir`, `FileTest` | stable | 685 of 805 (85%) | 425 |  |
 | `File::Stat` | stable | 8 of 108 (7%) | 27 | Partial. |
 | `IO`, `ARGF`, `$stdin` | stable | 370 of 598 (62%) | 861 | `IO.popen`, `system` and backticks run real processes. |
