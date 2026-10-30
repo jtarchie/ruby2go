@@ -39,6 +39,13 @@ func (m *mockClass) source() string {
 		if strings.HasPrefix(m.methods[name], "raise(") {
 			fmt.Fprintf(&b, "  #: %s -> bot\n", sig)
 		}
+		if setterName(name) { // `stub!(:read_timeout=)` (net-ftp's close_spec): Ruby has no endless setter, and a setter takes its value
+			if params == "" {
+				params = "(_value)"
+			}
+			fmt.Fprintf(&b, "  def %s%s\n    %s\n  end\n", name, params, m.methods[name])
+			continue
+		}
 		fmt.Fprintf(&b, "  def %s%s = %s\n", name, params, m.methods[name])
 	}
 	for _, d := range m.defs {
@@ -292,4 +299,13 @@ func (rw *rewriter) hoist(stmts []parser.Node) {
 		rw.prog.hoisted = append(rw.prog.hoisted, rw.text(st))
 		rw.edits = append(rw.edits, blankLoc(rw.src, st.GetLocation()))
 	}
+}
+
+// setterName is an attribute writer's name (`read_timeout=`), not an operator ending in = (`==`, `<=`, `[]=`).
+func setterName(name string) bool {
+	if !strings.HasSuffix(name, "=") || len(name) < 2 {
+		return false
+	}
+	c := name[0]
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }

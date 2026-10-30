@@ -296,3 +296,17 @@ func TestDropStatement(t *testing.T) {
 		}
 	}
 }
+
+// TestMockSetter: a stubbed setter (`stub!(:read_timeout=).and_return(3)`, net-ftp's close_spec) is a def ... end taking
+// its value: an endless `def read_timeout=() = 3` is a syntax error that dropped the whole mock class (decision 421).
+func TestMockSetter(t *testing.T) {
+	m := &mockClass{name: "RbSpecMock1", methods: map[string]string{}, args: map[string]bool{}}
+	m.add("read_timeout=", "3", false)
+	m.add("closed?", "false", false)
+	got := m.source()
+	for _, want := range []string{"  def read_timeout=(_value)\n    3\n  end\n", "  def closed? = false\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("mock source lacks %q:\n%s", want, got)
+		}
+	}
+}
