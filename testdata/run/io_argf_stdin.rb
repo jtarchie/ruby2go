@@ -3,12 +3,16 @@
 # stdin: "x\ny\nz\n"
 
 # IO#lineno counts $stdin.gets (ruby/spec core/io, #49)
-p $stdin.gets, $stdin.lineno
+p $., $stdin.gets, $stdin.lineno, $.
 $stdin.lineno = 5
 p $stdin.lineno
 
 # With ARGV empty at the first read, ARGF is stdin, named "-".
-p gets
+p gets, $.
 p ARGF.filename
 p ARGF.readlines
 p gets
+
+# $. is the last read's line number (decision 425); English.rb names it $NR and $INPUT_LINE_NUMBER
+require "English"
+p $NR, $INPUT_LINE_NUMBER

@@ -156,6 +156,9 @@ func (c *Compiler) emitOptClassFrom() {
 
 // emitTables: what every emitted body has contributed to.
 func (c *Compiler) emitTables() {
+	if c.usesLineNo { // $. is read: gets stores the line number for it (decision 425)
+		c.w("func init() { rbTrackLineNo = true }\n\n")
+	}
 	if c.dynEvery || c.respondEvery {
 		c.emitNameSwitches()
 	}

@@ -150,7 +150,7 @@ compiler answers. A standard library name not listed compiles as a no-op.
 | `date` | stable | [39](../examples/39_date/main.rb), [94](../examples/94_datetime/main.rb), [date_test](../testdata/test/date_test.rb) | Proleptic Gregorian only: MRI's Julian dates before 1582 are not modelled. |
 | `delegate` | stable | [86](../examples/86_delegation/main.rb) | `DelegateClass(Foo)` is typed; `SimpleDelegator` dispatches dynamically. |
 | `digest`, `digest/md5`, `digest/sha1`, `digest/sha2` | stable | [46](../examples/46_digests/main.rb) | |
-| `English` | stable | [globals_test](../testdata/test/globals_test.rb), ruby/spec `library/English` | English.rb's names for the punctuation globals, which rugaroo knows whether or not it is required ([decision 415](decisions/415.md)); `$;`, `$,` and `$\` are honored by `split`, `join` and `print`. No `$.` or `$_` (`$NR`, `$LAST_READ_LINE`): `gets` keeps no last line. |
+| `English` | stable | [globals_test](../testdata/test/globals_test.rb), ruby/spec `library/English` | English.rb's names for the punctuation globals, which rugaroo knows whether or not it is required ([decision 415](decisions/415.md)); `$;`, `$,` and `$\` are honored by `split`, `join` and `print`. `$.` (`$NR`) is the last read's line number ([decision 425](decisions/425.md)); no `$_` (`$LAST_READ_LINE`): `gets` keeps no last line. |
 | `erb` | stable | [81](../examples/81_erb/main.rb), [erb_test](../testdata/test/erb_test.rb) | A template that is a string literal compiles with the program ([decision 111](decisions/111.md)). |
 | `etc` | stable | [60](../examples/60_etc/main.rb) | |
 | `fcntl` | stable | [stdlib_test](../testdata/test/stdlib_test.rb) | Constants for `IO#fcntl`. |

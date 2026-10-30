@@ -143,6 +143,7 @@ type Compiler struct {
 type dynState struct {
 	dynNames      []string        // method names called on untyped values
 	blocklessTwin map[string]bool // gem method names with a synthesized `__name_enum` (decision 418)
+	usesLineNo    bool            // the program reads $. (decision 425)
 	aliasKeys     map[string]bool // names a dynamic method(:name) keys by def, for aliases (emitAliasKeys, decision 418)
 	dynSeen       map[string]bool
 	sends         map[string]sendSpec // rbSend_ dispatchers calls named (dispatch.go)

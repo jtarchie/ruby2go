@@ -362,13 +362,13 @@ func (c *Compiler) constTypeOf(cls *Class, k *Const) Type {
 }
 
 // englishGlobals are English.rb's aliases of the globals genGlobalRead knows (Homebrew's `$CHILD_STATUS`; library/English,
-// decision 414). $. and $_ ($NR, $LAST_READ_LINE) are not: rugaroo's gets keeps no last line.
+// decision 414; `$NR` for $., decision 425). $_ ($LAST_READ_LINE) is not: rugaroo's gets keeps no last line.
 var englishGlobals = map[string]string{
 	"$CHILD_STATUS": "$?", "$PROCESS_ID": "$$", "$PID": "$$", "$LAST_MATCH_INFO": "$~",
 	"$INPUT_RECORD_SEPARATOR": "$/", "$RS": "$/", "$ERROR_INFO": "$!", "$ERROR_POSITION": "$@",
 	"$DEFAULT_OUTPUT": "$>", "$DEFAULT_INPUT": "$<", "$ARGV": "$*",
 	"$FS": "$;", "$FIELD_SEPARATOR": "$;", "$OFS": "$,", "$OUTPUT_FIELD_SEPARATOR": "$,",
-	"$ORS": "$\\", "$OUTPUT_RECORD_SEPARATOR": "$\\",
+	"$ORS": "$\\", "$OUTPUT_RECORD_SEPARATOR": "$\\", "$NR": "$.", "$INPUT_LINE_NUMBER": "$.",
 }
 
 // separatorVars are the Go variables of $;, $, and $\\, which String#split, Array#join and Kernel#print default to.
@@ -435,6 +435,9 @@ func (f *fctx) genGlobalRead(n *parser.GlobalVariableReadNode) expr {
 		return expr{code: "rbVerbose", typ: TOpt{Elem: f.cls("Boolean")}}
 	case "$/": // the input record separator: chomp's default (decision 180)
 		return expr{code: "rbRS", typ: TOpt{Elem: f.cls("String")}}
+	case "$.": // the last line number an IO's gets read, 0 before any (decision 425)
+		f.c.usesLineNo = true
+		return expr{code: "Integer(rbLineNo.Load())", typ: f.cls("Integer")}
 	}
 	if k := f.c.globals[n.Name]; k != nil { // the program's own (decision 361)
 		return expr{code: k.GoName, typ: f.c.constType(k)}

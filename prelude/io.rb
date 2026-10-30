@@ -427,6 +427,7 @@ class IO < Object
       return nil
     }
     self.lineno++
+    rbNoteLineNo(self.lineno)
     s := String(line)
     return &s
   }
@@ -860,7 +861,7 @@ RUBY_ENGINE_VERSION = RUBY_VERSION #: String
 
 # ARGF (decision 95): the files named in ARGV, read in turn and shifted out
 # of it as each opens, or stdin when ARGV is empty at the first read.
-# @go_type struct { r *bufio.Reader; f *os.File; name string; started, stdin, done bool }
+# @go_type struct { r *bufio.Reader; f *os.File; name string; started, stdin, done bool; lineno int }
 class ARGFClass < Object
   #: () -> ARGFClass
   def self.new = %x{ return &ARGFClass{} }
@@ -907,6 +908,8 @@ class ARGFClass < Object
         self.spent()
       }
       if line != "" {
+        self.lineno++ // counted across ARGV's files, as MRI's ARGF.lineno and $. (decision 425)
+        rbNoteLineNo(self.lineno)
         s := String(line)
         return &s
       }

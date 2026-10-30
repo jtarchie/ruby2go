@@ -686,6 +686,7 @@ class File < Object
       return nil
     }
     self.lineno++
+    rbNoteLineNo(self.lineno)
     s := String(line)
     return &s
   }

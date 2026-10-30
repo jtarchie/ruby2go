@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -477,8 +478,23 @@ func rbGetsFrom(r *bufio.Reader, sep *String, limit int, lineno *int) *String {
 	}
 	if !cut {
 		*lineno++
+		rbNoteLineNo(*lineno)
 	}
 	return Ref(String(out))
+}
+
+// rbLineNo is $.: the line number of the last line an IO's gets read (decision 425). It is stored only when the program
+// reads $. (rbTrackLineNo, set by an init the compiler emits then), so a program that never does pays one bool test;
+// atomic, as threads may read lines while another reads $..
+var (
+	rbLineNo      atomic.Int64
+	rbTrackLineNo bool
+)
+
+func rbNoteLineNo(n int) {
+	if rbTrackLineNo {
+		rbLineNo.Store(int64(n))
+	}
 }
 
 // rbStatAccess is whether the effective user may do mode bit want (4 read, 2 write, 1 execute) on fi: root may read and
