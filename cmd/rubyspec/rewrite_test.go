@@ -152,6 +152,32 @@ end
 	}
 }
 
+// TestRewriteHelperMatcher: `x.should helper(args)` with a spec helper's matcher object asks its matches? (decision 421);
+// SpecExpectation's own matchers stay method calls.
+func TestRewriteHelperMatcher(t *testing.T) {
+	root := t.TempDir()
+	src := "describe \"M\" do\n  it \"m\" do\n    1.0.should be_close_to_matrix([[1]])\n    1.0.should be_close(1.0, 0.1)\n  end\nend\n"
+	err := os.WriteFile(filepath.Join(root, "m_spec.rb"), []byte(src), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	p, err := parser.NewParser(ctx, parser.WithVersion(parser.SyntaxVersionLatest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, err := load(ctx, p, root, []string{"m_spec.rb"}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := prog.files[len(prog.files)-1].text
+	for _, want := range []string{"1.0.should.__matcher(be_close_to_matrix([[1]]))", "1.0.should.be_close(1.0, 0.1)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rewritten spec lacks %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestVersionGuards(t *testing.T) {
 	for _, c := range []struct {
 		a, b string

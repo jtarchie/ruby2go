@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/danielgatis/go-ruby-prism/parser"
 )
@@ -164,6 +165,12 @@ func (rw *rewriter) visit(n parser.Node) {
 		// `x.should matcher(args)`: the matcher is a method of the expectation (`x.should.be_close(...)`)
 		_, me := span(*call.MessageLoc)
 		ms, _ := span(m.Location)
+		if rw.helperMatcher(call, m, me, ms) {
+			for _, ch := range n.CompactChildNodes() {
+				rw.visit(ch)
+			}
+			return
+		}
 		rw.edits = append(rw.edits, edit{me, ms, "."})
 		if isProc(call.Receiver) {
 			ls, le := span(call.Receiver.GetLocation())
@@ -502,6 +509,35 @@ func callArgs(c *parser.CallNode) []parser.Node {
 	}
 	return c.Arguments.Arguments
 }
+
+// helperMatcher rewrites `x.should helper(args)` whose helper SpecExpectation lacks into `x.should.__matcher(helper(args))`:
+// a spec helper's matcher object (matrix's `be_close_to_matrix`), whose matches? mspec's should(matcher) asks (decision
+// 421). As a method call of the expectation its value went unchecked, a pass that asserted nothing.
+func (rw *rewriter) helperMatcher(call, m *parser.CallNode, me, ms int) bool {
+	if isProc(call.Receiver) || expectationMethods()[m.Name] {
+		return false
+	}
+	_, mend := span(m.Location)
+	rw.edits = append(rw.edits, edit{me, ms, ".__matcher("}, edit{mend, mend, ")"})
+	return true
+}
+
+// expectationMethods are the names mspec.rb's SpecExpectation defines: the matchers a rewritten `x.should.m(...)` calls.
+var expectationMethods = sync.OnceValue(func() map[string]bool {
+	out := map[string]bool{}
+	start := strings.Index(mspec, "\nclass SpecExpectation\n")
+	if start < 0 {
+		return out
+	}
+	body := mspec[start:]
+	if end := strings.Index(body, "\nend\n"); end >= 0 {
+		body = body[:end]
+	}
+	for _, m := range regexp.MustCompile(`(?m)^  def ([a-z_][a-zA-Z0-9_]*[?!]?)`).FindAllStringSubmatch(body, -1) {
+		out[m[1]] = true
+	}
+	return out
+})
 
 // matcherArg is the matcher of `x.should be_close(y, t)`: should's one argument, a receiverless call.
 func matcherArg(call *parser.CallNode) *parser.CallNode {

@@ -8,6 +8,19 @@ require "stringio"
 
 # `actual.should == x`, `actual.should.equal?(x)`, `-> { }.should.raise(E)`; should_not negates.
 class SpecExpectation
+  # mspec's balance_should_and_match branch; matrix's spec_helper calls it `rescue`d, a no-op on mspec master (decision 421)
+  #: () -> nil
+  def self.matcher! = nil
+
+  # `x.should helper(args)` with a spec helper's matcher object (rewrite.go): its matches?, and its messages on a miss
+  #: (untyped) -> bool
+  def __matcher(m)
+    missed = !m.matches?(@actual)
+    return true if missed != @positive
+
+    mspec_fail Array(@positive ? m.failure_message : m.negative_failure_message).join(" ")
+  end
+
   #: (untyped, bool) -> void
   def initialize(actual, positive)
     @actual = actual
