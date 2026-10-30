@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/build/constraint"
 	goparser "go/parser"
 	"go/token"
 	"io/fs"
@@ -133,6 +134,7 @@ type Compiler struct {
 	round       bool                      // an inference round: pending parameters are untyped, their arguments recorded
 	inferDone   bool                      // the rounds ran: a parameter still untyped is an error
 	noPrune     bool                      // formatGo keeps every declaration
+	cPreamble   string                    // the C above `import "C"` under --cgo (decision 426)
 	env         envConfig                 // the RUGAROO_* environment, read when this compile started
 	uses        map[pendingKey][]paramUse // this round's arguments, by parameter key
 	pendingSeen map[pendingKey]bool       // this round's untyped parameter keys
@@ -632,7 +634,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 			lazy[k.GoName] = true
 		}
 	}
-	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels, c.noPrune, c.env)
+	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels, c.noPrune, c.env, c.cPreamble)
 	tick("format")
 	opts.warnings = c.Warnings // the tail's bodies warn too
 	if errors.Is(ferr, errPruneIncomplete) {
@@ -827,7 +829,11 @@ func (c *Compiler) loadPreludeGo() {
 		if err != nil {
 			panic(compileError{msg: fmt.Sprintf("%s: %v", name, err)})
 		}
-		imports = append(imports, fileImports...)
+		imports = append(imports, fileImports...) // every backend's, so the once-per-process table serves either lane
+		if !c.goFileSelected(src) {
+			continue
+		}
+		c.cPreamble += c.cgoPreamble(name, src)
 		if c.env.IntOverflow == "wrap" {
 			body = strings.Replace(body, "const rbIntWrap = false", "const rbIntWrap = true", 1) // decision 372
 		}
@@ -853,6 +859,50 @@ func mergeStdImports(table map[string]string, imports []string) (collisions []st
 // before it reads the table, and Once orders those reads after the write.
 var preludeImports sync.Once
 
+// goFileSelected evaluates a prelude/go file's //go:build line: rugaroo_prelude holds, rugaroo_cgo under --cgo (decision 426).
+func (c *Compiler) goFileSelected(src []byte) bool {
+	for line := range strings.Lines(string(src)) {
+		if !constraint.IsGoBuild(line) {
+			continue
+		}
+		expr, err := constraint.Parse(strings.TrimSpace(line))
+		if err != nil {
+			panic(compileError{msg: fmt.Sprintf("prelude: %v", err)})
+		}
+		return expr.Eval(func(tag string) bool { return tag == "rugaroo_prelude" || tag == "rugaroo_cgo" && c.env.CGO })
+	}
+	return true
+}
+
+// cgoPreamble is the comment above a file's `import "C"`, each `#include "x.h"` replaced by prelude/go/x.h, so the
+// one emitted main.go carries the C (decision 426).
+func (c *Compiler) cgoPreamble(name string, src []byte) string {
+	f, err := goparser.ParseFile(token.NewFileSet(), name, src, goparser.ImportsOnly|goparser.ParseComments)
+	if err != nil {
+		panic(compileError{msg: fmt.Sprintf("%s: %v", name, err)})
+	}
+	var out strings.Builder
+	for _, d := range f.Decls {
+		g, ok := d.(*ast.GenDecl)
+		if !ok || g.Tok != token.IMPORT || len(g.Specs) != 1 || g.Specs[0].(*ast.ImportSpec).Path.Value != `"C"` || g.Doc == nil {
+			continue
+		}
+		for line := range strings.Lines(g.Doc.Text()) {
+			hdr, ok := strings.CutPrefix(strings.TrimSpace(line), "#include \"")
+			if !ok || !strings.HasSuffix(hdr, "\"") {
+				out.WriteString(line)
+				continue
+			}
+			text, err := fs.ReadFile(c.preludeFS, path.Join(path.Dir(name), strings.TrimSuffix(hdr, "\"")))
+			if err != nil {
+				panic(compileError{msg: fmt.Sprintf("%s: %v", name, err)})
+			}
+			out.Write(text)
+		}
+	}
+	return out.String()
+}
+
 // stripGoPackage drops the file header, `package` clause and import block, keeping only what follows; line is where
 // that remainder starts, for the //line directive. imports are the std packages the block named.
 func stripGoPackage(src []byte) (string, int, []string, error) {
@@ -867,7 +917,9 @@ func stripGoPackage(src []byte) (string, int, []string, error) {
 		end = d.End()
 		if g, ok := d.(*ast.GenDecl); ok && g.Tok == token.IMPORT {
 			for _, s := range g.Specs {
-				imports = append(imports, strings.Trim(s.(*ast.ImportSpec).Path.Value, `"`))
+				if p := strings.Trim(s.(*ast.ImportSpec).Path.Value, `"`); p != "C" { // cgo's pseudo-package: the preamble (cgoPreamble)
+					imports = append(imports, p)
+				}
 			}
 		}
 	}

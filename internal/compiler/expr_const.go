@@ -466,7 +466,7 @@ func (f *fctx) genGlobalWrite(n *parser.GlobalVariableWriteNode) expr {
 		f.c.usesLineNo = true
 		it := f.cls("Integer")
 		e := f.genExpr(n.Value, it)
-		code := ""
+		var code string
 		if typeEq(e.typ, f.cls("Float")) { // through a variable: a literal is a Go constant, which Integer(123.5) rejects
 			fl := f.newTmp()
 			f.emit("var %s Float = %s", fl, e.code)

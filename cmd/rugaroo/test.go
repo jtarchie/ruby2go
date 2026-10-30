@@ -49,6 +49,11 @@ func testBuildFlags(argv []string) (buildOpts, []string, error) {
 			opts.race = true
 		case a == "-work":
 			opts.work = true
+		case a == "-cgo", a == "--cgo":
+			err := os.Setenv("RUGAROO_CGO", "1")
+			if err != nil {
+				return opts, nil, fmt.Errorf("rugaroo test: %w", err)
+			}
 		case a == "-gcflags", a == "-I":
 			want = a
 		case strings.HasPrefix(a, "-int-overflow="), strings.HasPrefix(a, "--int-overflow="):

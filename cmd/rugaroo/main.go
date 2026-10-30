@@ -20,10 +20,10 @@ import (
 	"github.com/jtarchie/rugaroo"
 )
 
-const usage = `usage: rugaroo build [-o prog] [-I dir]... [-gem dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [traced args...]
-       rugaroo run [-I dir]... [-gem dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] main.rb [args...]
-       rugaroo gen [-I dir]... [-gem dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] main.rb [traced args...] > main.go
-       rugaroo test [-I dir]... [-int-overflow raise|wrap|promote] [-race] [-gcflags flags] [-work] [paths...] [minitest flags: -v, -s seed, -n pattern, -e pattern, -S kinds, --show-skips]
+const usage = `usage: rugaroo build [-o prog] [-I dir]... [-gem dir]... [-main file | -trace [-trace-also args]... [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-cgo] [-race] [-gcflags flags] [-work] main.rb [traced args...]
+       rugaroo run [-I dir]... [-gem dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-cgo] [-race] [-gcflags flags] [-work] main.rb [args...]
+       rugaroo gen [-I dir]... [-gem dir]... [-main file | -trace [-rubyopt opt]...] [-int-overflow raise|wrap|promote] [-cgo] main.rb [traced args...] > main.go
+       rugaroo test [-I dir]... [-int-overflow raise|wrap|promote] [-cgo] [-race] [-gcflags flags] [-work] [paths...] [minitest flags: -v, -s seed, -n pattern, -e pattern, -S kinds, --show-skips]
        rugaroo web [-addr 127.0.0.1:8080]
        rugaroo web -static dir -assets https://host/path/`
 
@@ -74,6 +74,9 @@ func main() {
 	})
 	fs.Func("nil-check", "a possibly-nil value where a value is expected: a `compile` error (the default), or a runtime check that raises on nil as MRI does (decision 393)", func(m string) error {
 		return os.Setenv("RUGAROO_NIL_CHECK", m)
+	})
+	fs.BoolFunc("cgo", "Fiddle and FFI call C through cgo instead of purego, which is then not linked (needs a C compiler; decision 426)", func(string) error {
+		return os.Setenv("RUGAROO_CGO", "1")
 	})
 	fs.Func("I", "a directory `require` searches for your own files, as `ruby -I` (repeatable)", func(dir string) error {
 		opts.loadPath = append(opts.loadPath, dir)

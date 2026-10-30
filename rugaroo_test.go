@@ -592,10 +592,12 @@ func TestPreludeGo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.CommandContext(t.Context(), "go", "vet", "-tags", "rugaroo_prelude", "./prelude/go")
-	got, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("go vet -tags rugaroo_prelude ./prelude/go: %v\n%s", err, got)
+	for _, tags := range []string{"rugaroo_prelude", "rugaroo_prelude,rugaroo_cgo"} { // each Fiddle backend (decision 426)
+		cmd := exec.CommandContext(t.Context(), "go", "vet", "-tags", tags, "./prelude/go") //nolint:gosec // the two tag sets above
+		got, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("go vet -tags %s ./prelude/go: %v\n%s", tags, err, got)
+		}
 	}
 }
 

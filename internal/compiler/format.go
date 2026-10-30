@@ -117,7 +117,7 @@ func merge(f, t *ast.File) {
 }
 
 // formatGo prunes src to what main reaches (noPrune or RUGAROO_NO_PRUNE=1 keeps everything), adds the std imports it refers to, and gofmts it. src is the program without its forwarders, dispatchers and tables: next emits those in batches for what the pruned program so far reaches (most are never reached), until it returns nil.
-func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error), labels map[string]string, noPrune bool, env envConfig) ([]byte, error) {
+func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func(string) bool) ([]byte, error), labels map[string]string, noPrune bool, env envConfig, preamble string) ([]byte, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "main.go", src, parser.ParseComments)
 	if err != nil {
@@ -186,6 +186,10 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	}
 	// the printed file is gofmt's: `package x`, a blank line, the decls; the import block goes between
 	var imp strings.Builder
+	if used["C"] {
+		imp.WriteString("\n" + cgoImport(f, preamble))
+		delete(used, "C")
+	}
 	imp.WriteString("\nimport (\n")
 	for _, p := range slices.Sorted(maps.Keys(used)) {
 		if alias := stdImportAlias[p]; alias != "" { // a package whose name clashes with another's (math/rand/v2 beside crypto/rand)
@@ -200,6 +204,39 @@ func formatGo(src []byte, lazy map[string]bool, next func(reached, selected func
 	return slices.Concat(out[:at], []byte(imp.String()), out[at:]), nil
 }
 
+// cgoImport is `import "C"` under its preamble as line comments; a `// rugaroo:if Name` ... `// rugaroo:end` section
+// is kept only when the pruned file still declares Name (the callback trampolines, decision 426).
+func cgoImport(f *ast.File, preamble string) string {
+	kept := map[string]bool{}
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil {
+			kept[fd.Name.Name] = true
+		}
+	}
+	var b strings.Builder
+	skip := false
+	for line := range strings.Lines(preamble) {
+		t := strings.TrimSpace(line)
+		if name, ok := strings.CutPrefix(t, "// rugaroo:if "); ok {
+			skip = !kept[name]
+			continue
+		}
+		if t == "// rugaroo:end" {
+			skip = false
+			continue
+		}
+		if skip {
+			continue
+		}
+		if t == "" {
+			b.WriteString("//\n")
+			continue
+		}
+		b.WriteString("// " + strings.TrimRight(line, "\n") + "\n")
+	}
+	return b.String() + "import \"C\"\n"
+}
+
 // usedStdImports is the import path of every std package a selector in nodes names (`strings.Join`: an Ident with no
 // local Obj that stdImports knows).
 func usedStdImports[N ast.Node](nodes []N) map[string]bool {
@@ -209,6 +246,8 @@ func usedStdImports[N ast.Node](nodes []N) map[string]bool {
 			if sel, ok := n.(*ast.SelectorExpr); ok {
 				if id, ok := sel.X.(*ast.Ident); ok && id.Obj == nil && stdImports[id.Name] != "" {
 					used[stdImports[id.Name]] = true
+				} else if ok && id.Obj == nil && id.Name == "C" { // cgo, under --cgo only (decision 426)
+					used["C"] = true
 				}
 			}
 			return true
