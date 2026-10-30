@@ -945,6 +945,9 @@ func (f *fctx) everyNameWhy(n parser.Node, recv expr) string {
 }
 
 // noteSendUses: `send("convert_#{x}", el)` on known classes reaches only their matching methods, so its args type those params like a plain call (decision 353).
+// In user code, a wholly computed name (`send(command.downcase.to_sym, argument)`, net-ftp's fixture server) may reach
+// any of their methods taking that many arguments; its args then type only parameters with a default, whose literal
+// (`param = :default`) is the weakest evidence of their type (decision 423).
 func (f *fctx) noteSendUses(on []*Class, name parser.Node, args []parser.Node) {
 	if f.c.uses == nil || slices.ContainsFunc(args, func(a parser.Node) bool {
 		switch a.(type) {
@@ -956,7 +959,8 @@ func (f *fctx) noteSendUses(on []*Class, name parser.Node, args []parser.Node) {
 		return
 	}
 	pre, suf, ok := namePattern(name)
-	if !ok {
+	optionalOnly := !ok                                  // decision 423
+	if optionalOnly && (len(args) == 0 || f.lenient()) { // gem code: its dynamic calls type what they reach (decision 331); a gem class's many defaults widened by every computed send broke kramdown's converter
 		return
 	}
 	var types []Type
@@ -979,7 +983,7 @@ func (f *fctx) noteSendUses(on []*Class, name parser.Node, args []parser.Node) {
 				}
 			}
 			for i, a := range args {
-				if types[i] != nil {
+				if types[i] != nil && (!optionalOnly || m.Params[i].Default != nil) {
 					f.noteUse(m.Params[i], a, types[i])
 				}
 			}

@@ -3418,3 +3418,26 @@ module DynamicTests
     end
   end
 end
+
+module DynamicTests
+  # A wholly computed send passing a String to a handler whose parameter only its Symbol default types (net-ftp's fixture
+  # server, decision 423): the String reaches it, as MRI's send passes it.
+  class DynCommandServer
+    def handle(line)
+      command, argument = line.split(" ", 2)
+      argument.nil? ? send(command.downcase.to_sym) : send(command.downcase.to_sym, argument)
+    end
+
+    def help(param = :default) = param == :default ? "help" : "help #{param}"
+
+    def stat(param = :default) = param == :default ? "stat" : "stat #{param}"
+  end
+
+  class DynCommandSendTest < Minitest::Test
+    def test_computed_send_types_a_defaulted_param
+      s = DynCommandServer.new
+      assert_equal %w[help stat], [s.handle("HELP"), s.handle("STAT")]
+      assert_equal ["help retr", "stat x y"], [s.handle("HELP retr"), s.handle("STAT x y")]
+    end
+  end
+end
