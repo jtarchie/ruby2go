@@ -25,7 +25,7 @@ module L
   attach_function :make, [:int], :widget_t
 end
 -- attach_by_value.rb --
-# error: main.rb:9: FFI::Library#attach_function: a struct by value is not supported (decision 375)
+# error: main.rb:9: FFI::Library#attach_function: a struct by value needs --cgo (decisions 375, 426)
 require "ffi"
 module L
   extend FFI::Library

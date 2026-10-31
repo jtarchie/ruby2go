@@ -67,6 +67,17 @@ module FFI
     out
   end
 
+  # A struct passed by value travels as its address; the C stub copies it (decision 426).
+  #: (untyped) -> Integer
+  def self.__struct_addr(s)
+    raise ArgumentError, ":pointer argument is not a valid pointer" unless s.is_a?(Struct)
+
+    s.pointer.to_i
+  end
+
+  #: (Integer, Integer, Array[Integer], Array[untyped], Integer, Integer) -> untyped
+  def self.__stub(n, fn, types, vals, ret_addr, ret) = %x{ rbFFIStub(n, fn, types, vals, ret_addr, ret) }
+
   # Past 2**63 the value needs a Bignum: it raises unless the program is built with --int-overflow=promote (decision 372).
   #: (Integer) -> Integer
   def self.__u64(v) = v < 0 ? v + (1 << 64) : v
@@ -1052,6 +1063,15 @@ module FFI
       end
     end
 
+    class StructByValue
+      attr_reader :struct_class #: untyped
+
+      #: (untyped) -> void
+      def initialize(klass)
+        @struct_class = klass
+      end
+    end
+
     class ByReference
       attr_reader :klass #: untyped
 
@@ -1088,8 +1108,9 @@ module FFI
     #: (?Symbol) -> ByReference
     def self.by_ref(_flags = :inout) = ByReference.new(self)
 
-    #: () -> untyped
-    def self.by_value = raise(NotImplementedError, "FFI::Struct.by_value: structs by value are not supported (decision 375)")
+    # Only a marker at run time: an attach_function that names it compiles to a C stub under --cgo (decision 426).
+    #: () -> StructByValue
+    def self.by_value = StructByValue.new(self)
 
     # @dynamic
     #: (untyped) -> Integer
@@ -1377,7 +1398,7 @@ module FFI
       named = args[1].is_a?(Symbol) || args[1].is_a?(String)
       cname = named ? args[1].to_s : name
       arg_types = (named ? args[2] : args[1]) #: Array[untyped]
-      ret_type = (named ? args[3] : args[2]) #: Symbol
+      ret_type = (named ? args[3] : args[2]) #: untyped
       sym = nil #: Integer?
       ffi_libraries.each do |h|
         sym = h&.sym(cname) rescue nil # rubocop:disable Style/RescueModifier

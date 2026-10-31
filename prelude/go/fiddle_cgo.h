@@ -1,4 +1,6 @@
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <dlfcn.h>
 #include <errno.h>
 #include <stdint.h>
@@ -74,6 +76,13 @@ static uintptr_t rb_fiddle_default(void) { return (uintptr_t)RTLD_DEFAULT; }
 static int rb_fiddle_dlclose(uintptr_t h) { return dlclose((void *)h); }
 
 static uintptr_t rb_fiddle_dlsym(uintptr_t h, const char *name) { return (uintptr_t)dlsym((void *)h, name); }
+
+// rugaroo:if rbFFIStub
+#ifndef RB_FFI_STUBS
+// a program without by-value FFI signatures has no stubs (ffi_stub.go writes them, decision 426)
+static void rb_ffi_stub(int n, uintptr_t fn, uint64_t *v, void *ret, int *err) { (void)n; (void)fn; (void)v; (void)ret; *err = ENOSYS; }
+#endif
+// rugaroo:end
 
 // rugaroo:if rbFiddleCgoCallback
 extern uintptr_t rbFiddleCgoCallback(int, uintptr_t *, uint64_t *);

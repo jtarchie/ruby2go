@@ -236,3 +236,44 @@ func rbFiddleBool(b bool) int {
 	}
 	return 0
 }
+
+// rbFFIStub calls fn through by-value C stub n (ffi_stub.go), each value as the 64-bit word Fiddle would pass, a struct
+// result copied to retAddr; anything else is ret's value.
+func rbFFIStub(n, fn Integer, types *Array[Integer], vals *Array[any], retAddr, ret Integer) any {
+	v := make([]C.uint64_t, max(len(vals.s), 1))
+	keep := make([][]byte, len(vals.s)) // String copies in Go memory, alive until the call returns
+	for k, a := range vals.s {
+		t := types.s[k]
+		var w uintptr
+		switch {
+		case rbFiddleIsFloat(t):
+			_, f := rbFiddleWord64(t, a)
+			w = uintptr(math.Float64bits(f))
+		case t == 11:
+			b, isBool := a.(Boolean)
+			if a != nil && (!isBool || bool(b)) {
+				w = 1
+			}
+		default:
+			if s, isStr := a.(String); isStr && (t == 1 || t == 10) {
+				w, keep[k] = rbFiddleCStr(s, ret == 1)
+			} else {
+				w, _ = rbFiddleWord64(t, a)
+			}
+		}
+		v[k] = C.uint64_t(w)
+	}
+	var r C.uint64_t
+	var errno C.int
+	out := unsafe.Pointer(&r)
+	if retAddr != 0 {
+		out = rbFiddleAt(retAddr)
+	}
+	C.rb_ffi_stub(C.int(n), C.uintptr_t(fn), &v[0], out, &errno)
+	runtime.KeepAlive(keep)
+	rbFiddleSetErrno(Integer(errno))
+	if retAddr != 0 {
+		return nil
+	}
+	return rbFiddleValue(ret, uintptr(r), math.Float64frombits(uint64(r)))
+}

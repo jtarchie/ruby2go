@@ -51,7 +51,10 @@ func (c *Compiler) ffiType(f *File, cls *Class, at parser.Node, n parser.Node) f
 		case "by_ref":
 			return ffiParam{code: 1, kind: "ptr"}
 		case "by_value":
-			c.errorf(f, at, "FFI::Library#attach_function: a struct by value is not supported (decision 375)")
+			if !c.env.CGO {
+				c.errorf(f, at, "FFI::Library#attach_function: a struct by value needs --cgo (decisions 375, 426)")
+			}
+			return ffiParam{code: 1, kind: "byval", name: constText(f, call.Receiver)}
 		}
 	}
 	s, ok := n.(*parser.SymbolNode)
@@ -90,6 +93,10 @@ func (c *Compiler) ffiType(f *File, cls *Class, at parser.Node, n parser.Node) f
 
 // collectFFICall reads a literal typedef/attach_function in a Library module; the call itself still runs at load.
 func (c *Compiler) collectFFICall(ctx context.Context, f *File, cls *Class, n *parser.CallNode, scope []*Class) {
+	if n.Name == "layout" {
+		c.collectFFILayout(f, cls, n)
+		return
+	}
 	if n.Name != "attach_function" && n.Name != "typedef" && n.Name != "callback" && n.Name != "enum" || f.isPrelude() || !ffiLibrary(f, cls) {
 		return
 	}
@@ -160,10 +167,17 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 	types := make([]string, 0, len(arr.Elements))
 	exprs := make([]string, 0, len(arr.Elements))
 	variadic := false
+	stub := make([]ffiStubParam, 0, len(arr.Elements)) // the C stub's view, used when a struct passes by value
+	byval := false
 	for i, el := range arr.Elements {
 		p := fmt.Sprintf("a%d", i)
 		arg := p
-		switch t := c.ffiType(f, cls, n, el); t.kind {
+		t := c.ffiType(f, cls, n, el)
+		sp := ffiStubParam{code: t.code}
+		switch t.kind {
+		case "byval":
+			sp.ctype, byval = c.ffiStructC(f, n, cls.RubyName, t.name, 0), true
+			arg = fmt.Sprintf("::FFI.__struct_addr(%s)", p)
 		case "varargs":
 			if i != len(arr.Elements)-1 {
 				c.errorf(f, n, "FFI::Library#attach_function: :varargs must be the last argument type")
@@ -180,6 +194,7 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 		params = append(params, p)
 		exprs = append(exprs, arg)
 		types = append(types, "untyped")
+		stub = append(stub, sp)
 	}
 	if len(params) > 8 && !c.env.CGO {
 		c.errorf(f, n, "FFI::Library#attach_function: more than 8 arguments are stack-passed and need --cgo (decisions 326, 426)")
@@ -201,8 +216,14 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 	case n >= 1 && n <= 3:
 		call = fmt.Sprintf("::Fiddle.__call%d(%s)", n, strings.Join(append([]string{fn}, exprs...), ", "))
 	}
+	if rp.kind == "byval" || byval {
+		call = c.ffiStubCall(f, n, cls, fn, rp, stub, exprs, variadic)
+	}
 	retType := ffiRubyType(ret)
 	switch rp.kind {
+	case "byval":
+		full, _ := c.ffiStructNamed(cls.RubyName, rp.name)
+		retType = full
 	case "ptr":
 		call, retType = "::FFI::Pointer.__wrap("+call+")", "FFI::Pointer"
 	case "enum":
@@ -210,7 +231,7 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 	case "callback":
 		c.errorf(f, n, "FFI::Library#attach_function: a callback cannot be a return type (decision 375)")
 	}
-	src := fmt.Sprintf("#: (%s) -> %s\ndef self.%s(%s) = %s\n",
+	src := fmt.Sprintf("#: (%s) -> %s\ndef self.%s(%s)\n  %s\nend\n",
 		strings.Join(types, ", "), retType, name, strings.Join(params, ", "), call)
 	sf, def := c.synthDef(ctx, f, n, "FFI function", src, synthOpt{Origin: f.synthOrigin(), NoPath: true})
 	c.addMethod(sf, cls, def, false, scope)

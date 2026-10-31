@@ -66,6 +66,9 @@ type Compiler struct {
 	fiddleAliases         map[*Class]map[string]string // Fiddle::Importer typealiases read so far, per module (decision 326)
 	ffiNamed              map[*Class]map[string]string // FFI::Library callbacks ("callback") and enums ("enum") read so far, per module
 	ffiAliases            map[*Class]map[string]string // FFI::Library typedefs read so far, per module (decision 375)
+	ffiLayouts            map[string]*ffiLayout        // FFI::Struct subclasses' literal layouts, by Ruby name (decision 426)
+	ffiStubs              []string                     // C stubs for by-value struct signatures under --cgo (decision 426)
+	ffiStubTypes          []string                     // their struct typedefs
 	fiddleSlots           map[*Class]int               // extern/bind methods synthesized so far, per module: each one's __fiddle_func_at slot (decision 329)
 	needRxAlt             bool                         // the program may build a pattern RE2 rejects: it gets the regexp2 engine (decision 242)
 	aliasNews             []aliasNewReq                // `alias_method :[], :new` on a synthesized new, made in link (decision 253)
@@ -633,7 +636,7 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 			lazy[k.GoName] = true
 		}
 	}
-	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels, c.noPrune, c.env, c.cPreamble)
+	formatted, ferr := formatGo(src, lazy, c.emitNext, c.labels, c.noPrune, c.env, c.ffiStubPreamble()+c.cPreamble)
 	tick("format")
 	opts.warnings = c.Warnings // the tail's bodies warn too
 	if errors.Is(ferr, errPruneIncomplete) {

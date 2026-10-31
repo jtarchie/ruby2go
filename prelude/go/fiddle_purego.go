@@ -122,6 +122,11 @@ func rbFiddleCallSpread(*atomic.Pointer[rbFiddleArgs], uintptr, []Integer, []uin
 	panic(NewNotImplementedError(Ref(String("rugaroo: a Fiddle call with stack or variadic arguments needs --cgo (decision 426)"))))
 }
 
+// rbFFIStub is never reached: a struct by value is a compile error without --cgo (decision 426).
+func rbFFIStub(Integer, Integer, *Array[Integer], *Array[any], Integer, Integer) any {
+	panic(NewNotImplementedError(Ref(String("rugaroo: FFI structs by value need --cgo (decision 426)"))))
+}
+
 // rbFiddleErrnoSym is libc's function returning errno's address.
 func rbFiddleErrnoSym() string {
 	if runtime.GOOS == "darwin" {

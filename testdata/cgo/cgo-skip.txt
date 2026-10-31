@@ -2,3 +2,4 @@
 TestErrors/fiddle/extern_variadic
 TestErrors/ffi/attach_variadic
 TestErrors/ffi/attach_many_args
+TestErrors/ffi/attach_by_value
