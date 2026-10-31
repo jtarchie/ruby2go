@@ -18,11 +18,13 @@ func TestLoadEnv(t *testing.T) {
 		"RUGAROO_NO_PRUNE":      func(e envConfig) bool { return e.NoPrune },
 		"RUGAROO_PRUNE_WHY":     func(e envConfig) bool { return e.PruneWhy },
 		"RUGAROO_KEEP_GOING":    func(e envConfig) bool { return e.KeepGoing },
+		"RUGAROO_CGO":           func(e envConfig) bool { return e.CGO },
 	}
 	values := map[string]func(envConfig) string{
 		"RUGAROO_DISPATCH_DEBUG": func(e envConfig) string { return e.DispatchDebug },
 		"RUGAROO_GOPOISON_DUMP":  func(e envConfig) string { return e.GopoisonDump },
 		"RUGAROO_INT_OVERFLOW":   func(e envConfig) string { return e.IntOverflow },
+		"RUGAROO_NIL_CHECK":      func(e envConfig) string { return e.NilCheck },
 	}
 	for name := range flags {
 		t.Setenv(name, "")
