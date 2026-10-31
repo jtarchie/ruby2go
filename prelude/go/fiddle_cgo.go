@@ -80,10 +80,7 @@ type rbFiddleArgs = C.rb_fiddle_args
 // errno comes back from the same C frame, so no thread lock and no second call. The block is cached per C function
 // (slot): an address handed to C escapes, so a stack block would be a heap allocation per call.
 func rbFiddleCall(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, in *[8]uintptr, fl *[8]uint64, fret bool) (r uintptr, f uint64, errno Integer) {
-	s := slot.Swap(nil)
-	if s == nil {
-		s = new(rbFiddleArgs)
-	}
+	s := rbFiddleTake(slot)
 	for k := range in {
 		s.a[k] = C.uintptr_t(in[k])
 		s.f[k] = C.uint64_t(fl[k])
@@ -94,8 +91,23 @@ func rbFiddleCall(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, in *[8]uintptr
 	}
 	C.rb_fiddle_call(C.uintptr_t(fn), ret, s)
 	r, f, errno = uintptr(s.r), uint64(s.rf), Integer(s.err)
-	slot.Store(s)
+	rbFiddleGive(slot, s)
 	return r, f, errno
+}
+
+// rbFiddleTake is slot's argument block, or a new one in C memory: cgo's pointer check scans Go memory passed to C on every call.
+func rbFiddleTake(slot *atomic.Pointer[rbFiddleArgs]) *rbFiddleArgs {
+	if s := slot.Swap(nil); s != nil {
+		return s
+	}
+	return (*rbFiddleArgs)(C.calloc(1, C.sizeof_rb_fiddle_args))
+}
+
+// rbFiddleGive puts s back in slot, or frees it when a concurrent call already did.
+func rbFiddleGive(slot *atomic.Pointer[rbFiddleArgs], s *rbFiddleArgs) {
+	if !slot.CompareAndSwap(nil, s) {
+		C.free(unsafe.Pointer(s))
+	}
 }
 
 // rbFiddleSpread: this backend lays out stack and variadic arguments (rbFiddlePlace).
@@ -103,10 +115,7 @@ const rbFiddleSpread = true
 
 // rbFiddleCallSpread: rb_fiddle_call_spread passes the registers and 16 stack words, so stack arguments get 128 bytes.
 func rbFiddleCallSpread(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, types []Integer, words []uintptr, nfixed int, variadic, fret bool) (r uintptr, f uint64, errno Integer) {
-	s := slot.Swap(nil)
-	if s == nil {
-		s = new(rbFiddleArgs)
-	}
+	s := rbFiddleTake(slot)
 	*s = rbFiddleArgs{}
 	rbFiddlePlace(s, types, words, nfixed, variadic)
 	ret := C.int(0)
@@ -115,7 +124,7 @@ func rbFiddleCallSpread(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, types []
 	}
 	C.rb_fiddle_call_spread(C.uintptr_t(fn), ret, s)
 	r, f, errno = uintptr(s.r), uint64(s.rf), Integer(s.err)
-	slot.Store(s)
+	rbFiddleGive(slot, s)
 	return r, f, errno
 }
 
