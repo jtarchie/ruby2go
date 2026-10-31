@@ -343,6 +343,7 @@ type Source struct {
 
 // options are a compile's settings beyond its sources.
 type options struct {
+	purego       bool          // Fiddle's default backend whatever RUGAROO_CGO says: PreludeWhole type-checks without cgo (decision 426)
 	skipTests    bool          // a test_ method that fails to compile becomes a skip (SkippedTest) instead of an error
 	skipped      []SkippedTest // what skipTests skipped
 	warnings     []string
@@ -521,10 +522,8 @@ func compileWith(ctx context.Context, preludeFS fs.FS, sources []Source, opts *o
 	c.infer, c.round, c.inferDone = opts.infer, opts.round, opts.inferDone
 	c.noPrune = opts.noPrune
 	c.methodRequiresRuntime = opts.mainLast
-	c.env = opts.env
+	c.env = compileEnv(opts)
 	c.genCount, c.genLimit = opts.genCount, opts.genLimit
-	c.env.IntOverflow = checkOverflowMode("--int-overflow", c.env.IntOverflow)
-	c.env.NilCheck = checkNilMode("--nil-check", c.env.NilCheck)
 	c.loadPreludeGo()
 	libs, parsed, perr := c.scanRequires(ctx, sources)
 	if perr != nil {
@@ -858,6 +857,15 @@ func mergeStdImports(table map[string]string, imports []string) (collisions []st
 // preludeImports guards the one-time merge of prelude/go's imports into stdImports: every compile runs loadPreludeGo
 // before it reads the table, and Once orders those reads after the write.
 var preludeImports sync.Once
+
+// compileEnv is opts' environment with the modes checked; PreludeWhole's stays on purego (decision 426).
+func compileEnv(opts *options) envConfig {
+	env := opts.env
+	env.IntOverflow = checkOverflowMode("--int-overflow", env.IntOverflow)
+	env.NilCheck = checkNilMode("--nil-check", env.NilCheck)
+	env.CGO = env.CGO && !opts.purego
+	return env
+}
 
 // goFileSelected evaluates a prelude/go file's //go:build line: rugaroo_prelude holds, rugaroo_cgo under --cgo (decision 426).
 func (c *Compiler) goFileSelected(src []byte) bool {

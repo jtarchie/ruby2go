@@ -9,7 +9,7 @@ module L
   attach_function :abs, types, :int
 end
 -- attach_variadic.rb --
-# error: main.rb:6: FFI::Library#attach_function: a varargs C function cannot be called (purego has no C varargs; decision 326)
+# error: main.rb:6: FFI::Library#attach_function: a varargs C function needs --cgo (purego has no C varargs; decisions 326, 426)
 require "ffi"
 module L
   extend FFI::Library
@@ -36,7 +36,7 @@ module L
   attach_function :take, [Pt.by_value], :void
 end
 -- attach_many_args.rb --
-# error: main.rb:6: FFI::Library#attach_function: more than 8 arguments are stack-passed (decision 326)
+# error: main.rb:6: FFI::Library#attach_function: more than 8 arguments are stack-passed and need --cgo (decisions 326, 426)
 require "ffi"
 module L
   extend FFI::Library

@@ -14,7 +14,7 @@ func TestFFITypesMatchPrelude(t *testing.T) {
 	}
 	fiddleConst := map[string]int{
 		"VOID": 0, "VOIDP": 1, "CHAR": 2, "UCHAR": -2, "SHORT": 3, "USHORT": -3, "INT": 4, "UINT": -4, "LONG": 5, "ULONG": -5,
-		"FLOAT": 7, "DOUBLE": 8, "CONST_STRING": 10, "BOOL": 11, "SIZE_T": -5, "SSIZE_T": 5,
+		"FLOAT": 7, "DOUBLE": 8, "CONST_STRING": 10, "BOOL": 11, "SIZE_T": -5, "SSIZE_T": 5, "VARIADIC": 9,
 	}
 	block := regexp.MustCompile(`(?s)TYPES = \{(.*?)\n  \}`).FindSubmatch(src)
 	if block == nil {

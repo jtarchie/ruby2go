@@ -114,6 +114,14 @@ func rbFiddleCall(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, in *[8]uintptr
 	return r, f, errno
 }
 
+// rbFiddleSpread: purego's backend passes register arguments only, no varargs (decision 326).
+const rbFiddleSpread = false
+
+// rbFiddleCallSpread is never reached: rbFiddlePrepare refuses what it would take.
+func rbFiddleCallSpread(*atomic.Pointer[rbFiddleArgs], uintptr, []Integer, []uintptr, int, bool, bool) (uintptr, uint64, Integer) {
+	panic(NewNotImplementedError(Ref(String("rugaroo: a Fiddle call with stack or variadic arguments needs --cgo (decision 426)"))))
+}
+
 // rbFiddleErrnoSym is libc's function returning errno's address.
 func rbFiddleErrnoSym() string {
 	if runtime.GOOS == "darwin" {
@@ -132,7 +140,7 @@ func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) a
 		panic(NewNotImplementedError(Ref(String("rugaroo: a Fiddle::Closure cannot return float or double (purego)"))))
 	}
 	types := slices.Clone(args.s)
-	rbFiddleCheckArgs(types)
+	rbFiddleCheckArgs(types, false)
 	ni, nf := 0, 0
 	for _, t := range types {
 		switch {

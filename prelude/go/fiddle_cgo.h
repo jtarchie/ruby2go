@@ -8,6 +8,7 @@
 typedef struct {
 	uintptr_t a[8];
 	uint64_t f[8];
+	uintptr_t s[16]; // the stack arguments, laid out by rbFiddlePlace
 	uintptr_t r;
 	uint64_t rf;
 	int err;
@@ -17,6 +18,11 @@ typedef uintptr_t (*rb_fiddle_fn)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, ui
 	double, double, double, double, double, double, double, double);
 typedef double (*rb_fiddle_fnf)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
 	double, double, double, double, double, double, double, double);
+
+#define RB_FIDDLE_STACK_TYPES uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, \
+	uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t
+#define RB_FIDDLE_STACK s->s[0], s->s[1], s->s[2], s->s[3], s->s[4], s->s[5], s->s[6], s->s[7], \
+	s->s[8], s->s[9], s->s[10], s->s[11], s->s[12], s->s[13], s->s[14], s->s[15]
 
 // decision 326's superset signature; errno is read in this frame, on the calling thread.
 static void rb_fiddle_call(uintptr_t fn, int fret, rb_fiddle_args *s) {
@@ -30,6 +36,35 @@ static void rb_fiddle_call(uintptr_t fn, int fret, rb_fiddle_args *s) {
 	} else {
 		s->r = ((rb_fiddle_fn)fn)(s->a[0], s->a[1], s->a[2], s->a[3], s->a[4], s->a[5], s->a[6], s->a[7],
 			f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7]);
+		s->err = errno;
+	}
+}
+
+// The superset plus 16 stack words; on x86-64 through a variadic prototype, so %al counts the vector registers a
+// variadic callee saves (a fixed callee ignores it), and its 6 integer registers come before the stack words.
+#if defined(__x86_64__)
+typedef uintptr_t (*rb_fiddle_fns)(uintptr_t, ...);
+typedef double (*rb_fiddle_fnsf)(uintptr_t, ...);
+#define RB_FIDDLE_SPREAD_ARGS s->a[0], s->a[1], s->a[2], s->a[3], s->a[4], s->a[5], \
+	f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], RB_FIDDLE_STACK
+#else
+typedef uintptr_t (*rb_fiddle_fns)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+	double, double, double, double, double, double, double, double, RB_FIDDLE_STACK_TYPES);
+typedef double (*rb_fiddle_fnsf)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+	double, double, double, double, double, double, double, double, RB_FIDDLE_STACK_TYPES);
+#define RB_FIDDLE_SPREAD_ARGS s->a[0], s->a[1], s->a[2], s->a[3], s->a[4], s->a[5], s->a[6], s->a[7], \
+	f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], RB_FIDDLE_STACK
+#endif
+
+static void rb_fiddle_call_spread(uintptr_t fn, int fret, rb_fiddle_args *s) {
+	double f[8];
+	memcpy(f, s->f, sizeof f);
+	if (fret) {
+		double d = ((rb_fiddle_fnsf)fn)(RB_FIDDLE_SPREAD_ARGS);
+		s->err = errno;
+		memcpy(&s->rf, &d, sizeof d);
+	} else {
+		s->r = ((rb_fiddle_fns)fn)(RB_FIDDLE_SPREAD_ARGS);
 		s->err = errno;
 	}
 }

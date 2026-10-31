@@ -222,8 +222,15 @@ func TestMinitest(t *testing.T) {
 	requireToolchain(t)
 	t.Parallel()
 	files := mustGlob(t, "testdata/test/*_test.rb")
+	if os.Getenv("RUGAROO_CGO") != "" { // what only the cgo Fiddle backend can do: cgo/<area> (decision 426)
+		files = append(files, mustGlob(t, "testdata/cgo/*_test.rb")...)
+	}
 	for _, rb := range files {
-		t.Run(strings.TrimSuffix(filepath.Base(rb), "_test.rb"), func(t *testing.T) {
+		name := strings.TrimSuffix(filepath.Base(rb), "_test.rb")
+		if filepath.Base(filepath.Dir(rb)) == "cgo" {
+			name = "cgo_" + name
+		}
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			src, err := os.ReadFile(rb) //nolint:gosec // testdata path
 			if err != nil {
@@ -483,7 +490,7 @@ func skipIfMarked(t *testing.T, src []byte) {
 		t.Skip("known failure: " + strings.Join(reasons, "; "))
 	}
 	if skip, _ := laneSkips(t); skip {
-		t.Skip("pins another --int-overflow mode's answer (testdata/int-overflow, decision 372)")
+		t.Skip("pins another lane's answer (testdata/int-overflow, decision 372; testdata/cgo, decision 426)")
 	}
 }
 
@@ -491,13 +498,20 @@ func skipIfMarked(t *testing.T, src []byte) {
 // the test skips it; one naming the test and a minitest method excludes that method on both sides.
 func laneSkips(t *testing.T) (skip bool, methods []string) {
 	t.Helper()
-	mode := cmp.Or(os.Getenv("RUGAROO_INT_OVERFLOW"), "raise")
-	data, err := os.ReadFile(filepath.Join("testdata", "int-overflow", mode+"-skip.txt")) //nolint:gosec // testdata path
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+	backend := "purego"
+	if os.Getenv("RUGAROO_CGO") != "" {
+		backend = "cgo"
 	}
-	if err != nil {
-		t.Fatal(err)
+	var data []byte
+	for _, f := range []string{ // a Fiddle backend's lane is testdata/cgo/<backend>-skip.txt (decision 426)
+		filepath.Join("testdata", "int-overflow", cmp.Or(os.Getenv("RUGAROO_INT_OVERFLOW"), "raise")+"-skip.txt"),
+		filepath.Join("testdata", "cgo", backend+"-skip.txt"),
+	} {
+		b, err := os.ReadFile(f) //nolint:gosec // testdata path
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal(err)
+		}
+		data = append(data, b...)
 	}
 	for line := range strings.Lines(string(data)) {
 		line, _, _ = strings.Cut(line, "#")

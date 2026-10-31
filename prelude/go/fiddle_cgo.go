@@ -98,6 +98,78 @@ func rbFiddleCall(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, in *[8]uintptr
 	return r, f, errno
 }
 
+// rbFiddleSpread: this backend lays out stack and variadic arguments (rbFiddlePlace).
+const rbFiddleSpread = true
+
+// rbFiddleCallSpread: rb_fiddle_call_spread passes the registers and 16 stack words, so stack arguments get 128 bytes.
+func rbFiddleCallSpread(slot *atomic.Pointer[rbFiddleArgs], fn uintptr, types []Integer, words []uintptr, nfixed int, variadic, fret bool) (r uintptr, f uint64, errno Integer) {
+	s := slot.Swap(nil)
+	if s == nil {
+		s = new(rbFiddleArgs)
+	}
+	*s = rbFiddleArgs{}
+	rbFiddlePlace(s, types, words, nfixed, variadic)
+	ret := C.int(0)
+	if fret {
+		ret = 1
+	}
+	C.rb_fiddle_call_spread(C.uintptr_t(fn), ret, s)
+	r, f, errno = uintptr(s.r), uint64(s.rf), Integer(s.err)
+	slot.Store(s)
+	return r, f, errno
+}
+
+// rbFiddlePlace is libffi's placement for System V x86-64, AAPCS64 and Apple arm64 (which packs named stack args and stacks every variadic one).
+func rbFiddlePlace(s *rbFiddleArgs, types []Integer, words []uintptr, nfixed int, variadic bool) {
+	apple := runtime.GOOS == "darwin" && runtime.GOARCH == "arm64"
+	intRegs := 8
+	if runtime.GOARCH == "amd64" {
+		intRegs = 6
+	}
+	stack := (*[len(s.s) * 8]byte)(unsafe.Pointer(&s.s))
+	ni, nf, off := 0, 0, 0
+	for k, t := range types {
+		w := uint64(words[k])
+		float := rbFiddleIsFloat(t)
+		size := 8
+		switch {
+		case variadic && k >= nfixed && apple:
+			off = (off + 7) &^ 7
+		case float && nf < 8:
+			s.f[nf] = C.uint64_t(w)
+			nf++
+			continue
+		case !float && ni < intRegs:
+			s.a[ni] = C.uintptr_t(w)
+			ni++
+			continue
+		case apple:
+			size = rbFiddleSize(t)
+			off = (off + size - 1) &^ (size - 1)
+		}
+		if off+size > len(stack) {
+			panic(NewNotImplementedError(Ref(String("rugaroo: a Fiddle call passes at most 128 bytes of stack arguments"))))
+		}
+		for b := range size { // little-endian: a float's bits and a narrow integer are the low bytes
+			stack[off+b] = byte(w >> (8 * b))
+		}
+		off += size
+	}
+}
+
+// rbFiddleSize is TYPE_* t's byte size (LP64).
+func rbFiddleSize(t Integer) int {
+	switch t {
+	case 2, -2, 11:
+		return 1
+	case 3, -3:
+		return 2
+	case 4, -4, 7:
+		return 4
+	}
+	return 8
+}
+
 // rbFiddleCallbackRun is one Closure: the block over the saved argument registers, an integer or a double result.
 type rbFiddleCallbackRun = func(in *[8]uintptr, fl *[8]uint64) (uintptr, float64)
 
@@ -125,7 +197,7 @@ func rbFiddleCgoCallbackF(n C.int, in *C.uintptr_t, fl *C.uint64_t) C.double {
 func rbFiddleCallback(args *Array[Integer], ret Integer, blk func(*Array[any]) any) Integer {
 	rbFiddleCheckType(ret)
 	types := slices.Clone(args.s)
-	rbFiddleCheckArgs(types)
+	rbFiddleCheckArgs(types, false)
 	fret := rbFiddleIsFloat(ret)
 	run := rbFiddleCallbackRun(func(in *[8]uintptr, fl *[8]uint64) (uintptr, float64) {
 		vals := make([]any, 0, len(types))

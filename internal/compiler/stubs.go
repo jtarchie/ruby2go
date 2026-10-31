@@ -27,7 +27,7 @@ func PreludeStubs(ctx context.Context, preludeFS fs.FS) ([]byte, error) {
 
 // PreludeWhole is the unpruned program holding every library (decision 207): what TestPreludeWhole type-checks.
 func PreludeWhole(ctx context.Context, preludeFS fs.FS) ([]byte, error) {
-	opts := options{allLibs: true, noPrune: true}
+	opts := options{allLibs: true, noPrune: true, purego: true}
 	return compile(ctx, preludeFS, []Source{{Name: "main.rb", Src: []byte("puts 1\n")}}, &opts)
 }
 

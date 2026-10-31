@@ -421,6 +421,10 @@ module Fiddle
       @abi = abi
       @name = name
       @need_gvl = need_gvl
+      v = args.index(TYPE_VARIADIC)
+      raise ArgumentError, "Fiddle::TYPE_VARIADIC must be the last argument type: #{args.inspect}" if v && v != args.size - 1
+
+      @fixed = v || args.size #: Integer
       @fn = Fiddle.__prepare(@ptr, args, ret_type)
     end
 
@@ -433,16 +437,23 @@ module Fiddle
     # Go converts Integers, Floats, Strings, true/false and nil (rbFiddleInvoke); objects become their address here.
     #: (*untyped) -> untyped
     def call(*args)
+      variadic = @fixed < @args.size && args.size > @fixed # type and value pairs after the fixed arguments (decision 426)
+      raise ArgumentError, "variadic arguments must be type and value pairs: #{args.inspect}" if variadic && (args.size - @fixed).odd?
+
       i = 0
-      while i < args.size
-        a = args[i]
-        case a
-        when Integer, Float, String, nil, true, false then nil
-        else
-          t = @args.fetch(i, TYPE_VOIDP)
-          args[i] = Fiddle.__addr(a) unless t == TYPE_BOOL || t == TYPE_FLOAT || t == TYPE_DOUBLE || t == TYPE_VOID
-        end
+      n = args.size
+      n = @fixed if @fixed < @args.size && @fixed < n
+      while i < n
+        args[i] = Fiddle.__arg_addr(@args.fetch(i, TYPE_VOIDP), args[i])
         i += 1
+      end
+      if variadic
+        while i < args.size
+          t = Fiddle.__type(args[i])
+          args[i] = t
+          args[i + 1] = Fiddle.__arg_addr(t, args[i + 1])
+          i += 2
+        end
       end
       Fiddle.__ret(@ret, Fiddle.__invoke(@fn, args))
     end
@@ -592,6 +603,34 @@ module Fiddle
 
   #: (Array[Integer], Integer) { (Array[untyped]) -> untyped } -> Integer
   def self.__callback(args, ret) = %x{ rbFiddleCallback(args, ret, blk) }
+
+  # Function#call's conversion of one argument of type t: an object other than a value Go converts becomes its address.
+  #: (Integer, untyped) -> untyped
+  def self.__arg_addr(t, a)
+    case a
+    when Integer, Float, String, nil, true, false then a
+    else
+      t == TYPE_BOOL || t == TYPE_FLOAT || t == TYPE_DOUBLE || t == TYPE_VOID ? a : __addr(a)
+    end
+  end
+
+  # MRI's rb_fiddle_type_ensure: a TYPE_* Integer, or its name as a Symbol or String.
+  TYPE_NAMES = {
+    void: TYPE_VOID, voidp: TYPE_VOIDP, char: TYPE_CHAR, short: TYPE_SHORT, int: TYPE_INT, long: TYPE_LONG,
+    long_long: TYPE_LONG_LONG, int8_t: TYPE_INT8_T, int16_t: TYPE_INT16_T, int32_t: TYPE_INT32_T, int64_t: TYPE_INT64_T,
+    float: TYPE_FLOAT, double: TYPE_DOUBLE, variadic: TYPE_VARIADIC, const_string: TYPE_CONST_STRING, size_t: TYPE_SIZE_T,
+    ssize_t: TYPE_SSIZE_T, ptrdiff_t: TYPE_PTRDIFF_T, intptr_t: TYPE_INTPTR_T, uintptr_t: TYPE_UINTPTR_T, bool: TYPE_BOOL
+  }.freeze #: Hash[Symbol, Integer]
+
+  #: (untyped) -> Integer
+  def self.__type(t)
+    case t
+    when Integer then t
+    when Symbol then TYPE_NAMES.fetch(t) { raise ArgumentError, "unknown type: #{t.inspect}" }
+    when String then TYPE_NAMES.fetch(t.to_sym) { raise ArgumentError, "unknown type: #{t.inspect}" }
+    else raise TypeError, "no implicit conversion of #{t.class} into Integer"
+    end
+  end
 
   #: (untyped) -> Integer
   def self.__addr(x)

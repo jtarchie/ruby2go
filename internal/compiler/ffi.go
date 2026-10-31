@@ -16,7 +16,7 @@ var ffiTypes = map[string]int{
 	"void": 0, "bool": 11, "char": 2, "uchar": -2, "int8": 2, "uint8": -2, "short": 3, "ushort": -3, "int16": 3, "uint16": -3,
 	"int": 4, "uint": -4, "int32": 4, "uint32": -4, "long": 5, "ulong": -5, "int64": 5, "uint64": -5, "long_long": 5, "ulong_long": -5,
 	"size_t": -5, "ssize_t": 5, "float": 7, "double": 8, "string": 10, "pointer": 1,
-	"buffer_in": 1, "buffer_out": 1, "buffer_inout": 1,
+	"buffer_in": 1, "buffer_out": 1, "buffer_inout": 1, "varargs": 9,
 }
 
 // ffiRubyType is the Ruby type a call returns for a Fiddle TYPE_* code.
@@ -73,7 +73,10 @@ func (c *Compiler) ffiType(f *File, cls *Class, at parser.Node, n parser.Node) f
 		return ffiParam{code: 4, kind: "enum", name: name}
 	}
 	if name == "varargs" {
-		c.errorf(f, at, "FFI::Library#attach_function: a varargs C function cannot be called (purego has no C varargs; decision 326)")
+		if !c.env.CGO {
+			c.errorf(f, at, "FFI::Library#attach_function: a varargs C function needs --cgo (purego has no C varargs; decisions 326, 426)")
+		}
+		return ffiParam{code: 9, kind: "varargs"}
 	}
 	code, ok := ffiTypes[name]
 	if !ok {
@@ -156,10 +159,17 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 	params := make([]string, 0, len(arr.Elements))
 	types := make([]string, 0, len(arr.Elements))
 	exprs := make([]string, 0, len(arr.Elements))
+	variadic := false
 	for i, el := range arr.Elements {
 		p := fmt.Sprintf("a%d", i)
 		arg := p
 		switch t := c.ffiType(f, cls, n, el); t.kind {
+		case "varargs":
+			if i != len(arr.Elements)-1 {
+				c.errorf(f, n, "FFI::Library#attach_function: :varargs must be the last argument type")
+			}
+			variadic = true
+			continue
 		case "ptr":
 			arg = fmt.Sprintf("::FFI.__ptr(%s)", p)
 		case "callback":
@@ -171,8 +181,8 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 		exprs = append(exprs, arg)
 		types = append(types, "untyped")
 	}
-	if len(params) > 8 {
-		c.errorf(f, n, "FFI::Library#attach_function: more than 8 arguments are stack-passed (decision 326)")
+	if len(params) > 8 && !c.env.CGO {
+		c.errorf(f, n, "FFI::Library#attach_function: more than 8 arguments are stack-passed and need --cgo (decisions 326, 426)")
 	}
 	rp := c.ffiType(f, cls, n, rest[1])
 	ret := rp.code
@@ -182,7 +192,13 @@ func (c *Compiler) attachFFI(ctx context.Context, f *File, cls *Class, n *parser
 	fn := fmt.Sprintf("__ffi_func_at(%d, %q)", c.fiddleSlots[cls], name)
 	c.fiddleSlots[cls]++
 	call := fmt.Sprintf("::Fiddle.__call(%s)", strings.Join(append([]string{fn, strconv.Itoa(len(params))}, exprs...), ", "))
-	if n := len(params); n >= 1 && n <= 3 {
+	switch n := len(params); {
+	case variadic: // type and value pairs after the fixed arguments (decision 426)
+		call = fmt.Sprintf("%s.call(%s)", fn, strings.Join(append(exprs, "*::FFI.__varargs(rest)"), ", "))
+		params, types = append(params, "*rest"), append(types, "*untyped")
+	case n > 8:
+		call = fmt.Sprintf("%s.call(%s)", fn, strings.Join(exprs, ", "))
+	case n >= 1 && n <= 3:
 		call = fmt.Sprintf("::Fiddle.__call%d(%s)", n, strings.Join(append([]string{fn}, exprs...), ", "))
 	}
 	retType := ffiRubyType(ret)

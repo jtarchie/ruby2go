@@ -155,9 +155,14 @@ func (c *Compiler) collectFiddleCall(ctx context.Context, f *File, cls *Class, n
 	}
 	params := make([]string, 0, len(argTypes))
 	types := make([]string, 0, len(argTypes))
+	variadic := false
 	for i, t := range argTypes {
 		if t == 9 {
-			c.errorf(f, n, "Fiddle::Importer#%s: a variadic C function cannot be called (purego has no C varargs; decision 326)", n.Name)
+			if !c.env.CGO {
+				c.errorf(f, n, "Fiddle::Importer#%s: a variadic C function needs --cgo (purego has no C varargs; decisions 326, 426)", n.Name)
+			}
+			variadic = true
+			break
 		}
 		params = append(params, fmt.Sprintf("a%d", i))
 		types = append(types, "untyped")
@@ -169,6 +174,9 @@ func (c *Compiler) collectFiddleCall(ctx context.Context, f *File, cls *Class, n
 	c.fiddleSlots[cls]++
 	call := fmt.Sprintf("%s.call(%s)", fn, strings.Join(params, ", "))
 	switch n := len(params); { // Fiddle.__call's fixed arity: no *args Array per call (decision 329)
+	case variadic: // type and value pairs after the fixed arguments, as MRI's Importer passes them (decision 426)
+		params, types = append(params, "*rest"), append(types, "*untyped")
+		call = fmt.Sprintf("%s.call(%s)", fn, strings.Join(params, ", "))
 	case n >= 1 && n <= 3:
 		call = fmt.Sprintf("::Fiddle.__call%d(%s)", n, strings.Join(append([]string{fn}, params...), ", "))
 	case n <= 8:

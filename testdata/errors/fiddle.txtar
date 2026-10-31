@@ -9,7 +9,7 @@ module L
   extern sig
 end
 -- extern_variadic.rb --
-# error: main.rb:5: Fiddle::Importer#extern: a variadic C function cannot be called (purego has no C varargs; decision 326)
+# error: main.rb:5: Fiddle::Importer#extern: a variadic C function needs --cgo (purego has no C varargs; decisions 326, 426)
 require "fiddle/import"
 module L
   extend Fiddle::Importer

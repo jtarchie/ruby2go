@@ -31,6 +31,7 @@ module FFI
     float: Fiddle::TYPE_FLOAT, double: Fiddle::TYPE_DOUBLE,
     string: Fiddle::TYPE_CONST_STRING, pointer: Fiddle::TYPE_VOIDP,
     buffer_in: Fiddle::TYPE_VOIDP, buffer_out: Fiddle::TYPE_VOIDP, buffer_inout: Fiddle::TYPE_VOIDP,
+    varargs: Fiddle::TYPE_VARIADIC,
   } #: Hash[Symbol, Integer]
 
   SIZES = {
@@ -48,6 +49,22 @@ module FFI
   #: (untyped) -> untyped
   def self.__ptr(x)
     x.is_a?(Struct) ? x.pointer : x
+  end
+
+  # A varargs call's type and value pairs as Fiddle's: each type its TYPE_* code, a pointer its address (decision 426).
+  #: (Array[untyped]) -> Array[untyped]
+  def self.__varargs(rest)
+    out = [] #: Array[untyped]
+    i = 0
+    while i < rest.size
+      t = rest[i]
+      code = t.is_a?(Symbol) ? TYPES[t] : nil
+      raise ArgumentError, "invalid type for a variadic argument: #{t.inspect}" if code.nil? || code == Fiddle::TYPE_VARIADIC
+
+      out << code << (code == Fiddle::TYPE_VOIDP ? __ptr(rest[i + 1]) : rest[i + 1])
+      i += 2
+    end
+    out
   end
 
   # Past 2**63 the value needs a Bignum: it raises unless the program is built with --int-overflow=promote (decision 372).

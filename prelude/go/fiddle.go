@@ -5,6 +5,7 @@ package prelude
 import (
 	"math"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync/atomic"
 	"unsafe"
@@ -127,13 +128,16 @@ func rbFiddleCall1(fn, a uintptr) uintptr {
 	return r
 }
 
-// rbFiddleCFunc is a bound C function: its address and TYPE_* codes; every register-passed signature goes through rbFiddleCall.
+// rbFiddleCFunc is a bound C function: its address and TYPE_* codes; every register-passed signature goes through
+// rbFiddleCall, the rest (a variadic one, or one with stack arguments) through the backend's rbFiddleCallSpread.
 type rbFiddleCFunc struct {
-	slot  atomic.Pointer[rbFiddleArgs]
-	addr  uintptr
-	args  []Integer
-	ret   Integer
-	float bool
+	slot     atomic.Pointer[rbFiddleArgs]
+	addr     uintptr
+	args     []Integer // the fixed ones, without (void) and TYPE_VARIADIC
+	ret      Integer
+	float    bool
+	variadic bool // TYPE_VARIADIC came last: the call adds type and value pairs
+	spread   bool // more than 8 integer or 8 floating arguments
 }
 
 // rbFiddleIsFloat reports a TYPE_FLOAT or TYPE_DOUBLE.
@@ -149,8 +153,10 @@ func rbFiddleCheckType(t Integer) {
 	}
 }
 
-// rbFiddleCheckArgs rejects argument types purego cannot pass: past 8 int or 8 float the stack layout differs per platform.
-func rbFiddleCheckArgs(args []Integer) {
+// rbFiddleCheckArgs rejects argument types the registers cannot pass, past 8 int or 8 float (where the stack layout
+// differs per platform), unless the backend lays out stack arguments and spread allows them (a call, not a callback).
+// It reports whether some do not fit.
+func rbFiddleCheckArgs(args []Integer, spread bool) bool {
 	ni, nf := 0, 0
 	for _, t := range args {
 		rbFiddleCheckType(t)
@@ -162,9 +168,10 @@ func rbFiddleCheckArgs(args []Integer) {
 			ni++
 		}
 	}
-	if ni > 8 || nf > 8 {
-		panic(NewNotImplementedError(Ref(String("rugaroo: Fiddle calls take at most 8 integer and 8 floating-point arguments"))))
+	if (ni > 8 || nf > 8) && !(spread && rbFiddleSpread) {
+		panic(NewNotImplementedError(Ref(String("rugaroo: Fiddle calls take at most 8 integer and 8 floating-point arguments (more need --cgo; decision 426)"))))
 	}
+	return ni > 8 || nf > 8
 }
 
 // rbFiddlePrepare binds addr (Function.new).
@@ -173,8 +180,12 @@ func rbFiddlePrepare(addr Integer, args *Array[Integer], ret Integer) any {
 		panic(rbFiddleDLError("NULL function pointer"))
 	}
 	fn := &rbFiddleCFunc{addr: uintptr(addr), ret: ret, float: rbFiddleIsFloat(ret)}
-	rbFiddleCheckArgs(args.s)
-	for _, t := range args.s {
+	types := args.s
+	if k := slices.Index(types, 9); k >= 0 && rbFiddleSpread { // MRI checks it is last in Function#initialize (fiddle.rb)
+		types, fn.variadic = types[:k], true
+	}
+	fn.spread = rbFiddleCheckArgs(types, true)
+	for _, t := range types {
 		if t != 0 { // (void)
 			fn.args = append(fn.args, t)
 		}
@@ -256,6 +267,9 @@ func rbFiddleFast(f Fiddle_FunctionI, a ...any) any {
 
 // rbFiddleInvokeArgs converts args as Fiddle does, calls fn, and sets Fiddle.last_error.
 func rbFiddleInvokeArgs(fn *rbFiddleCFunc, args []any) any {
+	if fn.variadic || fn.spread {
+		return rbFiddleInvokeSpread(fn, args)
+	}
 	if len(args) != len(fn.args) {
 		panic(NewArgumentError(Ref(String("wrong number of arguments (given " + strconv.Itoa(len(args)) + ", expected " + strconv.Itoa(len(fn.args)) + ")"))))
 	}
@@ -287,6 +301,57 @@ func rbFiddleInvokeArgs(fn *rbFiddleCFunc, args []any) any {
 	}
 	r, f, errno := rbFiddleCall(&fn.slot, fn.addr, &in, &fl, fn.float)
 	runtime.KeepAlive(&keep)
+	rbFiddleSetErrno(errno)
+	return rbFiddleValue(fn.ret, r, math.Float64frombits(f))
+}
+
+// rbFiddleInvokeSpread is rbFiddleInvokeArgs for a variadic function (args end in type and value pairs, the types
+// already Integers: Function#call) or one with stack arguments; the backend places each argument (decision 426).
+func rbFiddleInvokeSpread(fn *rbFiddleCFunc, args []any) any {
+	types := slices.Clone(fn.args)
+	vals := args
+	if fn.variadic {
+		if len(args) < len(fn.args) {
+			panic(NewArgumentError(Ref(String("wrong number of arguments (given " + strconv.Itoa(len(args)) + ", expected " + strconv.Itoa(len(fn.args)) + "+)"))))
+		}
+		vals = slices.Clone(args[:len(fn.args)])
+		for k := len(fn.args); k+1 < len(args); k += 2 {
+			t, ok := args[k].(Integer)
+			if !ok || t == 0 || t == 9 {
+				panic(NewArgumentError(Ref("unknown type: " + rbInspect(args[k]))))
+			}
+			rbFiddleCheckType(t)
+			if t == 7 || t == 11 || t == 2 || t == -2 || t == 3 || t == -3 { // libffi's ffi_prep_cif_var refuses what C would promote
+				panic(NewRuntimeError(Ref(String("error creating CIF 3"))))
+			}
+			types, vals = append(types, t), append(vals, args[k+1])
+		}
+	} else if len(args) != len(fn.args) {
+		panic(NewArgumentError(Ref(String("wrong number of arguments (given " + strconv.Itoa(len(args)) + ", expected " + strconv.Itoa(len(fn.args)) + ")"))))
+	}
+	words := make([]uintptr, len(vals))
+	keep := make([][]byte, len(vals)) // String copies in Go memory, alive until the call returns
+	for k, a := range vals {
+		t := types[k]
+		switch {
+		case rbFiddleIsFloat(t):
+			_, f := rbFiddleWord64(t, a)
+			words[k] = uintptr(math.Float64bits(f))
+		case t == 11:
+			b, isBool := a.(Boolean)
+			if a != nil && (!isBool || bool(b)) {
+				words[k] = 1
+			}
+		default:
+			if s, isStr := a.(String); isStr && (t == 1 || t == 10) {
+				words[k], keep[k] = rbFiddleCStr(s, fn.ret == 1)
+			} else {
+				words[k], _ = rbFiddleWord64(t, a)
+			}
+		}
+	}
+	r, f, errno := rbFiddleCallSpread(&fn.slot, fn.addr, types, words, len(fn.args), fn.variadic, fn.float)
+	runtime.KeepAlive(keep)
 	rbFiddleSetErrno(errno)
 	return rbFiddleValue(fn.ret, r, math.Float64frombits(f))
 }

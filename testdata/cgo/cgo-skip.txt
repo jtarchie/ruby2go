@@ -1,0 +1,4 @@
+# Tests that pin purego's Fiddle limits, left out of the --cgo lane (RUGAROO_CGO=1), where they compile (decision 426).
+TestErrors/fiddle/extern_variadic
+TestErrors/ffi/attach_variadic
+TestErrors/ffi/attach_many_args
