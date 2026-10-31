@@ -1,6 +1,6 @@
 # rbs_inline: enabled
 
-# Literal extern signatures, not built dynamically: rb2go compiles the literals (decision 326).
+# Literal extern signatures, not built dynamically: rugaroo compiles the literals (decision 326).
 
 require "fiddle"
 require "fiddle/import"
@@ -19,7 +19,7 @@ module SQLite3
     HANDLE = Fiddle.dlopen(ENV["SQLITE3_FIDDLE_LIB"] || SQLite3.__lib_name) #: Fiddle::Handle
     dlload HANDLE
 
-    if defined?(::Binding) # rb2go compiles the externs itself
+    if defined?(::Binding) # rugaroo compiles the externs itself
       #: (String, Integer, Array[Integer], ?untyped) -> Fiddle::Function
       def self.import_function(name, ctype, argtype, call_type = nil) # keeps the GVL, as the C extension does: fiddle's default hands it off on every call
         Fiddle::Function.new(handler.sym(name), argtype, ctype, Fiddle::Function::DEFAULT, name: name, need_gvl: true)
@@ -110,7 +110,7 @@ module SQLite3
 
     ERROR_OFFSET = optional("sqlite3_error_offset", [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT) #: Fiddle::Function?
     DB_NAME = optional("sqlite3_db_name", [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT], Fiddle::TYPE_VOIDP) #: Fiddle::Function?
-    if defined?(::Binding) # sqlite3_db_config is variadic (on arm64 Darwin its varargs go on the stack); rb2go's purego cannot call one
+    if defined?(::Binding) # sqlite3_db_config is variadic (on arm64 Darwin its varargs go on the stack); rugaroo's purego cannot call one
       DB_CONFIG = HANDLE.sym_defined?("sqlite3_db_config") ? Fiddle::Function.new(HANDLE["sqlite3_db_config"], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_VARIADIC], Fiddle::TYPE_INT) : nil #: Fiddle::Function?
     else
       DB_CONFIG = nil #: Fiddle::Function?
@@ -123,7 +123,7 @@ module SQLite3
     def self.ustr(p) = p.null? ? nil : p.to_s.force_encoding(Encoding::UTF_8) # rb_utf8_str_new_cstr
 
     #: (Fiddle::Pointer, Integer) -> String
-    def self.bytes(p, n) = n <= 0 || p.null? ? "".b : Fiddle::Pointer.read(p.to_i, n) # Pointer.read's String is binary; a TEXT value is UTF-8 (rb2go derives encoding from the bytes, decision 136).
+    def self.bytes(p, n) = n <= 0 || p.null? ? "".b : Fiddle::Pointer.read(p.to_i, n) # Pointer.read's String is binary; a TEXT value is UTF-8 (rugaroo derives encoding from the bytes, decision 136).
 
     #: (Fiddle::Pointer, Integer) -> String
     def self.text(p, n) = bytes(p, n).force_encoding(Encoding::UTF_8)
@@ -149,7 +149,7 @@ module SQLite3
         yield p
         p.ptr.to_i
       ensure
-        # call_free, not Fiddle.free: JRuby's Fiddle.free wants a Pointer, rb2go's an Integer.
+        # call_free, not Fiddle.free: JRuby's Fiddle.free wants a Pointer, rugaroo's an Integer.
         p.call_free
       end
     end
@@ -186,7 +186,7 @@ module SQLite3
           sqlite3_result_double(ctx, val.to_f)
         end
       when Float then sqlite3_result_double(ctx, val)
-      when Blob # its own arm: rb2go's `when String` does not match a String subclass
+      when Blob # its own arm: rugaroo's `when String` does not match a String subclass
         blob = val.to_s
         sqlite3_result_blob(ctx, blob, blob.bytesize, TRANSIENT)
       when String
@@ -202,7 +202,7 @@ module SQLite3
 end
 
 # Optional entry points, absent from older or OMIT_ builds (macOS' own libsqlite3 has no load_extension): declared from file-level code, so a
-# class body's `C.respond_to?(:name)` guard sees them on MRI and folds to absent in rb2go, as the C extension's #ifdef HAVE_* does.
+# class body's `C.respond_to?(:name)` guard sees them on MRI and folds to absent in rugaroo, as the C extension's #ifdef HAVE_* does.
 [
   "int sqlite3_load_extension(void *, void *, void *, void *)",
   "int sqlite3_enable_load_extension(void *, int)",

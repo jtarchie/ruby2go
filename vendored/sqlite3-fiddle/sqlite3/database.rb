@@ -83,7 +83,7 @@ module SQLite3
       end
     end
 
-    if defined?(::Binding) # rb2go cannot store a block it never calls; there, pass a callable to authorizer=
+    if defined?(::Binding) # rugaroo cannot store a block it never calls; there, pass a callable to authorizer=
       #: () { (Integer, String?, String?, String?, String?) -> untyped } -> untyped
       def authorizer(&block)
         self.authorizer = block
@@ -103,7 +103,7 @@ module SQLite3
     end
 
     #: (String) -> Statement
-    def __prepare_1(sql) = SQLite3::Statement.new(self, sql) # rb2go's overload for a blockless prepare: typed, where the block form returns the block's value
+    def __prepare_1(sql) = SQLite3::Statement.new(self, sql) # rugaroo's overload for a blockless prepare: typed, where the block form returns the block's value
 
     #: (?String) -> String?
     def filename(db_name = "main") = db_filename(db_name)
@@ -153,7 +153,7 @@ module SQLite3
     def __execute2_3(sql, a, b) = __execute2_rows(sql, [a, b])
 
     #: (String, Array[untyped]) -> Array[untyped]
-    def __execute2_rows(sql, bind_vars) # rb2go cannot return from inside prepare's block, as the gem does
+    def __execute2_rows(sql, bind_vars) # rugaroo cannot return from inside prepare's block, as the gem does
       stmt = __prepare_1(sql)
       begin
         result = stmt.execute(*bind_vars)
@@ -248,7 +248,7 @@ module SQLite3
       self
     end
 
-    if defined?(::Binding) # aggregates are Class.new/define_method metaprogramming: rb2go has no Binding, so it folds this out
+    if defined?(::Binding) # aggregates are Class.new/define_method metaprogramming: rugaroo has no Binding, so it folds this out
       #: (String, Integer, ?untyped, ?untyped, ?Integer) ?{ () -> void } -> self
       def create_aggregate(name, arity, step = nil, finalize = nil, text_rep = Constants::TextRep::ANY, &block)
         proxy = Class.new do
@@ -392,7 +392,7 @@ module SQLite3
       end
     end
 
-    if defined?(::Binding) # rb2go folds out the load_extension_internal it would call (see native/database.rb)
+    if defined?(::Binding) # rugaroo folds out the load_extension_internal it would call (see native/database.rb)
       #: (untyped) -> untyped
       def load_extension(extension_specifier)
         if extension_specifier.respond_to?(:to_path)
@@ -421,7 +421,7 @@ module SQLite3
     else
       #: (untyped) -> void
       def initialize_extensions(extensions) # :nodoc:
-        raise NotImplementedError, "extensions are not supported under rb2go" unless extensions.nil?
+        raise NotImplementedError, "extensions are not supported under rugaroo" unless extensions.nil?
       end
     end
 

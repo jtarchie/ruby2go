@@ -3,7 +3,7 @@
 require "sqlite3/errors"
 
 module SQLite3
-  module Pragmas # the gem's pragma mode tables; its accessors live on Database, where rb2go can type self
+  module Pragmas # the gem's pragma mode tables; its accessors live on Database, where rugaroo can type self
     SYNCHRONOUS_MODES = { "full" => 2, "normal" => 1, "off" => 0 }.freeze #: Hash[String, Integer]
 
     TEMP_STORE_MODES = { "default" => 0, "file" => 1, "memory" => 2 }.freeze #: Hash[String, Integer]
@@ -49,7 +49,7 @@ module SQLite3
     #: (String, *untyped) ?{ (untyped) -> void } -> untyped
     def get_query_pragma(name, *params) # :yields: row
       sql = params.empty? ? "PRAGMA #{name}" : "PRAGMA #{name}( '#{params.join("','")}' )"
-      return __execute_1(sql) unless block_given? # rb2go reads a forwarded nil &block as given
+      return __execute_1(sql) unless block_given? # rugaroo reads a forwarded nil &block as given
 
       execute(sql) { |row| yield row }
     end
@@ -618,7 +618,7 @@ module SQLite3
     end
 
     #: (String) -> Array[Hash[String, untyped]]
-    def __table_info_1(table) # rb2go's overload for a blockless table_info: typed, where the block form returns nil
+    def __table_info_1(table) # rugaroo's overload for a blockless table_info: typed, where the block form returns nil
       stmt = prepare "PRAGMA table_info(#{table})"
       columns = stmt.columns
 

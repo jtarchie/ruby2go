@@ -2,7 +2,7 @@
 
 module SQLite3
   VERSION_INFO = { # a hash of descriptive metadata about the current version of the sqlite3 gem
-    ruby: defined?(::RUBY_DESCRIPTION) ? ::RUBY_DESCRIPTION : "ruby #{RUBY_VERSION}", # rb2go has no RUBY_DESCRIPTION
+    ruby: defined?(::RUBY_DESCRIPTION) ? ::RUBY_DESCRIPTION : "ruby #{RUBY_VERSION}", # rugaroo has no RUBY_DESCRIPTION
     gem: {
       version: SQLite3::VERSION
     },

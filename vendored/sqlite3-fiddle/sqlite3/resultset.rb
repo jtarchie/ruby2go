@@ -46,7 +46,7 @@ module SQLite3
       self
     end
 
-    if defined?(::Binding) # rb2go's enum_for cannot name a method of a class with subclasses; iterate with a block there
+    if defined?(::Binding) # rugaroo's enum_for cannot name a method of a class with subclasses; iterate with a block there
       #: (Symbol) -> untyped
       def __enum(name) = enum_for(name)
     else

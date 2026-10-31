@@ -311,7 +311,7 @@ module SQLite3
     #: (String) ?{ (*untyped) -> untyped } -> self
     def define_function(name, &block) = define_function_with_flags(name, Constants::TextRep::UTF8, &block)
 
-    if defined?(::Binding) # rb2go has no Binding (folds to the else arm) nor Proc#arity: its functions register variadic
+    if defined?(::Binding) # rugaroo has no Binding (folds to the else arm) nor Proc#arity: its functions register variadic
       #: (String, Integer) { (*untyped) -> untyped } -> self
       def define_function_with_flags(name, flags, &block)
         raise ArgumentError, "tried to create Proc object without a block" if block.nil?

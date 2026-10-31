@@ -21,7 +21,7 @@ module SQLite3
     @mutex = Mutex.new #: Mutex
     @suppress = false #: bool
 
-    if defined?(::Binding) # rb2go cannot prepend onto Process: a forked child there keeps its connections
+    if defined?(::Binding) # rugaroo cannot prepend onto Process: a forked child there keeps its connections
       #: () -> void
       def self.hook! # :nodoc:
         ::Process.singleton_class.prepend(CoreExt)

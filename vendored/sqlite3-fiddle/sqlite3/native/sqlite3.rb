@@ -5,7 +5,7 @@
 require "sqlite3/native/ffi"
 
 module SQLite3
-  if defined?(::Binding) # rb2go widens a String subclass to String in a mixed literal (its decision 150), so there Blob is a marker class
+  if defined?(::Binding) # rugaroo widens a String subclass to String in a mixed literal (its decision 150), so there Blob is a marker class
     class Blob < String; end
   else
     class Blob

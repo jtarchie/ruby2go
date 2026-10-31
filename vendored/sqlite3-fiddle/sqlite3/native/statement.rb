@@ -116,7 +116,7 @@ module SQLite3
       raise SQLite3::Exception, "no such bind parameter" if index.zero?
 
       status = case value
-               when Blob # its own arm: rb2go's `when String` does not match a String subclass
+               when Blob # its own arm: rugaroo's `when String` does not match a String subclass
                  blob = value.to_s
                  C.sqlite3_bind_blob(st, index, blob, blob.bytesize, C::TRANSIENT)
                when String
